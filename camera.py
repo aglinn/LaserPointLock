@@ -35,6 +35,8 @@ class Camera:
         self.comm_time = 0
         """Amount of time it takes to pass one frame of data through USB communication.
         Updated when get_frame() is called."""
+        self.xres = res[0]
+        self.yres = res[1]
         self.set_resolution(res[0], res[1])
         self.set_exposure_time(exposure_time)
         self.set_sensor_Hblanking()
@@ -94,10 +96,34 @@ class Camera:
 
     def set_exposure_time(self, time):
         # time in ms
-        time_mult = int(time/0.05)
+        print(time)
+        time_mult = max(1, min(15000, int(time/0.05)))
+        print(time_mult)
         time_mult = time_mult.to_bytes(length=2, byteorder='big')
         self.dev.write(0x01, [0x63, 2, time_mult[0], time_mult[1]])
-        self.exposure_time = time
+        self.exposure_time = max(0.05, min(750, time))
+        print(self.exposure_time)
+    
+    def set_gain(self, gain):
+        if getattr(gain,'__iter__',False):
+            # gain is iterable, so treat as a list/tuple
+            if not len(gain) == 3:
+                raise ValueError("Gain tuple must consist of exactly three values")
+            gain = [max(0, min(64, int(round(x*8)))) for x in gain]
+            self.dev.write(0x01, [0x62, 3, gain[0], gain[1], gain[2]])
+            self.gain = gain
+        else:
+            # single value passed in
+            gain = max(0, min(64, int(round(gain*8))))
+            self.dev.write(0x01, [0x62, 3, gain, gain, gain])
+            self.gain = gain # apply after setting succesfully applied
+
+    def set_decimation(self, value):
+        if isinstance(value, bool):
+            self.decimation = 2 if value else 1
+            self.set_resolution(self.xres, self.yres)
+        else:
+            raise ValueError("Decimation must be a boolean")
 
     def get_frame(self):
         x_pixels = int(self.res[0]//self.decimation)
