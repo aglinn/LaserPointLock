@@ -96,13 +96,10 @@ class Camera:
 
     def set_exposure_time(self, time):
         # time in ms
-        print(time)
         time_mult = max(1, min(15000, int(time/0.05)))
-        print(time_mult)
         time_mult = time_mult.to_bytes(length=2, byteorder='big')
         self.dev.write(0x01, [0x63, 2, time_mult[0], time_mult[1]])
         self.exposure_time = max(0.05, min(750, time))
-        print(self.exposure_time)
     
     def set_gain(self, gain):
         if getattr(gain,'__iter__',False):
@@ -164,4 +161,64 @@ class Camera:
         image = np.empty((y_pixels, x_pixels), dtype='B')
         image[::2, :] = array1
         image[1::2, :] = array2
+        return image
+
+import random
+class FakeCamera:
+    def __init__(self, **kwargs):
+        """
+        module_no
+        serial_no
+        date
+        res
+        exposure_time
+        gain
+        decimation
+        """
+        self.module_no = 'SCE-B013-U'
+        self.serial_no = kwargs.get('serial_no', '{0:02}-{1:06}'.format(random.randint(10, 99), random.randint(0, 999999)))
+        self.date = '011219'
+
+        self.res = kwargs.get('res', (1280, 1024))
+        self.exposure_time = kwargs.get('exposure_time', 0.05)
+        self.gain = kwargs.get('gain', 1)
+        self.decimation = kwargs.get('decimation', 1)
+        self.xcen = kwargs.get('xcen', 0)
+        self.ycen = kwargs.get('ycen', 0)
+        self.comm_time = 0
+        """Amount of time it takes to pass one frame of data through USB communication.
+        Updated when get_frame() is called."""
+        self.xres = self.res[0]
+        self.yres = self.res[1]
+        self.set_resolution(self.res[0], self.res[1])
+        self.set_exposure_time(self.exposure_time)
+        self._grid = np.meshgrid((np.arange(self.xres) - self.xres/2)//self.decimation,
+        (np.arange(self.yres) - self.yres/2)//self.decimation)
+    
+    def set_resolution(self, xres, yres):
+        self.xres = xres
+        self.yres = yres
+        self._grid = np.meshgrid((np.arange(self.xres) - self.xres/2),
+        (np.arange(self.yres) - self.yres/2))
+    
+    def set_exposure_time(self, time):
+        self.exposure_time = time
+    
+    def set_gain(self, gain):
+        self.gain = gain*8
+    
+    def set_decimation(self, value):
+        if isinstance(value, bool):
+            self.decimation = 2 if value else 1
+            self.set_resolution(self.xres, self.yres)
+        else:
+            raise ValueError("Decimation must be a boolean")
+    
+    def get_frame(self):
+        # Generate a new center
+        self.xcen = min(self.xres//2, max(-self.xres//2, self.xcen + random.randint(-5, 5)))
+        self.ycen = min(self.xres//2, max(-self.xres//2, self.xcen + random.randint(-5, 5)))
+        # Simulate a laser spot
+        width = 0.02*self._grid[0].shape[0]
+        image = np.round(245*np.exp(-((self._grid[0] - self.xcen)**2 + (self._grid[1] - self.ycen)**2)/(2*width**2))).astype(np.uint8)
         return image
