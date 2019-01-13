@@ -53,6 +53,25 @@ if __name__ == "__main__":
     cam2_x_plot = ui.gv_cam_xy.addPlot(row=2, col=0).plot()
     cam2_y_plot = ui.gv_cam_xy.addPlot(row=3, col=0).plot()
 
+    ## Set a custom color map
+    colors = [
+        (68, 1, 84),
+        (72, 33, 115),
+        (67, 62, 133),
+        (56, 88, 140),
+        (45, 112, 142),
+        (37, 133, 142),
+        (30, 155, 138),
+        (42, 176, 127),
+        (82, 197, 105),
+        (134, 213, 73),
+        (194, 223, 35),
+        (253, 231, 37)
+    ]
+    cmap = pg.ColorMap(pos=np.linspace(0.0, 1.0, 12), color=colors)
+    ui.gv_camera1.setColorMap(cmap)
+    ui.gv_camera2.setColorMap(cmap)
+
     cam1_index = -1
     cam2_index = -1
     cam1_threshold = 0
