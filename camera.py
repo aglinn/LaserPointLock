@@ -3,6 +3,8 @@ import usb.util
 import numpy as np
 import time
 
+# TODO: multithread the frame grabbing
+
 class Camera:
     def __init__(self, dev=None, res=(1280, 1024), exposure_time=50, gain=1, decimation=2):
         r"""

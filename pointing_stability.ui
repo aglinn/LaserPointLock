@@ -23,8 +23,17 @@
       <height>631</height>
      </rect>
     </property>
+    <property name="tabPosition">
+     <enum>QTabWidget::North</enum>
+    </property>
+    <property name="tabShape">
+     <enum>QTabWidget::Rounded</enum>
+    </property>
     <property name="currentIndex">
-     <number>1</number>
+     <number>2</number>
+    </property>
+    <property name="elideMode">
+     <enum>Qt::ElideNone</enum>
     </property>
     <widget class="QWidget" name="tab_microView">
      <attribute name="title">
@@ -286,7 +295,7 @@
      <widget class="GraphicsLayoutWidget" name="gv_cam_xy">
       <property name="geometry">
        <rect>
-        <x>30</x>
+        <x>20</x>
         <y>10</y>
         <width>701</width>
         <height>581</height>
@@ -336,6 +345,53 @@
       </layout>
      </widget>
     </widget>
+    <widget class="QWidget" name="tab">
+     <attribute name="title">
+      <string>Piezo View</string>
+     </attribute>
+     <widget class="GraphicsLayoutWidget" name="gv_piezo">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>701</width>
+        <height>581</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QWidget" name="formLayoutWidget_4">
+      <property name="geometry">
+       <rect>
+        <x>740</x>
+        <y>10</y>
+        <width>160</width>
+        <height>80</height>
+       </rect>
+      </property>
+      <layout class="QFormLayout" name="formLayout_4">
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_12">
+         <property name="text">
+          <string>Motor 1</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="cb_motors_1"/>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label_13">
+         <property name="text">
+          <string>Motor 2</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QComboBox" name="cb_motors_2"/>
+       </item>
+      </layout>
+     </widget>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -362,6 +418,28 @@
    <header>pyqtgraph</header>
   </customwidget>
  </customwidgets>
+ <tabstops>
+  <tabstop>gv_camera1</tabstop>
+  <tabstop>le_cam1_exp_time</tabstop>
+  <tabstop>le_cam1_gain</tabstop>
+  <tabstop>cb_cam1</tabstop>
+  <tabstop>le_cam1_threshold</tabstop>
+  <tabstop>cb_cam1_decimate</tabstop>
+  <tabstop>btn_cam1_update</tabstop>
+  <tabstop>le_cam1_max</tabstop>
+  <tabstop>le_cam2_exp_time</tabstop>
+  <tabstop>le_cam2_gain</tabstop>
+  <tabstop>cb_cam2</tabstop>
+  <tabstop>le_cam2_threshold</tabstop>
+  <tabstop>cb_cam2_decimate</tabstop>
+  <tabstop>btn_cam2_update</tabstop>
+  <tabstop>le_cam2_max</tabstop>
+  <tabstop>gv_cam_xy</tabstop>
+  <tabstop>btn_clear</tabstop>
+  <tabstop>le_num_points</tabstop>
+  <tabstop>tabWidget</tabstop>
+  <tabstop>gv_camera2</tabstop>
+ </tabstops>
  <resources/>
  <connections/>
 </ui>
