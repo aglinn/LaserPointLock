@@ -2,10 +2,29 @@ import usb.core
 import usb.util
 import numpy as np
 import time
+from abc import ABC, abstractmethod
+
+class Camera(ABC):
+    @abstractmethod
+    def get_frame(self):
+        pass
+    @abstractmethod
+    def set_exposure_time(self, time):
+        pass
+    @abstractmethod
+    def set_resolution(self, res):
+        pass
+    @abstractmethod
+    def set_gain(self, gain):
+        pass
+    @abstractmethod
+    def set_decimation(self, gain):
+        pass
+
 
 # TODO: multithread the frame grabbing
 
-class Camera:
+class MightexCamera(Camera):
     def __init__(self, dev=None, res=(1280, 1024), exposure_time=50, gain=1, decimation=2):
         r"""
             res = (x_resolution, y_resolution) in pixels
@@ -172,7 +191,7 @@ class Camera:
         return image
 
 import random
-class FakeCamera:
+class FakeCamera(Camera):
     def __init__(self, **kwargs):
         """
         module_no

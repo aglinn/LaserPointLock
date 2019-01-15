@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1067, 713)
+        MainWindow.resize(1067, 780)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.tabWidget = QtWidgets.QTabWidget(self.centralwidget)
@@ -180,6 +180,13 @@ class Ui_MainWindow(object):
         self.btn_motor_connect.setObjectName("btn_motor_connect")
         self.formLayout_4.setWidget(2, QtWidgets.QFormLayout.FieldRole, self.btn_motor_connect)
         self.tabWidget.addTab(self.tab, "")
+        self.btn_lock = QtWidgets.QPushButton(self.centralwidget)
+        self.btn_lock.setGeometry(QtCore.QRect(30, 660, 111, 51))
+        font = QtGui.QFont()
+        font.setPointSize(20)
+        self.btn_lock.setFont(font)
+        self.btn_lock.setCheckable(True)
+        self.btn_lock.setObjectName("btn_lock")
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 1067, 26))
@@ -255,6 +262,7 @@ class Ui_MainWindow(object):
         self.label_13.setText(_translate("MainWindow", "Motor 2"))
         self.btn_motor_connect.setText(_translate("MainWindow", "Connect"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), _translate("MainWindow", "Piezo View"))
+        self.btn_lock.setText(_translate("MainWindow", "LOCK"))
         self.menuCalibrate.setTitle(_translate("MainWindow", "File"))
         self.act_calibrate.setText(_translate("MainWindow", "Calibrate"))
 

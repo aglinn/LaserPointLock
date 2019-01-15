@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1067</width>
-    <height>713</height>
+    <height>780</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -399,6 +399,27 @@
       </layout>
      </widget>
     </widget>
+   </widget>
+   <widget class="QPushButton" name="btn_lock">
+    <property name="geometry">
+     <rect>
+      <x>30</x>
+      <y>660</y>
+      <width>111</width>
+      <height>51</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>20</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>LOCK</string>
+    </property>
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
