@@ -124,6 +124,12 @@ class Camera:
         else:
             raise ValueError("Decimation must be a boolean")
 
+    def pixel_to_um(self, pixels):
+        """
+        Convert from pixels to um assuming SCE-B013-U camera
+        """
+        return pixels*5.5*self.decimation
+
     def get_frame(self):
         x_pixels = int(self.res[0]//self.decimation)
         y_pixels = int(self.res[1]//self.decimation)
@@ -215,6 +221,9 @@ class FakeCamera:
             self.set_resolution(self.xres, self.yres)
         else:
             raise ValueError("Decimation must be a boolean")
+    
+    def pixel_to_um(self, pixels):
+        return pixels*5.5*self.decimation
     
     def get_frame(self):
         # Generate a new center
