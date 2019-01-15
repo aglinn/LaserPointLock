@@ -11,7 +11,12 @@ if __name__ == "__main__":
     from PyQt5 import QtCore, QtGui, QtWidgets
     from camera import Camera
     from camera import FakeCamera
-    from motors import MDT693A_Motor
+    from motors import MDT693A_Motor, FakeMotor
+
+    STATE_MEASURE = 0
+    STATE_CALIBRATE = 1
+    STATE_LOCKED = 2
+    state = STATE_MEASURE
 
     pg.setConfigOptions(imageAxisOrder='row-major')
     pg.setConfigOption('background', 'w')
@@ -25,6 +30,7 @@ if __name__ == "__main__":
     ui.setupUi(MainWindow)
     cam_model = QtGui.QStandardItemModel()
     motor_model = QtGui.QStandardItemModel()
+    error_dialog = QtWidgets.QErrorMessage()
 
     # Find the cameras
     cam_dev_list = list(usb.core.find(find_all=True, idVendor=0x04B4))
@@ -40,6 +46,7 @@ if __name__ == "__main__":
     resourceManager = visa.ResourceManager()
     for dev in resourceManager.list_resources():
         motor_model.appendRow(QtGui.QStandardItem(str(dev)))
+    motor_list = []
     # Add fake cameras
     for i in range(3):
         c = FakeCamera()
@@ -56,7 +63,7 @@ if __name__ == "__main__":
     else:
         ui.cb_motors_1.setCurrentIndex(-1)
         ui.cb_motors_1.setCurrentIndex(-1)
-    # Initialize global variables
+    # Initialize global variables for tracking pointing
     cam1_x = np.ndarray(0)
     cam1_y = np.ndarray(0)
     cam2_x = np.ndarray(0)
@@ -69,6 +76,15 @@ if __name__ == "__main__":
     cam1_y_plot = ui.gv_cam_xy.addPlot(row=1, col=0).plot()
     cam2_x_plot = ui.gv_cam_xy.addPlot(row=2, col=0).plot()
     cam2_y_plot = ui.gv_cam_xy.addPlot(row=3, col=0).plot()
+    # Initialize global variables for piezo motor voltages
+    motor1_x = np.ndarray(0)
+    motor1_y = np.ndarray(0)
+    motor2_x = np.ndarray(0)
+    motor2_y = np.ndarray(0)
+    motor1_x_plot = ui.gv_piezo.addPlot(row=0, col=0).plot()
+    motor1_y_plot = ui.gv_piezo.addPlot(row=1, col=0).plot()
+    motor2_x_plot = ui.gv_piezo.addPlot(row=2, col=0).plot()
+    motor2_y_plot = ui.gv_piezo.addPlot(row=3, col=0).plot()
 
     ## Set a custom color map
     colors = [
@@ -114,6 +130,13 @@ if __name__ == "__main__":
     saturated_cam2 = False
     under_saturated_cam2 = False
 
+    # Initialize global variables for calibration
+    calib_index = 0
+    calibration_voltages = 10*np.arange(2) + 60
+    mot1_cam1_x, mot1_cam1_y, mot1_cam2_x, mot1_cam2_y = np.empty((4, len(calibration_voltages)))
+    mot2_cam1_x, mot2_cam1_y, mot2_cam2_x, mot2_cam2_y = np.empty((4, len(calibration_voltages)))
+    starting_v = np.zeros(4)
+
     def resetHist(ref, min=0, max=255):
         """
         Given a reference to an image view, set the histogram's range and levels to min and max
@@ -121,6 +144,38 @@ if __name__ == "__main__":
         assert isinstance(ref, pg.ImageView)
         ref.getHistogramWidget().setHistogramRange(min, max)
         ref.getHistogramWidget().setLevels(min, max)
+
+    def addToPlot(data, plot, point, maxSize=100):
+        """
+        Scrolling plot with a maximum size
+        """
+        if (data.size < maxSize):
+            data = np.append(data, point)
+        else:
+            data = np.roll(data, -1)
+            data[-1] = point
+            data = np.roll(data, -1)
+            data[-1] = point
+        plot.setData(data)
+        return data
+
+    def calc_com_x(img):
+        Nx, Ny = img.shape
+        x = np.arange(Nx)
+        y = np.arange(Ny)
+        X, _ = np.meshgrid(x, y, indexing='ij')
+        w = img/np.sum(img)
+        com_x = np.sum(X*w)
+        return com_x
+
+    def calc_com_y(img):
+        Nx, Ny = img.shape
+        x = np.arange(Nx)
+        y = np.arange(Ny)
+        _, Y = np.meshgrid(x, y, indexing='ij')
+        w = img/np.sum(img)
+        com_y = np.sum(Y*w)
+        return com_y
 
     def calc_com(img):
         """
@@ -136,11 +191,292 @@ if __name__ == "__main__":
         return com_x, com_y
 
     def update():
+        start_time = time.time()
+        msg = ''
+        if state == STATE_MEASURE:
+            updateMeasure()
+            msg += 'UNLOCKED'
+        elif state == STATE_CALIBRATE:
+            updateCalibrate()
+            msg += 'Calibrating...'
+        elif state == STATE_LOCKED:
+            updateMeasure()
+            msg += 'LOCKED'
+        else:
+            msg += 'ERROR'
+        ui.statusbar.showMessage('{0}\tUpdate time: {1:.3f} (s)'.format(msg, time.time() - start_time))
+
+    def take_img_calibration(cam_index, cam_view=0, xory='x', threshold=0):
+        global cam1_x, cam2_x, cam1_y, cam2_y
+        global cam1_x_line, cam2_x_line, cam1_y_line, cam2_y_line
+        img = cam_list[cam_index].get_frame()
+        if threshold > 0:
+            img[img < threshold] = 0
+        if cam_view == 0:
+            ui.le_cam1_max.setText(str(np.max(img)))
+        else:
+            ui.le_cam2_max.setText(str(np.max(img)))
+        if xory == 'x':
+            com = calc_com_x(img)
+            if cam_view == 0:
+                cam1_x_line.setPos(com)
+                print('Set cam1_x_line to', com)
+                cam1_x_line.setVisible(True)
+                if (cam1_x.size < 100):
+                    cam1_x = np.append(cam1_x, com)
+                else:
+                    cam1_x = np.roll(cam1_x, -1)
+                    cam1_x[-1] = com
+                cam1_x_plot.setData(cam1_x)
+            else:
+                cam2_x_line.setPos(com)
+                print('Set cam2_x_line to', com)
+                cam2_x_line.setVisible(True)
+                if (cam2_x.size < 100):
+                    cam2_x = np.append(cam2_x, com)
+                else:
+                    cam2_x = np.roll(cam2_x, -1)
+                    cam2_x[-1] = com
+                cam2_x_plot.setData(cam2_x)
+        else:
+            com = calc_com_y(img)
+            if cam_view == 0:
+                cam1_y_line.setPos(com)
+                print('Set cam1_y_line to', com)
+                cam1_y_line.setVisible(True)
+                if (cam1_y.size < 100):
+                    cam1_y = np.append(cam1_y, com)
+                else:
+                    cam1_y = np.roll(cam1_y, -1)
+                    cam1_y[-1] = com
+                cam1_y_plot.setData(cam1_y)
+            else:
+                cam2_y_line.setPos(com)
+                print('Set cam2_y_line to', com)
+                cam2_y_line.setVisible(True)
+                if (cam2_y.size < 100):
+                    cam2_y = np.append(cam2_y, com)
+                else:
+                    cam2_y = np.roll(cam2_y, -1)
+                    cam2_y[-1] = com
+                cam2_y_plot.setData(cam2_y)
+        return img, com
+
+    def take_img(cam_index, cam_view=0, xory='x', threshold=0, resetView=False):
+        """
+        Given the camera at cam_index in the camera list
+        Update cam_view with its image and COM
+        Use threshold to zero out values below threshold
+        Return if the image is saturated
+        """
+        global cam1_x_line, cam1_y_line, cam1_x, cam1_y
+        global cam2_x_line, cam2_y_line, cam2_x, cam2_y
+        global cam1_x_plot, cam1_y_plot, cam2_x_plot, cam2_y_plot
+        assert cam_index >= 0
+        assert cam_view == 0 or cam_view == 1
+        img = cam_list[cam_index].get_frame()
+        under_saturated = np.all(img < 50)
+        saturated = np.any(img > 250)
+        if threshold > 0:
+            img[img < threshold] = 0
+        if cam_view == 0:
+            ui.le_cam1_max.setText(str(np.max(img)))
+            cam_x_line = cam1_x_line
+            cam_y_line = cam1_y_line
+            cam_x_data = cam1_x
+            cam_y_data = cam1_y
+            cam_x_plot = cam1_x_plot
+            cam_y_plot = cam1_y_plot
+        else:
+            ui.le_cam2_max.setText(str(np.max(img)))
+            cam_x_line = cam2_x_line
+            cam_y_line = cam2_y_line
+            cam_x_data = cam2_x
+            cam_y_data = cam2_y
+            cam_x_plot = cam2_x_plot
+            cam_y_plot = cam2_y_plot
+        if not under_saturated and not saturated:
+            # Calculate COM
+            # TODO: optimize COM calculation by slicing window near
+            # the max value
+            com_x, com_y = calc_com(img)
+            cam_x_line.setPos(com_x)
+            cam_y_line.setPos(com_y)
+            cam_x_line.setVisible(True)
+            cam_y_line.setVisible(True)
+            if (cam_x_data.size < 100):
+                cam_x_data = np.append(cam_x_data, com_x)
+                cam_y_plot = np.append(cam_y_plot, com_y)
+            else:
+                cam_x_plot = np.roll(cam_x_plot, -1)
+                cam_x_plot[-1] = com_x
+                cam_y_plot = np.roll(cam_y_plot, -1)
+                cam_y_plot[-1] = com_y
+            cam_x_plot.setData(cam_x_data)
+            cam_y_plot.setData(cam_y_data)
+        else:
+            com_x = -1
+            com_y = -1
+            cam_x_line.setVisible(False)
+            cam_y_line.setVisible(False)
+        if resetView:
+            ui.gv_camera1.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False)
+        else:
+            ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+        return img, com_x, com_y, under_saturated, saturated
+
+    def updateCalibrate():
+        global state, calib_index, cam1_threshold, cam2_threshold
+        global cam1_index, cam2_index
+        global calibration_voltages, starting_v
+        # mot represents the motor number, which is 1 or 2
+        # cam represents the camera we're looking at, which is either near or far
+        # x or y represents whether we are looking at the horizontal or vertical
+        global mot1_cam1_x, mot1_cam1_y, mot1_cam2_x, mot1_cam2_y
+        global mot2_cam1_x, mot2_cam1_y, mot2_cam2_x, mot2_cam2_y
+        global motor_list
+        global motor1_x, motor1_y, motor2_x, motor2_y
+        global motor1_x_plot, motor1_y_plot, motor2_x_plot, motor2_y_plot
+        # if (ui.cb_motors_1.currentIndex() < 0):
+        #     error_dialog.showMessage('You need to select Motor 1.')
+        #     state = STATE_MEASURE
+        #     return
+        # elif (ui.cb_motors_2.currentIndex() < 0):
+        #     error_dialog.showMessage('You need to select Motor 2.')
+        #     state = STATE_MEASURE
+        #     return
+        # elif ui.cb_motors_1.currentIndex() == ui.cb_motors_2.currentIndex():
+        #     error_dialog.showMessage('You need to select two unique motors.')
+        #     state = STATE_MEASURE
+        #     return
+        if cam1_index < 0:
+            error_dialog.showMessage('You need to select camera 1.')
+            state = STATE_MEASURE
+            return
+        elif cam2_index < 0:
+            error_dialog.showMessage('You need to select camera 2.')
+            state = STATE_MEASURE
+            return
+        elif cam1_index == cam2_index:
+            error_dialog.showMessage('You need to select two different cameras.')
+            state = STATE_MEASURE
+            return
+        else:
+            num_steps_per_motor = len(calibration_voltages)
+            if calib_index < num_steps_per_motor*4:
+                motor_index = calib_index // num_steps_per_motor
+                voltage_step = calib_index % num_steps_per_motor
+                set_voltage = calibration_voltages[voltage_step]
+                if motor_index == 0:
+                    # first motor, channel 1
+                    voltage = motor_list[0].ch1_v
+                    if abs(voltage - set_voltage) < 0.2:
+                        # update motor voltages
+                        motor1_x = addToPlot(motor1_x, motor1_x_plot, voltage)
+                        print(motor1_x)
+                        # get a frame from cam1 for x motor
+                        img, com = take_img_calibration(cam1_index, 0, 'x', cam1_threshold)
+                        # put in list, update image
+                        mot1_cam1_x[voltage_step] = com
+                        ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # get a frame from cam2 for x motor
+                        img, com = take_img_calibration(cam2_index, 1, 'x', cam2_threshold)
+                        # put in list
+                        mot1_cam2_x[voltage_step] = com
+                        ui.gv_camera2.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # next step of calibration
+                        calib_index += 1
+                    else:
+                        motor_list[0].ch1_v = set_voltage
+                elif motor_index == 1:
+                    motor_list[0].ch1_v = starting_v[0]
+                    # first motor, channel 2
+                    voltage = motor_list[0].ch2_v
+                    if abs(voltage - set_voltage) < 0.2:
+                        # update motor voltages
+                        motor1_y = addToPlot(motor1_y, motor1_y_plot, voltage)
+                        # get a frame from cam1
+                        img, com = take_img_calibration(cam1_index, 0, 'y', cam1_threshold)
+                        # put in list
+                        mot1_cam1_y[voltage_step] = com
+                        ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # get a frame from cam2
+                        img, com = take_img_calibration(cam2_index, 1, 'y', cam2_threshold)
+                        # put in list
+                        mot1_cam2_y[voltage_step] = com
+                        ui.gv_camera2.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # next step of calibration
+                        calib_index += 1
+                    else:
+                        motor_list[0].ch2_v = set_voltage
+                elif motor_index == 2:
+                    motor_list[0].ch2_v = starting_v[1]
+                    # second motor, channel 1
+                    voltage = motor_list[1].ch1_v
+                    if abs(voltage - set_voltage) < 0.2:
+                        # update motor voltages
+                        motor2_x = addToPlot(motor2_x, motor2_x_plot, voltage)
+                        # get a frame from cam1 for x motor
+                        img, com = take_img_calibration(cam1_index, 0, 'x', cam1_threshold)
+                        # put in list, update image
+                        mot2_cam1_x[voltage_step] = com
+                        ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # get a frame from cam2 for x motor
+                        img, com = take_img_calibration(cam2_index, 1, 'x', cam2_threshold)
+                        # put in list
+                        mot2_cam2_x[voltage_step] = com
+                        ui.gv_camera2.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # next step of calibration
+                        calib_index += 1
+                    else:
+                        motor_list[1].ch1_v = set_voltage
+                elif motor_index == 3:
+                    motor_list[1].ch1_v = starting_v[2]
+                    # second motor, channel 2
+                    voltage = motor_list[1].ch2_v
+                    if abs(voltage - set_voltage) < 0.2:
+                        # update motor voltages
+                        motor2_y = addToPlot(motor2_y, motor2_y_plot, voltage)
+                        # get a frame from cam1
+                        img, com = take_img_calibration(cam1_index, 0, 'y', cam1_threshold)
+                        # put in list
+                        mot2_cam1_y[voltage_step] = com
+                        ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # get a frame from cam2
+                        img, com = take_img_calibration(cam2_index, 1, 'y', cam2_threshold)
+                        # put in list
+                        mot2_cam2_y[voltage_step] = com
+                        ui.gv_camera2.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+                        # next step of calibration
+                        calib_index += 1
+                    else:
+                        motor_list[1].ch2_v = set_voltage
+            else:
+                # reset only last motor (the others were reset before moving next motor)
+                motor_list[1].ch2_v = starting_v[3]
+                # calculate slopes
+                p_mot1_cam1_x = np.polyfit(calibration_voltages, mot1_cam1_x, deg=1)
+                p_mot1_cam2_x = np.polyfit(calibration_voltages, mot1_cam2_x, deg=1)
+                p_mot1_cam1_y = np.polyfit(calibration_voltages, mot1_cam1_y, deg=1)
+                p_mot1_cam2_y = np.polyfit(calibration_voltages, mot1_cam2_y, deg=1)
+                p_mot2_cam1_x = np.polyfit(calibration_voltages, mot2_cam1_x, deg=1)
+                p_mot2_cam2_x = np.polyfit(calibration_voltages, mot2_cam2_x, deg=1)
+                p_mot2_cam1_y = np.polyfit(calibration_voltages, mot2_cam1_y, deg=1)
+                p_mot2_cam2_y = np.polyfit(calibration_voltages, mot2_cam2_y, deg=1)
+                # construct calibration matrix
+                calib_x = np.array([[p_mot1_cam1_x[0], p_mot2_cam1_x[0]],
+                                    [p_mot1_cam2_x[0], p_mot2_cam2_x[0]]])
+                calib_y = np.array([[p_mot1_cam1_y[0], p_mot2_cam1_y[0]],
+                                    [p_mot1_cam2_y[0], p_mot2_cam2_y[0]]])
+                calib_x = np.linalg.inv(calib_x)
+                calib_y = np.linalg.inv(calib_y)
+                state = STATE_MEASURE
+
+    def updateMeasure():
         """
         GUI update function
         """
         # TODO: talk to piezo controller
-        start_time = time.time()
         global saturated_cam1, under_saturated_cam1, saturated_cam2, under_saturated_cam2
         global cam1_reset, cam2_reset
         global cam1_x, cam1_y, cam2_x, cam2_y
@@ -187,7 +523,7 @@ if __name__ == "__main__":
             cam1_x_line.setVisible(False)
             cam1_y_line.setVisible(False)
         ############################
-        # Camera 1 update function #
+        # Camera 2 update function #
         ############################
         if cam2_index >= 0:
             img = cam_list[cam2_index].get_frame()
@@ -227,8 +563,12 @@ if __name__ == "__main__":
         else:
             cam2_x_line.setVisible(False)
             cam2_y_line.setVisible(False)
-    
-        ui.statusbar.showMessage('Update time: {:.3f} (s)'.format(time.time() - start_time))
+
+    def updateLocked():
+        global cailb_x, calib_y
+        global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
+        # Get current COM
+        pass
 
     def update_cam1_settings():
         global cam1_index, cam1_threshold, cam1_reset
@@ -259,9 +599,35 @@ if __name__ == "__main__":
         ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
         cam2_reset = True
         resetHist(ui.gv_camera2)
+    
+    def update_motors():
+        global motor1_index, motor2_index
+        global motor_list, resourceManager
+        # motor1_index = ui.cb_motors_1.currentIndex()
+        # motor2_index = ui.cb_motors_2.currentIndex()
+        # if motor1_index != motor2_index:
+        #     motor_list = []
+        #     motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_1.currentData(), ch1='X', ch2='Y'))
+        #     motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_2.currentData(), ch1='X', ch2='Y'))
+        motor_list.append(FakeMotor('X', 'Y'))
+        motor_list.append(FakeMotor('X', 'Y'))
+        print('Connected two fake motors!')
+    
+    def begin_calibration():
+        global state, starting_v, motor_list, calib_index
+        calib_index = 0
+        if len(motor_list) == 0:
+            update_motors()
+        starting_v[0] = motor_list[0].ch1_v
+        starting_v[1] = motor_list[0].ch2_v
+        starting_v[2] = motor_list[1].ch1_v
+        starting_v[3] = motor_list[1].ch1_v
+        state = STATE_CALIBRATE
 
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
+    ui.btn_motor_connect.clicked.connect(update_motors)
+    ui.act_calibrate.triggered.connect(begin_calibration)
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)

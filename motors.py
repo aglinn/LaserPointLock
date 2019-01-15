@@ -4,6 +4,62 @@ from typing import NewType
 
 VisaResourceManager = NewType('VisaResourceManager', visa.ResourceManager)
 
+class FakeMotor():
+    def __init__(self, ch1: str, ch2: str):
+        self._ch1 = ch1
+        self._ch2 = ch2
+        self._count = 2  # the motor will require multiple sets to reach its target
+        self._ch1_v = 0
+        self._ch2_v = 0
+    
+    @property
+    def ch1(self):
+        return self._ch1
+
+    @property
+    def ch2(self):
+        return self._ch2
+
+    @ch1.setter
+    def ch1(self, val: str):
+        self._ch1 = val
+    
+    @ch2.setter
+    def ch2(self, val: str):
+        self._ch2 = val
+
+    @property
+    def ch1_v(self):
+        if self._count <= 0:
+            self._count = 2
+            # print('Read', self._ch1_v, 'on ch 1')
+            return self._ch1_v
+        else:
+            self._count -= 1
+            # print('Read', self._ch1_v / (self._count + 1), 'on ch 1')
+            return self._ch1_v / (self._count + 1)
+    
+    @property
+    def ch2_v(self):
+        if self._count <= 0:
+            self._count = 2
+            # print('Read', self._ch2_v, 'on ch 2')
+            return self._ch2_v
+        else:
+            self._count -= 1
+            # print('Read', self._ch2_v / (self._count + 1), 'on ch 2')
+            return self._ch2_v / (self._count + 1)
+
+    @ch1_v.setter
+    def ch1_v(self, v: float):
+        # print('Setting ch 1 voltage to', v)
+        self._ch1_v = v
+
+    @ch2_v.setter
+    def ch2_v(self, v: float):
+        # print('Setting ch 2 voltage to', v)
+        self._ch2_v = v
+
 class MDT693A_Motor():
     """
     Code that implements a Motor assuming a connection to the ThorLabs MDT693A
@@ -12,8 +68,8 @@ class MDT693A_Motor():
         """
         rm is a pyvisa ResourceManager
         com_port is the RS232 com port for the motor
-        ch1 is a string 'X' or 'Y' (no error checking for 'Z')
-        ch2 is a string 'X' or 'Y'
+        ch1 should be a string that helps direct the motor to control the software X
+        ch2 should be a string that helps direct the motor to control the software Y
         """
         # Baud Rate: 115200
         # Date bits: 8
@@ -43,11 +99,11 @@ class MDT693A_Motor():
         return self.ch2
 
     @ch1.setter
-    def ch1(self, val: float):
+    def ch1(self, val: str):
         self.ch1 = val
     
     @ch2.setter
-    def ch2(self, val: float):
+    def ch2(self, val: str):
         self.ch2 = val
 
     @property

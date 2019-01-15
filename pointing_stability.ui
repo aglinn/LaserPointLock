@@ -30,7 +30,7 @@
      <enum>QTabWidget::Rounded</enum>
     </property>
     <property name="currentIndex">
-     <number>2</number>
+     <number>0</number>
     </property>
     <property name="elideMode">
      <enum>Qt::ElideNone</enum>
@@ -258,7 +258,7 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="">
+     <widget class="QWidget" name="layoutWidget">
       <property name="geometry">
        <rect>
         <x>790</x>
@@ -365,7 +365,7 @@
         <x>740</x>
         <y>10</y>
         <width>160</width>
-        <height>80</height>
+        <height>88</height>
        </rect>
       </property>
       <layout class="QFormLayout" name="formLayout_4">
@@ -389,6 +389,13 @@
        <item row="1" column="1">
         <widget class="QComboBox" name="cb_motors_2"/>
        </item>
+       <item row="2" column="1">
+        <widget class="QPushButton" name="btn_motor_connect">
+         <property name="text">
+          <string>Connect</string>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
     </widget>
@@ -403,8 +410,20 @@
      <height>26</height>
     </rect>
    </property>
+   <widget class="QMenu" name="menuCalibrate">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="act_calibrate"/>
+   </widget>
+   <addaction name="menuCalibrate"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="act_calibrate">
+   <property name="text">
+    <string>Calibrate</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -420,6 +439,8 @@
  </customwidgets>
  <tabstops>
   <tabstop>gv_camera1</tabstop>
+  <tabstop>gv_cam_xy</tabstop>
+  <tabstop>gv_piezo</tabstop>
   <tabstop>le_cam1_exp_time</tabstop>
   <tabstop>le_cam1_gain</tabstop>
   <tabstop>cb_cam1</tabstop>
@@ -434,11 +455,12 @@
   <tabstop>cb_cam2_decimate</tabstop>
   <tabstop>btn_cam2_update</tabstop>
   <tabstop>le_cam2_max</tabstop>
-  <tabstop>gv_cam_xy</tabstop>
+  <tabstop>gv_camera2</tabstop>
   <tabstop>btn_clear</tabstop>
   <tabstop>le_num_points</tabstop>
+  <tabstop>cb_motors_1</tabstop>
+  <tabstop>cb_motors_2</tabstop>
   <tabstop>tabWidget</tabstop>
-  <tabstop>gv_camera2</tabstop>
  </tabstops>
  <resources/>
  <connections/>

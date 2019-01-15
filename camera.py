@@ -181,7 +181,7 @@ class FakeCamera:
         self.serial_no = kwargs.get('serial_no', '{0:02}-{1:06}'.format(random.randint(10, 99), random.randint(0, 999999)))
         self.date = '011219'
 
-        self.res = kwargs.get('res', (1280, 1024))
+        self.res = kwargs.get('res', (1024, 1280))
         self.exposure_time = kwargs.get('exposure_time', 0.05)
         self.gain = kwargs.get('gain', 1)
         self.decimation = kwargs.get('decimation', 1)
@@ -195,13 +195,13 @@ class FakeCamera:
         self.set_resolution(self.res[0], self.res[1])
         self.set_exposure_time(self.exposure_time)
         self._grid = np.meshgrid((np.arange(self.xres) - self.xres/2)//self.decimation,
-        (np.arange(self.yres) - self.yres/2)//self.decimation)
+        (np.arange(self.yres) - self.yres/2)//self.decimation, indexing='ij')
     
     def set_resolution(self, xres, yres):
         self.xres = xres
         self.yres = yres
         self._grid = np.meshgrid((np.arange(self.xres) - self.xres/2),
-        (np.arange(self.yres) - self.yres/2))
+        (np.arange(self.yres) - self.yres/2), indexing='ij')
     
     def set_exposure_time(self, time):
         self.exposure_time = time
@@ -218,8 +218,9 @@ class FakeCamera:
     
     def get_frame(self):
         # Generate a new center
-        self.xcen = min(self.xres//2, max(-self.xres//2, self.xcen + random.randint(-5, 5)))
-        self.ycen = min(self.xres//2, max(-self.xres//2, self.xcen + random.randint(-5, 5)))
+        self.xcen = min(self.xres//2, max(-self.xres//2, self.xcen + random.randint(-10, 10)))
+        self.ycen = min(self.yres//2, max(-self.yres//2, self.ycen + random.randint(-10, 10)))
+        # print('I am cam', self.serial_no, 'my xcen', self.xcen + self.xres//2, 'my ycen', self.ycen + self.yres//2)
         # Simulate a laser spot
         width = 0.02*self._grid[0].shape[0]
         image = np.round(245*np.exp(-((self._grid[0] - self.xcen)**2 + (self._grid[1] - self.ycen)**2)/(2*width**2))).astype(np.uint8)
