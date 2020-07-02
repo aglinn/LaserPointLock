@@ -150,44 +150,56 @@ class MightexCamera(Camera):
         return pixels*5.5*self.decimation
 
     def get_frame(self):
-        x_pixels = int(self.res[0]//self.decimation)
-        y_pixels = int(self.res[1]//self.decimation)
-        buff_length = int(x_pixels*y_pixels/2/512)
-        array1 = np.empty((buff_length, 512), dtype='B')
-        array2 = np.empty((buff_length, 512), dtype='B')
+        TryAgain = True
+        count = 0
+        while TryAgain == True:
+            x_pixels = int(self.res[0]//self.decimation)
+            y_pixels = int(self.res[1]//self.decimation)
+            buff_length = int(x_pixels*y_pixels/2/512)
+            array1 = np.empty((buff_length, 512), dtype='B')
+            array2 = np.empty((buff_length, 512), dtype='B')
 
-        # Get Camera trigger state and check resolution
-        cmd, size, trigState = self.query(0x35, 1, 0, 6)
-        trigger = int(trigState[0])
-        rowSize = int.from_bytes(trigState[1:3], byteorder='big')
-        colSize = int.from_bytes(trigState[3:5], byteorder='big')
-        bin = int(trigState[5])
-        if rowSize != self.res[0]:
-            print("xres  = %d, but self.res[0] = %d" % (rowSize, self.res[0]))
-            # raise IOError('Resolution not configured!')
-        if colSize != self.res[1]:
-            print("yres  = %d, but self.res[1] = %d" % (colSize, self.res[1]))
-            # raise IOError('Resolution not configured!')
+            # Get Camera trigger state and check resolution
+            cmd, size, trigState = self.query(0x35, 1, 0, 6)
+            trigger = int(trigState[0])
+            rowSize = int.from_bytes(trigState[1:3], byteorder='big')
+            colSize = int.from_bytes(trigState[3:5], byteorder='big')
+            bin = int(trigState[5])
+            if rowSize != self.res[0]:
+                print("xres  = %d, but self.res[0] = %d" % (rowSize, self.res[0]))
+                # raise IOError('Resolution not configured!')
+            if colSize != self.res[1]:
+                print("yres  = %d, but self.res[1] = %d" % (colSize, self.res[1]))
+                # raise IOError('Resolution not configured!')
 
-        # Get image data - begin frame acquisition
-        self.dev.write(0x01, [0x34, 1, 1])
-        # Now get the data
-        start_time = time.time()
-        for x in range(0, buff_length):
-            array1[x] = self.dev.read(0x82, 512)
-            array2[x] = self.dev.read(0x86, 512)
-        # Measure the amount of time it took to transfer information
-        self.comm_time = time.time() - start_time - self.exposure_time/1000
-        array1 = array1.flatten().reshape(y_pixels//2, x_pixels)
-        array2 = array2.flatten().reshape(y_pixels//2, x_pixels)
+            # Get image data - begin frame acquisition
+            self.dev.write(0x01, [0x34, 1, 1])
+            # Now get the data
+            start_time = time.time()
+            for x in range(0, buff_length):
+                array1[x] = self.dev.read(0x82, 512)
+                array2[x] = self.dev.read(0x86, 512)
+            # Measure the amount of time it took to transfer information
+            self.comm_time = time.time() - start_time - self.exposure_time/1000
+            array1 = array1.flatten().reshape(y_pixels//2, x_pixels)
+            array2 = array2.flatten().reshape(y_pixels//2, x_pixels)
 
-        # Get current frame property
-        self.get_frame_prop()
+            # Get current frame property
+            self.get_frame_prop()
 
-        # Construct the frame
-        image = np.empty((y_pixels, x_pixels), dtype='B')
-        image[::2, :] = array1
-        image[1::2, :] = array2
+            # Construct the frame
+            image = np.empty((y_pixels, x_pixels), dtype='B')
+            image[::2, :] = array1
+            image[1::2, :] = array2
+
+            #Set Nan=-inf=0 and inf = 255
+            image = np.nan_to_num(image, copy=False, nan=0.0, posinf=255, neginf=0.0)
+            count += 1
+            if np.sum(image) > 0:
+                TryAgain = False
+            else:
+                if count > 2:
+                    raise RuntimeError('Grabbed 3 successive empty frames. Is the camera connected?')
         return image
 
 import random
