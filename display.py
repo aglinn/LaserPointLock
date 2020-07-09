@@ -206,6 +206,21 @@ if __name__ == "__main__":
         com_y = np.sum(Y*w)
         return com_x, com_y
 
+    def calc_com_opt(img):
+        """Given an img, calculate the com in pixel coordinates. Algorithm slightly
+        optimized by 1) calculating the maximum, 2) estimating the width by finding 
+        the max/4 position, and 3) cropping the window to the max/4 position and
+        calculating com
+        """
+        i, j = np.unravel_index(np.argmax(img), img.shape)
+        r = np.abs(i - np.argmin(np.abs(img[i, j]/4 - img[:, j])))
+        start_i = max(0, i - r)
+        end_i = min(img.shape[0] - 1, i + r)
+        start_j = max(0, j - r)
+        end_j = min(img.shape[1] - 1, j + r)
+        com_x, com_y = calc_com(img[start_i:end_i, start_j:end_j])
+        return com_x + start_i, com_y + start_j
+
     def update():
         global previous_state, state_change, LockTimeStart
         start_time = time.time()
