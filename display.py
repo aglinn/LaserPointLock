@@ -2,15 +2,13 @@
 
 if __name__ == "__main__":
     import sys
-    import usb
     import visa
     import time
     import numpy as np
     import pyqtgraph as pg
     from pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets
-    from camera import MightexCamera
-    from camera import FakeCamera
+    from camera import MightexCamera, MightexEngine, DeviceNotFoundError, FakeCamera
     from motors import MDT693A_Motor, FakeMotor
 
     STATE_MEASURE = 0
@@ -24,7 +22,7 @@ if __name__ == "__main__":
     pg.setConfigOption('background', 'w')
     pg.setConfigOption('foreground', 'k')
 
-    UPDATE_TIME = 2000  # ms
+    UPDATE_TIME = 500  # ms
 
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
@@ -35,13 +33,13 @@ if __name__ == "__main__":
     error_dialog = QtWidgets.QErrorMessage()
 
     # Find the cameras
-    cam_dev_list = list(usb.core.find(find_all=True, idVendor=0x04B4))
+    mightex_engine = MightexEngine()
     cam_list = []
-    if len(cam_dev_list) == 0:
+    if len(mightex_engine.serial_no) == 0:
         print('Could not find any Mightex cameras!')
     else:
-        for i, cam in enumerate(cam_dev_list):
-            c = MightexCamera(dev=cam)
+        for i, serial_no in enumerate(mightex_engine.serial_no):
+            c = MightexCamera(mightex_engine, serial_no)
             cam_list.append(c)
             cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
     # Find motors using VISA
@@ -66,23 +64,23 @@ if __name__ == "__main__":
         ui.cb_motors_1.setCurrentIndex(-1)
         ui.cb_motors_1.setCurrentIndex(-1)
     # Initialize global variables for tracking pointing
-    cam1_x = np.ndarray(0)
-    cam1_y = np.ndarray(0)
-    cam2_x = np.ndarray(0)
-    cam2_y = np.ndarray(0)
-    cam1_x_time = np.ndarray(0)
-    cam1_y_time = np.ndarray(0)
-    cam2_x_time = np.ndarray(0)
-    cam2_y_time = np.ndarray(0)
+    cam1_x = np.zeros(1)
+    cam1_y = np.zeros(1)
+    cam2_x = np.zeros(1)
+    cam2_y = np.zeros(1)
+    cam1_x_time = np.zeros(1)
+    cam1_y_time = np.zeros(1)
+    cam2_x_time = np.zeros(1)
+    cam2_y_time = np.zeros(1)
     cam1_x_plot = ui.gv_cam_xy.addPlot(row=0, col=0, labels={'left': 'Cam 1 X'}).plot()
     cam1_y_plot = ui.gv_cam_xy.addPlot(row=1, col=0, labels={'left': 'Cam 1 Y'}).plot()
     cam2_x_plot = ui.gv_cam_xy.addPlot(row=2, col=0, labels={'left': 'Cam 2 X'}).plot()
     cam2_y_plot = ui.gv_cam_xy.addPlot(row=3, col=0, labels={'left': 'Cam 2 Y'}).plot()
     # Initialize global variables for piezo motor voltages
-    motor1_x = np.ndarray(0)
-    motor1_y = np.ndarray(0)
-    motor2_x = np.ndarray(0)
-    motor2_y = np.ndarray(0)
+    motor1_x = np.zeros(1)
+    motor1_y = np.zeros(1)
+    motor2_x = np.zeros(1)
+    motor2_y = np.zeros(1)
     motor1_x_plot = ui.gv_piezo.addPlot(row=0, col=0).plot()
     motor1_y_plot = ui.gv_piezo.addPlot(row=1, col=0).plot()
     motor2_x_plot = ui.gv_piezo.addPlot(row=2, col=0).plot()
@@ -251,9 +249,9 @@ if __name__ == "__main__":
         global cam1_x, cam2_x, cam1_y, cam2_y
         global cam1_x_line, cam2_x_line, cam1_y_line, cam2_y_line
         # Get a com that is an average over the number of avg_com
-        if avg_com<2:
+        if avg_com < 2:
             # Get an image that is an average over the number of AvgFrames
-            if avg_frames<2:
+            if avg_frames < 2:
                 try:
                     img = cam_list[cam_index].get_frame()
                 except RuntimeError:
@@ -267,7 +265,7 @@ if __name__ == "__main__":
                         state = STATE_MEASURE
                         temp_img = np.array([1])
                         img = np.array([1])
-                    if i==0:
+                    if i == 0:
                         img = temp_img
                     else:
                         img += temp_img
@@ -389,7 +387,7 @@ if __name__ == "__main__":
                         state = STATE_MEASURE
                         temp_img = np.array([1])
                         img = np.array([1])
-                    if i==0:
+                    if i == 0:
                         img = temp_img
                     else:
                         img += temp_img
