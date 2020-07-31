@@ -42,16 +42,22 @@ if __name__ == "__main__":
             c = MightexCamera(mightex_engine, serial_no)
             cam_list.append(c)
             cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+    # Start camera multithreading
+    threadpool = QtCore.QThreadPool()
+    print("Multithreading with maximum %d threads" % threadpool.maxThreadCount())
+    if len(mightex_engine.serial_no) > 1:
+        for c in cam_list[0:2]:
+            threadpool.start(c.run_thread)
     # Find motors using VISA
     resourceManager = visa.ResourceManager()
     for dev in resourceManager.list_resources():
         motor_model.appendRow(QtGui.QStandardItem(str(dev)))
     motor_list = []
     # Add fake cameras
-    for i in range(3):
-        c = FakeCamera()
-        cam_list.append(c)
-        cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+    # for i in range(3):
+    #     c = FakeCamera()
+    #     cam_list.append(c)
+    #     cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
     # Set models and default values for combo boxes
     ui.cb_cam1.setModel(cam_model)
     ui.cb_cam2.setModel(cam_model)
@@ -199,7 +205,7 @@ if __name__ == "__main__":
         try:
             w = img/np.sum(img)
         except RuntimeWarning:
-            pass
+            return 0, 0
         com_x = np.sum(X*w)
         com_y = np.sum(Y*w)
         return com_x, com_y
@@ -357,7 +363,7 @@ if __name__ == "__main__":
         return img, com
 
 
-    def take_img(cam_index, cam_view=0, threshold=0, resetView=False, avg_frames=2, avg_com=2):
+    def take_img(cam_index, cam_view=0, threshold=0, resetView=False, avg_frames=1, avg_com=1):
         """
         Given the camera at cam_index in the camera list
         Update cam_view with its image and COM

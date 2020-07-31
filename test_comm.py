@@ -120,6 +120,7 @@ class Camera:
             array2[x] = self.dev.read(0x86, 512)
         self.comm_time = time.time() - start_time
         print('Comm time:', self.comm_time)
+        print('Comm time / buffer length, buffer length = {0}, {1}'.format(self.comm_time/buff_length, buff_length))
         array1 = array1.flatten().reshape(y_pixels//2, x_pixels)
         array2 = array2.flatten().reshape(y_pixels//2, x_pixels)
 
@@ -134,7 +135,7 @@ class Camera:
 
 
 if __name__ == '__main__':
-    c = Camera(decimation=2)
+    c = Camera(decimation=1)
     img = c.get_frame()
 
     import matplotlib.pyplot as plt
@@ -164,7 +165,7 @@ if __name__ == '__main__':
         print("Horiz Cursor: %.1f\tVert Cursor: %.1f" % (y, x))
         vert_line_com.set_xdata([x, x])
         horz_line_com.set_ydata([y, y])
-        print("Time for frame update: %.3f (ms)" % (time.time() - start_time))
+        print("Time for frame update: %.3f (s)" % (time.time() - start_time))
         return img_display, horz_line, vert_line, horz_line_com, vert_line_com
     ani = FuncAnimation(fig, update, frames=1, interval=250, blit=True)
 

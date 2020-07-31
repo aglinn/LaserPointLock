@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     # Create the camera
     mightex_engine = MightexEngine()
-    cam = MightexCamera(mightex_engine, mightex_engine.serial_no[0])
+    cam = MightexCamera(mightex_engine, mightex_engine.serial_no[1])
     # Set initial data and levels on image
     canvas.setImage(np.zeros((1024, 1280)))
     canvas.setLevels(0, 255)
@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Create a slot, or callback function, so that when the frame_update signal is emitted, the image changes
     def update_img():
-        canvas.setImage(cam.frame, autoRange=False, autoLevels=False, autoHistogramRange=False)
+        canvas.setImage(cam.get_frame(), autoRange=False, autoLevels=False, autoHistogramRange=False)
     # Connect the frame_update signal to the update_img slot
     cam.signals.frame_update.connect(update_img)
 
