@@ -6,6 +6,10 @@ import random
 from functools import reduce
 from typing import List, Dict, Set, Tuple
 from abc import ABC, abstractmethod
+from PyQt5 import QtCore
+import time
+
+lock = QtCore.QReadWriteLock()
 
 
 class DeviceNotFoundError(Exception):
@@ -14,7 +18,7 @@ class DeviceNotFoundError(Exception):
 
 class MightexEngine:
     try:
-        lib = ctypes.WinDLL(r'C:\Users\kgord\Downloads\Mightex_SCX_CDROM_20190104\SDK\Lib\x64\NewClassic_USBCamera_SDK.dll')
+        lib = ctypes.WinDLL(r'C:\Users\Kingdel\Documents\Mightex_SCX_CDROM_20190104\SDK\Lib\x64\NewClassic_USBCamera_SDK.dll')
     except FileNotFoundError:
         raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
     GRAB_FRAME_FOREVER = 34952
@@ -49,20 +53,27 @@ class MightexEngine:
         self.module_no: List[str] = []
         self.serial_no: List[str] = []
         self.dev_num: Dict[str, int] = {}
+        self.BufferPoint: Dict = {}  # This maps from serial number, string, to the pointer,
+                                    # which is a pyvisa.ctwrapper.types.LP_c_ubyte object @ location
+        self.buffer: Dict = {}  # This maps from serial number, string, to the buffer
+        self.z: Dict = {}  # This is a Dict that maps serial number to the image from that camera.
         self.active_devs: Set[str] = set()
         buffer_type = ctypes.c_char*16
-        serial_no = buffer_type()
-        module_no = buffer_type()
         regex = re.compile(r'[^a-zA-Z\-\d]')
         for i in range(self.num_devices):
-            self._getModuleNoSerialNo(i + 1, module_no, serial_no)
-            module_no = bytes(module_no).decode('ascii')
+            serial_no = buffer_type()
+            module_no = buffer_type()
+            self._getModuleNoSerialNo(i+1, module_no, serial_no)
             serial_no = bytes(serial_no).decode('ascii')
-            module_no = regex.sub('', module_no)
+            module_no = bytes(module_no).decode('ascii')
             serial_no = regex.sub('', serial_no)
+            module_no = regex.sub('', module_no)
             self.module_no.append(module_no)
             self.serial_no.append(serial_no)
             self.dev_num[serial_no] = i + 1
+        print('Connected Cameras:')
+        for ser, mod in zip(self.serial_no, self.module_no):
+            print(ser, mod)
         # Default to 1280x1024 resolution
         self.resolution: Dict[str, Tuple[int]] = {s: (1280, 1024) for s in self.serial_no}
         # Activate at most the first two cameras
@@ -104,20 +115,29 @@ class MightexEngine:
             size = reduce(operator.mul, res, 1) + 56
             frame_type = ctypes.c_ubyte*size
             frame = frame_type()
-            x = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
-            buffer = ctypes.pythonapi.PyMemoryView_FromMemory(x, size)
-            z = np.frombuffer(buffer, dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1]).astype(np.uint)
+            lock.lockForRead()
+            self.BufferPoint[serial_no] = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
+            print("Device Number:",self.dev_num[serial_no], "SerialNumber:", serial_no,"Pointer:", self.BufferPoint[serial_no])
+            self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], size)
+            self.z[serial_no] = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+            lock.unlock()
             for i in range(n - 1):
-                x = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
-                buffer = ctypes.pythonapi.PyMemoryView_FromMemory(x, size)
-                z += np.frombuffer(buffer, dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+                lock.lockForRead()
+                self.BufferPoint[serial_no] = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
+                self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], size)
+                self.z[serial_no] += np.frombuffer(self.buffer, dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+                lock.unlock()
             if n > 1:
-                z = z / n
-            z = z.astype(np.uint8)
-            return z
+                self.z[serial_no] = self.z[serial_no].astype(np.float) / n
+            self.z[serial_no] = self.z[serial_no].astype(np.float)
+            return self.z[serial_no]
 
 
 class Camera(ABC):
+    @abstractmethod
+    def update_frame(self):
+        pass
+
     @abstractmethod
     def get_frame(self):
         pass
@@ -155,14 +175,21 @@ class MightexCamera(Camera):
         if serial_no not in self.engine.serial_no:
             raise DeviceNotFoundError("Serial number {} is not connected to computer".format(serial_no))
         self.serial_no = serial_no
+        self.frame = None
+        self.run_thread = CameraThread(self)
+        self.signals = CameraSignals()
 
-    def get_frame(self, n=1):
-        return self.engine.get_frame(self.serial_no, n)
+    def get_frame(self):
+        return self.frame
+
+    def update_frame(self):
+        self.frame = self.engine.get_frame(self.serial_no, 1)
 
     def set_exposure_time(self, time):
         pass
 
     def set_resolution(self, res):
+        # self.engine._setResolution(self.engine.dev_num[self.serial_no], res[0], res[1], 0)
         pass
 
     def set_gain(self, gain):
@@ -182,6 +209,26 @@ class MightexCamera(Camera):
     @property
     def dev_num(self):
         return self.engine.dev_num[self.serial_no]
+
+
+class CameraSignals(QtCore.QObject):
+    """Simple class that encapsulates events from camera. Must subclass QObject"""
+    frame_update = QtCore.pyqtSignal()
+
+
+class CameraThread(QtCore.QRunnable):
+    """A class that encapsulates a multithreaded camera update function."""
+    def __init__(self, cam):
+        """cam is a subclass of Camera"""
+        super().__init__()
+        self.cam = cam
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        while True:
+            self.cam.update_frame()
+            self.cam.signals.frame_update.emit()
+            time.sleep(0.2)
 
 
 class FakeCamera(Camera):
