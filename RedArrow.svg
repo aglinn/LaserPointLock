@@ -1,0 +1,14 @@
+<?xml version="1.0"?><svg width="60" height="60" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <linearGradient id="linearGradient575">
+   <stop stop-color="#000" offset="0" id="stop576"/>
+   <stop stop-color="#fff" offset="1" id="stop577"/>
+  </linearGradient>
+  <linearGradient xlink:href="#linearGradient575" id="linearGradient578"/>
+ </defs>
+ <g>
+  <title>Layer 1</title>
+  <path fill="none" fill-rule="evenodd" stroke="#ff2b06" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" fill-opacity="0.75" id="path831" d="m5.03849,31.20866l51.104619,0"/>
+  <path fill="none" fill-rule="evenodd" stroke="#ff2b06" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" id="path869" d="m16.53657,21.59174l-12.919199,9.28125l12.61055,10.3125"/>
+ </g>
+</svg>
