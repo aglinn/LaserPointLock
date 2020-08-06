@@ -3,207 +3,293 @@ import usb.util
 import numpy as np
 import time
 from abc import ABC, abstractmethod
+from typing import List, Dict, Set, Tuple
+import ctypes
+import re
+import operator
+import random
+from functools import reduce
+
+class DeviceNotFoundError(Exception):
+    pass
+
+class MightexEngine:
+    try:
+        lib = ctypes.WinDLL(r'C:\Users\Kingdel\Documents\Mightex_SCX_CDROM_20190104\SDK\Lib\x64\NewClassic_USBCamera_SDK.dll')
+    except FileNotFoundError:
+        raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
+    GRAB_FRAME_FOREVER = 34952
+
+    c_ubyte_p = ctypes.POINTER(ctypes.c_ubyte)
+
+    _initDevice = lib['NewClassicUSB_InitDevice']
+    _addCameraToWorkingSet = lib['NewClassicUSB_AddDeviceToWorkingSet']
+    _removeDeviceFromWorkingSet = lib['NewClassicUSB_RemoveDeviceFromWorkingSet']
+    _startEngine = lib['NewClassicUSB_StartCameraEngine']
+    _stopEngine = lib['NewClassicUSB_StopCameraEngine']
+    _uninitDevice = lib['NewClassicUSB_UnInitDevice']
+    _setResolution = lib['NewClassicUSB_SetCustomizedResolution']
+    _startFrameGrab = lib['NewClassicUSB_StartFrameGrab']
+    _stopFrameGrab = lib['NewClassicUSB_StopFrameGrab']
+    _getModuleNoSerialNo = lib['NewClassicUSB_GetModuleNoSerialNo']
+    _setExposureTime = lib['NewClassicUSB_SetExposureTime']
+    _getModuleNoSerialNo.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
+
+    _getFrame = lib['NewClassicUSB_GetCurrentFrame']
+    _getFrame.argtypes = [ctypes.c_int, ctypes.c_int, c_ubyte_p]
+    _getFrame.restype = c_ubyte_p
+
+    ctypes.pythonapi.PyMemoryView_FromMemory.restype = ctypes.py_object
+
+    def __init__(self):
+        # Initialize the API
+        ret = self._initDevice()
+        if ret <= 0:
+            raise DeviceNotFoundError('No Mightex cameras were connected to the system')
+        self.num_devices = ret
+        # Find the module and serial numbers of connected cameras
+        self.module_no: List[str] = []
+        self.serial_no: List[str] = []
+        self.dev_num: Dict[str, int] = {}
+        self.BufferPoint: Dict = {}  # This maps from serial number, string, to the pointer,
+                                    # which is a pyvisa.ctwrapper.types.LP_c_ubyte object @ location
+        self.buffer: Dict = {}  # This maps from serial number, string, to the buffer
+        self.exposureTime: Dict = {}
+        self.z: Dict = {}  # This is a Dict that maps serial number to the image from that camera.
+        self.active_devs: Set[str] = set()
+        buffer_type = ctypes.c_char*16
+        regex = re.compile(r'[^a-zA-Z\-\d]')
+        for i in range(self.num_devices):
+            serial_no = buffer_type()
+            module_no = buffer_type()
+            self._getModuleNoSerialNo(i+1, module_no, serial_no)
+            serial_no = bytes(serial_no).decode('ascii')
+            module_no = bytes(module_no).decode('ascii')
+            serial_no = regex.sub('', serial_no)
+            module_no = regex.sub('', module_no)
+            self.module_no.append(module_no)
+            self.serial_no.append(serial_no)
+            self.dev_num[serial_no] = i + 1
+        print('Connected Cameras:')
+        for ser, mod in zip(self.serial_no, self.module_no):
+            print(ser, mod)
+        # Default to 1280x1024 resolution
+        self.resolution: Dict[str, Tuple[int]] = {s: (1280, 1024) for s in self.serial_no}
+        # Activate at most the first two cameras
+        if len(self.serial_no) > 0:
+            self.activate_cam(self.serial_no[0])
+            if len(self.serial_no) > 1:
+                self.activate_cam(self.serial_no[1])
+        # Start the camera engine
+        self._startEngine(None, 8)
+        # Set the default resolution to 1280x1024
+        for i in range(self.num_devices):
+            self._setResolution(ctypes.c_int(i + 1), ctypes.c_int(1280), ctypes.c_int(1024), ctypes.c_int(0))
+        self._startFrameGrab(self.GRAB_FRAME_FOREVER)
+
+    def activate_cam(self, serial_no):
+        if serial_no not in self.serial_no:
+            raise DeviceNotFoundError("Camera with serial number {} is not connected".format(serial_no))
+        else:
+            if serial_no not in self.active_devs:
+                ret = self._addCameraToWorkingSet(self.dev_num[serial_no])
+                if ret == 1:
+                    self.active_devs.add(serial_no)
+
+    def deactivate_cam(self, serial_no):
+        if serial_no not in self.serial_no:
+            raise DeviceNotFoundError("Camera with serial number {} is not connected".format(serial_no))
+        else:
+            if serial_no in self.active_devs:
+                ret = self._removeDeviceFromWorkingSet(self.dev_num[serial_no])
+                if ret == 1:
+                    self.active_devs.remove(serial_no)
+
+    def get_frame(self, serial_no, n=1, getExposureTime=0, getTimeStamp=0):
+        n = max(n, 1)  # if n < 1, set n = 1
+        if serial_no not in self.active_devs:
+            return None
+        else:
+            res = self.resolution[serial_no]
+            size = reduce(operator.mul, res, 1) + 56
+            frame_type = ctypes.c_ubyte*size
+            frame = frame_type()
+            #lock.lockForWrite()
+            # print("serial number:",serial_no,"dev number:", self.dev_num[serial_no])
+            # print("dev num, just prior to get frame:",self.dev_num[serial_no])
+            self.BufferPoint[serial_no] = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
+            """
+            # print("Device Number:",self.dev_num[serial_no], "SerialNumber:", serial_no,"Pointer:", self.BufferPoint[serial_no])
+            # if self.BufferPoint[self.serial_no[0]] == self.BufferPoint[self.serial_no[1]]:
+                # print("Both camera's buffer pointer point to the same space in memory.")
+            #lock.unlock()
+            #lock.lockForRead()
+            # print("dev num, just prior to pymemoryview:",self.dev_num[serial_no])
+            """
+            self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], size)
+            # print("dev num, just prior to copying from buffer:", self.dev_num[serial_no])
+            self.z[serial_no] = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+            if (getTimeStamp+getExposureTime)>0:
+                FrameInfo = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[24:44].copy()
+                if getExposureTime:
+                    self.exposureTime[serial_no] = int.from_bytes(FrameInfo[0:4], byteorder='little')*50.0/1000.0
+                TimeStamp = int.from_bytes(FrameInfo[16:20], byteorder='little')
+            #lock.unlock()
+            for i in range(n - 1):
+                #lock.lockForRead()
+                self.BufferPoint[serial_no] = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
+                self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], size)
+                self.z[serial_no] += np.frombuffer(self.buffer, dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+                #lock.unlock()
+            if n > 1:
+                self.z[serial_no] = self.z[serial_no].astype(np.float) / n
+            self.z[serial_no] = self.z[serial_no].astype(np.float)
+            # ("dev num just prior to returning the frame", self.dev_num[serial_no])
+            if getTimeStamp:
+                return self.z[serial_no], TimeStamp
+            else:
+                return self.z[serial_no]
+
+    def SetExposure(self, serial_no, exposureTime):
+        # C code requires int in units of 50 us. 1 = 50 us. 10 = 500 us, etc; so convert ms to this unit.
+        exposureTimeInt = int(exposureTime*1000/50)
+        self._setExposureTime(ctypes.c_int(self.dev_num[serial_no]), ctypes.c_int(exposureTimeInt))
+
+    def GetExposure(self,serial_no):
+        return self.exposureTime[serial_no]
+
 
 class Camera(ABC):
     @abstractmethod
+    def update_frame(self):
+        pass
+
+    @abstractmethod
     def get_frame(self):
         pass
+
     @abstractmethod
     def set_exposure_time(self, time):
         pass
+
     @abstractmethod
     def set_resolution(self, res):
         pass
+
     @abstractmethod
     def set_gain(self, gain):
         pass
+
     @abstractmethod
     def set_decimation(self, gain):
         pass
 
+    @property
+    @abstractmethod
+    def exposure_time(self):
+        pass
 
-# TODO: multithread the frame grabbing
+    @property
+    @abstractmethod
+    def gain(self):
+        pass
+
 
 class MightexCamera(Camera):
-    def __init__(self, dev=None, res=(1280, 1024), exposure_time=50, gain=1, decimation=2):
-        r"""
-            res = (x_resolution, y_resolution) in pixels
-            exposure_time = exposure time of camera in ms
-            gain = gain of each pixel (from 1 -> 255)
-            decimate = 1 (no decimation) or 2 (decimate by a factor of 2
-        """
-        if dev is None:
-            self.dev = usb.core.find(idVendor=0x04B4, idProduct=0x0228)
-            if self.dev is None:
-                raise ValueError('Device not found')
-            else:
-                pass
-        else:
-            self.dev = dev
-
-        self.dev.set_configuration()
-        #r = self.dev.write(0x01, [0x01])
-        #r = self.dev.write(0x01, [0x01])
-        #r = self.dev.write(0x01, [0x01])
-        #r = self.dev.read(0x81, 5)
-
-        self.module_no, self.serial_no, self.date = self.get_device_info()
-
-        self.res = res
-        self.exposure_time = exposure_time
-        self.gain = gain
-        self.decimation = decimation
-        self.comm_time = 0
-        """Amount of time it takes to pass one frame of data through USB communication.
-        Updated when get_frame() is called."""
-        self.xres = res[0]
-        self.yres = res[1]
-        self.set_resolution(res[0], res[1])
-        self.set_exposure_time(exposure_time)
-        self.set_sensor_Hblanking()
-        self.set_main_clock_freq()
-
-    def query(self, command, length, data, rlen):
-        """
-        Returns a tuple of (cmd, size, return_value)
-        """
-        self.dev.write(0x01, [command, length, data])
-        r = self.dev.read(0x81, rlen + 2)
-        return (r[0], r[1], r[2:])
-
-    def set_resolution(self, xres, yres):
-        _xres = xres.to_bytes(2, byteorder='big')
-        _yres = yres.to_bytes(2, byteorder='big')
-        decimation = 0 if self.decimation == 1 else 1
-        result = self.dev.write(0x01, [0x60, 7, _xres[0], _xres[1], _yres[0], _yres[1], decimation])
-        self.res = (xres, yres)
-        return result
-
-    def get_device_info(self):
-        _, _, info = self.query(0x21, 1, 0x00, 43)
-        info = info.tobytes().decode('utf-8')
-        # print("[DEVICE]")
-        # print("ModuleNo: %s\nSerialNo: %s\nManufacturingDate: %s\n"
-        #     % (info[1:15], info[15:29], info[29:43]))
-        _, _, firmware = self.query(0x01, 1, 0x01, 3)
-        # print("[FIRMWARE]")
-        # print("%s.%s.%s\n"
-        #     % (firmware[0], firmware[1], firmware[2]))
-        return info[1:15], info[15:29], info[29:43]
-
-    def get_frame_prop(self):
-        _, _, frameProp = self.query(0x33, 1, 0, 18)
-        frameProp = frameProp.tobytes()
-        rowSize = int.from_bytes(frameProp[0:2], byteorder='big')
-        colSize = int.from_bytes(frameProp[2:4], byteorder='big')
-        bin = frameProp[4]
-        exposure_time = int.from_bytes(frameProp[5:7], byteorder='big')
-        r_gain = frameProp[7]
-        g_gain = frameProp[8]
-        b_gain = frameProp[9]
-        x_start = int.from_bytes(frameProp[10:12], byteorder='big')
-        y_start = int.from_bytes(frameProp[12:14], byteorder='big')
-        frame_invalid = frameProp[14]
-        time_stamp = int.from_bytes(frameProp[16:18], byteorder='big')
-        return rowSize, colSize, bin, exposure_time, r_gain, g_gain, b_gain, x_start, y_start, time_stamp
-
-    def set_main_clock_freq(self):
-        # Set normal clock speed
-        self.dev.write(0x01, [0x32, 1, 1])
-
-    def set_sensor_Hblanking(self):
-        # Set longest Hblanking
-        self.dev.write(0x01, [0x36, 1, 2])
-
-    def set_exposure_time(self, time):
-        # time in ms
-        time_mult = max(1, min(15000, int(time/0.05)))
-        time_mult = time_mult.to_bytes(length=2, byteorder='big')
-        self.dev.write(0x01, [0x63, 2, time_mult[0], time_mult[1]])
-        self.exposure_time = max(0.05, min(750, time))
-    
-    def set_gain(self, gain):
-        if getattr(gain,'__iter__',False):
-            # gain is iterable, so treat as a list/tuple
-            if not len(gain) == 3:
-                raise ValueError("Gain tuple must consist of exactly three values")
-            gain = [max(0, min(64, int(round(x*8)))) for x in gain]
-            self.dev.write(0x01, [0x62, 3, gain[0], gain[1], gain[2]])
-            self.gain = gain
-        else:
-            # single value passed in
-            gain = max(0, min(64, int(round(gain*8))))
-            self.dev.write(0x01, [0x62, 3, gain, gain, gain])
-            self.gain = gain # apply after setting succesfully applied
-
-    def set_decimation(self, value):
-        if isinstance(value, bool):
-            self.decimation = 2 if value else 1
-            self.set_resolution(self.xres, self.yres)
-        else:
-            raise ValueError("Decimation must be a boolean")
-
-    def pixel_to_um(self, pixels):
-        """
-        Convert from pixels to um assuming SCE-B013-U camera
-        """
-        return pixels*5.5*self.decimation
+    def __init__(self, engine: MightexEngine, serial_no: str):
+        self.engine: MightexEngine = engine
+        if serial_no not in self.engine.serial_no:
+            raise DeviceNotFoundError("Serial number {} is not connected to computer".format(serial_no))
+        self.serial_no = serial_no
+        self.frame = None
+        self._exposure_time = 0.05
+        # self.run_thread = CameraThread(self)
+        # self.signals = CameraSignals()
 
     def get_frame(self):
-        TryAgain = True
-        count = 0
-        while TryAgain == True:
-            x_pixels = int(self.res[0]//self.decimation)
-            y_pixels = int(self.res[1]//self.decimation)
-            buff_length = int(x_pixels*y_pixels/2/512)
-            array1 = np.empty((buff_length, 512), dtype='B')
-            array2 = np.empty((buff_length, 512), dtype='B')
+        return self.frame
 
-            # Get Camera trigger state and check resolution
-            cmd, size, trigState = self.query(0x35, 1, 0, 6)
-            trigger = int(trigState[0])
-            rowSize = int.from_bytes(trigState[1:3], byteorder='big')
-            colSize = int.from_bytes(trigState[3:5], byteorder='big')
-            bin = int(trigState[5])
-            if rowSize != self.res[0]:
-                print("xres  = %d, but self.res[0] = %d" % (rowSize, self.res[0]))
-                # raise IOError('Resolution not configured!')
-            if colSize != self.res[1]:
-                print("yres  = %d, but self.res[1] = %d" % (colSize, self.res[1]))
-                # raise IOError('Resolution not configured!')
+    def update_frame(self):
+        #lock.lockForRead()
+        # print("serial number just before calling the engine get frame function:",self.serial_no)
+        self.frame = self.engine.get_frame(self.serial_no, 1)
+        #lock.unlock()
 
-            # Get image data - begin frame acquisition
-            self.dev.write(0x01, [0x34, 1, 1])
-            # Now get the data
-            start_time = time.time()
-            for x in range(0, buff_length):
-                array1[x] = self.dev.read(0x82, 512)
-                array2[x] = self.dev.read(0x86, 512)
-            # Measure the amount of time it took to transfer information
-            self.comm_time = time.time() - start_time - self.exposure_time/1000
-            array1 = array1.flatten().reshape(y_pixels//2, x_pixels)
-            array2 = array2.flatten().reshape(y_pixels//2, x_pixels)
+    def set_exposure_time(self, time):
+        self.engine.SetExposure(self.serial_no, time)
+        self.frame = self.engine.get_frame(self.serial_no, 1, getExposureTime=1)
+        self._exposure_time = self.engine.GetExposure(self.serial_no)
 
-            # Get current frame property
-            self.get_frame_prop()
+    def set_resolution(self, res):
+        self.engine._setResolution(self.engine.dev_num[self.serial_no], res[0], res[1], 0)
 
-            # Construct the frame
-            image = np.empty((y_pixels, x_pixels), dtype='B')
-            image[::2, :] = array1
-            image[1::2, :] = array2
+    def set_gain(self, gain):
+        pass
 
-            #Set Nan=-inf=0 and inf = 255
-            image = np.nan_to_num(image, copy=False, nan=0.0, posinf=255, neginf=0.0)
-            count += 1
-            if np.sum(image) > 0:
-                TryAgain = False
-            else:
-                if count > 2:
-                    raise RuntimeError('Grabbed 3 successive empty frames. Is the camera connected?')
-        return image
+    def set_decimation(self, gain):
+        pass
 
-import random
+    @property
+    def exposure_time(self):
+        return self._exposure_time
+
+    @property
+    def gain(self):
+        return 1
+
+    @property
+    def dev_num(self):
+        return self.engine.dev_num[self.serial_no]
+
+"""
+# TODO: multithread the frame grabbing
+class MightexCamera(Camera):
+    def __init__(self, engine: MightexEngine, serial_no: str):
+        self.engine: MightexEngine = engine
+        if serial_no not in self.engine.serial_no:
+            raise DeviceNotFoundError("Serial number {} is not connected to computer".format(serial_no))
+        self.serial_no = serial_no
+        self.frame = None
+        # self.run_thread = CameraThread(self)
+        # self.signals = CameraSignals()
+
+    def get_frame(self):
+        return self.frame
+
+    def update_frame(self):
+        #lock.lockForRead()
+        # print("serial number just before calling the engine get frame function:",self.serial_no)
+        self.frame = self.engine.get_frame(self.serial_no, 1)
+        #lock.unlock()
+
+    def set_exposure_time(self, time):
+        pass
+
+    def set_resolution(self, res):
+        # self.engine._setResolution(self.engine.dev_num[self.serial_no], res[0], res[1], 0)
+        pass
+
+    def set_gain(self, gain):
+        pass
+
+    def set_decimation(self, gain):
+        pass
+
+    @property
+    def exposure_time(self):
+        return 0.05
+
+    @property
+    def gain(self):
+        return 1
+
+    @property
+    def dev_num(self):
+        return self.engine.dev_num[self.serial_no]
+"""
+
 class FakeCamera(Camera):
+    """Multithreaded fake camera. Must subclass QRunnable to utilize Qt multithreading."""
     def __init__(self, **kwargs):
         """
         module_no
@@ -214,8 +300,10 @@ class FakeCamera(Camera):
         gain
         decimation
         """
+        super().__init__()
         self.module_no = 'SCE-B013-U'
-        self.serial_no = kwargs.get('serial_no', '{0:02}-{1:06}'.format(random.randint(10, 99), random.randint(0, 999999)))
+        self.serial_no = kwargs.get('serial_no',
+                                    '{0:02}-{1:06}'.format(random.randint(10, 99), random.randint(0, 999999)))
         self.date = '011219'
 
         self.res = kwargs.get('res', (1024, 1280))
@@ -224,44 +312,53 @@ class FakeCamera(Camera):
         self.decimation = kwargs.get('decimation', 1)
         self.xcen = kwargs.get('xcen', 0)
         self.ycen = kwargs.get('ycen', 0)
-        self.comm_time = 0
-        """Amount of time it takes to pass one frame of data through USB communication.
-        Updated when get_frame() is called."""
+        self.comm_time = 0.2  # minimum time required to get one frame
         self.xres = self.res[0]
         self.yres = self.res[1]
-        self.set_resolution(self.res[0], self.res[1])
+        self._grid = np.empty(0)
+        self.set_resolution(self.res)
         self.set_exposure_time(self.exposure_time)
-        self._grid = np.meshgrid((np.arange(self.xres) - self.xres/2)//self.decimation,
-        (np.arange(self.yres) - self.yres/2)//self.decimation, indexing='ij')
-    
-    def set_resolution(self, xres, yres):
-        self.xres = xres
-        self.yres = yres
-        self._grid = np.meshgrid((np.arange(self.xres) - self.xres/2),
-        (np.arange(self.yres) - self.yres/2), indexing='ij')
-    
-    def set_exposure_time(self, time):
-        self.exposure_time = time
-    
+        self.frame = np.zeros(self.res)
+
+        # self.run_thread = CameraThread(self)
+        # self.signals = CameraSignals()
+
+    def set_resolution(self, res):
+        self.xres = res[0]
+        self.yres = res[1]
+        self._grid = np.meshgrid((np.arange(self.xres) - self.xres / 2) // self.decimation,
+                                 (np.arange(self.yres) - self.yres / 2) // self.decimation, indexing='ij')
+
+    def set_exposure_time(self, exp_time):
+        self.exposure_time = exp_time
+
     def set_gain(self, gain):
-        self.gain = gain*8
-    
+        self.gain = gain * 8
+
     def set_decimation(self, value):
         if isinstance(value, bool):
             self.decimation = 2 if value else 1
-            self.set_resolution(self.xres, self.yres)
+            self.set_resolution(self.res)
         else:
             raise ValueError("Decimation must be a boolean")
-    
-    def pixel_to_um(self, pixels):
-        return pixels*5.5*self.decimation
-    
+
     def get_frame(self):
+        return self.frame
+
+    def pixel_to_um(self, pixels):
+        return pixels * 5.5 * self.decimation
+
+    def update_frame(self):
+        """This code simulates a laser spot. Change this code to communicate with camera and get camera image.
+        As a proof of concept, there is a simulated sleep in this code, which would block execution when not
+        multithreaded."""
         # Generate a new center
-        self.xcen = min(self.xres//2, max(-self.xres//2, self.xcen + random.randint(-10, 10)))
-        self.ycen = min(self.yres//2, max(-self.yres//2, self.ycen + random.randint(-10, 10)))
-        # print('I am cam', self.serial_no, 'my xcen', self.xcen + self.xres//2, 'my ycen', self.ycen + self.yres//2)
+        self.xcen = min(self.xres // 2, max(-self.xres // 2, self.xcen + random.randint(-10, 10)))
+        self.ycen = min(self.yres // 2, max(-self.yres // 2, self.ycen + random.randint(-10, 10)))
         # Simulate a laser spot
-        width = 0.02*self._grid[0].shape[0]
-        image = np.round(245*np.exp(-((self._grid[0] - self.xcen)**2 + (self._grid[1] - self.ycen)**2)/(2*width**2))).astype(np.uint8)
-        return image
+        width = 0.02 * self._grid[0].shape[0]
+        image = np.round(230 * np.exp(
+            -((self._grid[0] - self.xcen) ** 2 + (self._grid[1] - self.ycen) ** 2) / (2 * width ** 2))).astype(np.uint8)
+        image += np.round(10*np.random.random(image.shape)).astype(np.uint8)
+        time.sleep(self.comm_time)  # simulate communication time
+        self.frame = image

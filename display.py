@@ -8,17 +8,19 @@ if __name__ == "__main__":
     import numpy as np
     import pyqtgraph as pg
     from pointing_ui import Ui_MainWindow
-    from PyQt5 import QtCore, QtGui, QtWidgets
+    from PyQt5 import QtCore, QtGui, QtWidgets,QtSvg
     from camera import MightexCamera
     from camera import FakeCamera
+    from camera import MightexEngine
     from motors import MDT693A_Motor, FakeMotor
+    import tkinter as tk
+    from tkinter import filedialog
 
     STATE_MEASURE = 0
     STATE_CALIBRATE = 1
     STATE_LOCKED = 2
+    STATE_ALIGN = 3
     state = STATE_MEASURE
-    previous_state = STATE_MEASURE
-    state_change = 0
 
     pg.setConfigOptions(imageAxisOrder='row-major')
     pg.setConfigOption('background', 'w')
@@ -35,25 +37,28 @@ if __name__ == "__main__":
     error_dialog = QtWidgets.QErrorMessage()
 
     # Find the cameras
-    cam_dev_list = list(usb.core.find(find_all=True, idVendor=0x04B4))
+    mightex_engine = MightexEngine()
     cam_list = []
-    if len(cam_dev_list) == 0:
+    if len(mightex_engine.serial_no) == 0:
         print('Could not find any Mightex cameras!')
     else:
-        for i, cam in enumerate(cam_dev_list):
-            c = MightexCamera(dev=cam)
+        for i, serial_no in enumerate(mightex_engine.serial_no):
+            c = MightexCamera(mightex_engine, serial_no)
             cam_list.append(c)
             cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+
     # Find motors using VISA
     resourceManager = visa.ResourceManager()
     for dev in resourceManager.list_resources():
         motor_model.appendRow(QtGui.QStandardItem(str(dev)))
     motor_list = []
+    """
     # Add fake cameras
     for i in range(3):
         c = FakeCamera()
         cam_list.append(c)
         cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+    """
     # Set models and default values for combo boxes
     ui.cb_cam1.setModel(cam_model)
     ui.cb_cam2.setModel(cam_model)
@@ -65,6 +70,129 @@ if __name__ == "__main__":
     else:
         ui.cb_motors_1.setCurrentIndex(-1)
         ui.cb_motors_1.setCurrentIndex(-1)
+
+    # Load Most Recent Calibration Matrix:
+    try:
+        calib_mat = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
+    except OSError:
+        calib_mat = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+        raise FileNotFoundError("Hmm there seems to be no saved calibration, run calibration.")
+
+    # Initialize Global variables for home position markers:
+    ROICam1_Unlock = None
+    ROICam2_Unlock = None
+    ROICam1_Lock = None
+    ROICam2_Lock = None
+
+    # Load the Most Recent Home Position:
+    def set_home_marker():
+        global state
+        global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
+        global ROICam1_Unlock,ROICam2_Unlock,ROICam1_Lock,ROICam2_Lock
+        pen = pg.mkPen(color=(255, 0, 0), width=2)
+        ROICam1_Unlock = pg.CircleROI(pos=(set_cam1_y-20, set_cam1_x-20), radius=20,
+                                movable=False, rotatable=False, resizable=False, pen=pen)
+
+        ROICam2_Unlock = pg.CircleROI(pos=(set_cam2_y-20, set_cam2_x-20), radius=20,
+                                  movable=False, rotatable=False, resizable=False, pen=pen)
+        ui.gv_camera1.addItem(ROICam1_Unlock)
+        ui.gv_camera2.getView().addItem(ROICam2_Unlock)
+        pen = pg.mkPen(color=(0, 255, 0), width=2)
+        ROICam1_Lock = pg.CircleROI(pos=(set_cam1_y - 20, set_cam1_x - 20), radius=20,
+                               movable=False, rotatable=False, resizable=False, pen=pen)
+
+        ROICam2_Lock = pg.CircleROI(pos=(set_cam2_y - 20, set_cam2_x - 20), radius=20,
+                               movable=False, rotatable=False, resizable=False, pen=pen)
+        ui.gv_camera1.addItem(ROICam1_Lock)
+        ui.gv_camera2.getView().addItem(ROICam2_Lock)
+        if state == STATE_MEASURE:
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
+        elif state == STATE_CALIBRATE:
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(False)
+            ROICam2_Unlock.setVisible(False)
+        elif state == STATE_LOCKED:
+            ROICam1_Unlock.setVisible(False)
+            ROICam2_Unlock.setVisible(False)
+            ROICam1_Lock.setVisible(True)
+            ROICam2_Lock.setVisible(True)
+        elif state == STATE_ALIGN:
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+    try:
+        HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
+        set_cam1_x = HomePosition[0]
+        set_cam1_y = HomePosition[1]
+        set_cam2_x = HomePosition[2]
+        set_cam2_y = HomePosition[3]
+        set_home_marker()
+    except OSError:
+        set_cam1_x = 'dummy'
+        set_cam1_y = 'dummy'
+        set_cam2_x = 'dummy'
+        set_cam2_y = 'dummy'
+        print("Hmm there seems to be no saved Home Position, define one before locking.")
+
+    # Initialize Global Variables for arrows for Alignment Mode:
+    Cam1_LeftArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam1_RightArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam1_RightArrow.setRotation(180)
+    Cam1_DownArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam1_DownArrow.setRotation(-90)
+    Cam1_UpArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam1_UpArrow.setRotation(90)
+
+    Cam2_LeftArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam2_RightArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam2_RightArrow.setRotation(180)
+    Cam2_DownArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam2_DownArrow.setRotation(-90)
+    Cam2_UpArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
+    Cam2_UpArrow.setRotation(90)
+
+    Cam1_LeftArrow.setScale(3)
+    Cam1_RightArrow.setScale(3)
+    Cam1_DownArrow.setScale(3)
+    Cam1_UpArrow.setScale(3)
+    Cam2_LeftArrow.setScale(3)
+    Cam2_RightArrow.setScale(3)
+    Cam2_DownArrow.setScale(3)
+    Cam2_UpArrow.setScale(3)
+
+    Cam1_LeftArrow.setPos(set_cam1_y + 40, set_cam1_x - 95)
+    Cam1_RightArrow.setPos(set_cam1_y - 40, set_cam1_x + 92)
+    Cam1_DownArrow.setPos(set_cam1_y - 95, set_cam1_x - 40)
+    Cam1_UpArrow.setPos(set_cam1_y + 95, set_cam1_x + 40)
+
+    Cam2_LeftArrow.setPos(set_cam2_y + 40, set_cam2_x - 95)
+    Cam2_RightArrow.setPos(set_cam2_y - 40, set_cam2_x + 92)
+    Cam2_DownArrow.setPos(set_cam2_y - 95, set_cam2_x - 40)
+    Cam2_UpArrow.setPos(set_cam2_y + 95, set_cam2_x + 40)
+
+    ui.gv_camera1.addItem(Cam1_LeftArrow)
+    ui.gv_camera1.addItem(Cam1_RightArrow)
+    ui.gv_camera1.addItem(Cam1_DownArrow)
+    ui.gv_camera1.addItem(Cam1_UpArrow)
+    ui.gv_camera2.getView().addItem(Cam2_LeftArrow)
+    ui.gv_camera2.getView().addItem(Cam2_RightArrow)
+    ui.gv_camera2.getView().addItem(Cam2_DownArrow)
+    ui.gv_camera2.getView().addItem(Cam2_UpArrow)
+
+    Cam1_LeftArrow.setVisible(False)
+    Cam1_RightArrow.setVisible(False)
+    Cam1_DownArrow.setVisible(False)
+    Cam1_UpArrow.setVisible(False)
+    Cam2_LeftArrow.setVisible(False)
+    Cam2_RightArrow.setVisible(False)
+    Cam2_DownArrow.setVisible(False)
+    Cam2_UpArrow.setVisible(False)
+
     # Initialize global variables for tracking pointing
     cam1_x = np.ndarray(0)
     cam1_y = np.ndarray(0)
@@ -148,7 +276,6 @@ if __name__ == "__main__":
     mot2_x_cam1_x, mot2_x_cam1_y, mot2_x_cam2_x, mot2_x_cam2_y = np.empty((4, len(calibration_voltages)))
     mot2_y_cam1_x, mot2_y_cam1_y, mot2_y_cam2_x, mot2_y_cam2_y = np.empty((4, len(calibration_voltages)))
     starting_v = 75.0*np.ones(4)
-    calib_mat = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
 
     def resetHist(ref, min=0, max=255):
         """
@@ -222,13 +349,9 @@ if __name__ == "__main__":
         return com_x + start_i, com_y + start_j
 
     def update():
-        global previous_state, state_change, LockTimeStart
+        global LockTimeStart
+        global motor_list
         start_time = time.time()
-        if state - previous_state == 0:
-            state_change = False
-        else:
-            state_change = True
-        previous_state = state
         msg = ''
         if state == STATE_MEASURE:
             updateMeasure()
@@ -237,34 +360,46 @@ if __name__ == "__main__":
             updateCalibrate()
             msg += 'Calibrating...'
         elif state == STATE_LOCKED:
-            if state_change:
-                LockTimeStart = time.monotonic()
             updateLocked()
             msg += 'LOCKED'
+        elif state == STATE_ALIGN:
+            updateAlign()
+            msg += 'Alignment Mode'
         else:
             msg += 'ERROR'
         ui.statusbar.showMessage('{0}\tUpdate time: {1:.3f} (s)'.format(msg, time.time() - start_time))
 
     # TODO: make it possible to set avg_frames and avg_com through the GUI.
-    def take_img_calibration(cam_index, cam_view=0, threshold=0, avg_frames=1, avg_com=1):
+    def take_img_calibration(cam_index, cam_view=0, threshold=0, avg_frames=3, avg_com=1):
         global state
         global cam1_x, cam2_x, cam1_y, cam2_y
         global cam1_x_line, cam2_x_line, cam1_y_line, cam2_y_line
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         # Get a com that is an average over the number of avg_com
         if avg_com<2:
             # Get an image that is an average over the number of AvgFrames
             if avg_frames<2:
                 try:
+                    cam_list[cam_index].update_frame()
                     img = cam_list[cam_index].get_frame()
                 except RuntimeError:
                     state = STATE_MEASURE
+                    ROICam1_Lock.setVisible(False)
+                    ROICam2_Lock.setVisible(False)
+                    ROICam1_Unlock.setVisible(True)
+                    ROICam2_Unlock.setVisible(True)
                     img = np.array([1])
             else:
                 for i in range(avg_frames):
                     try:
+                        cam_list[cam_index].update_frame()
                         temp_img = cam_list[cam_index].get_frame()
                     except RuntimeError:
                         state = STATE_MEASURE
+                        ROICam1_Lock.setVisible(False)
+                        ROICam2_Lock.setVisible(False)
+                        ROICam1_Unlock.setVisible(True)
+                        ROICam2_Unlock.setVisible(True)
                         temp_img = np.array([1])
                         img = np.array([1])
                     if i==0:
@@ -284,16 +419,26 @@ if __name__ == "__main__":
                 # Get an image that is an average over the number of AvgFrames
                 if avg_frames < 2:
                     try:
+                        cam_list[cam_index].update_frame()
                         img = cam_list[cam_index].get_frame()
                     except RuntimeError:
                         state = STATE_MEASURE
+                        ROICam1_Lock.setVisible(False)
+                        ROICam2_Lock.setVisible(False)
+                        ROICam1_Unlock.setVisible(True)
+                        ROICam2_Unlock.setVisible(True)
                         img = np.array([1])
                 else:
                     for i in range(avg_frames):
                         try:
+                            cam_list[cam_index].update_frame()
                             temp_img = cam_list[cam_index].get_frame()
                         except RuntimeError:
                             state = STATE_MEASURE
+                            ROICam1_Lock.setVisible(False)
+                            ROICam2_Lock.setVisible(False)
+                            ROICam1_Unlock.setVisible(True)
+                            ROICam2_Unlock.setVisible(True)
                             temp_img = np.array([1])
                             img = np.array([1])
                         if i == 0:
@@ -320,7 +465,7 @@ if __name__ == "__main__":
             #x
             cam1_x_line.setPos(com[0])
             cam1_x_line.setVisible(True)
-            if (cam1_x.size < 100):
+            if (cam1_x.size < int(ui.le_num_points.text())):
                 cam1_x = np.append(cam1_x, com[0])
             else:
                 cam1_x = np.roll(cam1_x, -1)
@@ -329,7 +474,7 @@ if __name__ == "__main__":
             #y
             cam1_y_line.setPos(com[1])
             cam1_y_line.setVisible(True)
-            if (cam1_y.size < 100):
+            if (cam1_y.size < int(ui.le_num_points.text())):
                 cam1_y = np.append(cam1_y, com[1])
             else:
                 cam1_y = np.roll(cam1_y, -1)
@@ -341,7 +486,7 @@ if __name__ == "__main__":
             #x
             cam2_x_line.setPos(com[0])
             cam2_x_line.setVisible(True)
-            if (cam2_x.size < 100):
+            if (cam2_x.size < int(ui.le_num_points.text())):
                 cam2_x = np.append(cam2_x, com[0])
             else:
                 cam2_x = np.roll(cam2_x, -1)
@@ -350,7 +495,7 @@ if __name__ == "__main__":
             # y
             cam2_y_line.setPos(com[1])
             cam2_y_line.setVisible(True)
-            if (cam2_y.size < 100):
+            if (cam2_y.size < int(ui.le_num_points.text())):
                 cam2_y = np.append(cam2_y, com[1])
             else:
                 cam2_y = np.roll(cam2_y, -1)
@@ -359,7 +504,7 @@ if __name__ == "__main__":
         return img, com
 
 
-    def take_img(cam_index, cam_view=0, threshold=0, resetView=False, avg_frames=2, avg_com=2):
+    def take_img(cam_index, cam_view=0, threshold=0, resetView=False):
         """
         Given the camera at cam_index in the camera list
         Update cam_view with its image and COM
@@ -367,75 +512,55 @@ if __name__ == "__main__":
         Return if the image is saturated
         """
         global cam1_x_line, cam1_y_line, cam1_x, cam1_y
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        global state
         global cam2_x_line, cam2_y_line, cam2_x, cam2_y
         global cam1_x, cam1_y, cam2_x, cam2_y
         global cam1_x_plot, cam1_y_plot, cam2_x_plot, cam2_y_plot
         assert cam_index >= 0
         assert cam_view == 0 or cam_view == 1
 
-        if avg_com < 2:
-            # Get an image that is an average over the number of AvgFrames
-            if avg_frames < 2:
+        if cam_view == 0:
+            avg_frames = int(ui.Cam1_AvgFrames.text())
+        else:
+            avg_frames = int(ui.Cam2_AvgFrames.text())
+        # Get an image that is an average over the number of AvgFrames
+        if avg_frames < 2:
+            try:
+                cam_list[cam_index].update_frame()
+                img = cam_list[cam_index].get_frame()
+            except RuntimeError:
+                state = STATE_MEASURE
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
+                img = np.array([1])
+        else:
+            for i in range(avg_frames):
                 try:
-                    img = cam_list[cam_index].get_frame()
+                    cam_list[cam_index].update_frame()
+                    temp_img = cam_list[cam_index].get_frame()
                 except RuntimeError:
                     state = STATE_MEASURE
+                    ROICam1_Lock.setVisible(False)
+                    ROICam2_Lock.setVisible(False)
+                    ROICam1_Unlock.setVisible(True)
+                    ROICam2_Unlock.setVisible(True)
+                    temp_img = np.array([1])
                     img = np.array([1])
-            else:
-                for i in range(avg_frames):
-                    try:
-                        temp_img = cam_list[cam_index].get_frame()
-                    except RuntimeError:
-                        state = STATE_MEASURE
-                        temp_img = np.array([1])
-                        img = np.array([1])
-                    if i==0:
-                        img = temp_img
-                    else:
-                        img += temp_img
-                img = img/avg_frames
-            if threshold > 0:
-                img[img < threshold*avg_frames] = 0
-            if cam_view == 0:
-                ui.le_cam1_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
-            else:
-                ui.le_cam2_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
-            com = calc_com(img)  # Grab COM
+                if i==0:
+                    img = temp_img
+                else:
+                    img += temp_img
+            img = img/avg_frames
+        if threshold > 0:
+            img[img < threshold*avg_frames] = 0
+        if cam_view == 0:
+            ui.le_cam1_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
         else:
-            for j in range(avg_com):
-                # Get an image that is an average over the number of AvgFrames
-                if avg_frames < 2:
-                    try:
-                        img = cam_list[cam_index].get_frame()
-                    except RuntimeError:
-                        state = STATE_MEASURE
-                        img = np.array([1])
-                else:
-                    for i in range(avg_frames):
-                        try:
-                            temp_img = cam_list[cam_index].get_frame()
-                        except RuntimeError:
-                            state = STATE_MEASURE
-                            temp_img = np.array([1])
-                            img = np.array([1])
-                        if i == 0:
-                            img = temp_img
-                        else:
-                            img += temp_img
-                    img = img / avg_frames
-                if threshold > 0:
-                    img[img < threshold * avg_frames] = 0
-                if cam_view == 0:
-                    ui.le_cam1_max.setText(str(
-                        np.max(img / avg_frames)))  # Just updates the GUI to say what the max value of the camera is
-                else:
-                    ui.le_cam2_max.setText(str(
-                        np.max(img / avg_frames)))  # Just updates the GUI to say what the max value of the camera is
-                temp_com = calc_com(img)  # Grab COM
-                if j == 0:
-                    com = temp_com
-                else:
-                    com += temp_com
+            ui.le_cam2_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
+        com = calc_com(img)  # Grab COM
         under_saturated = np.all(img < 50)
         saturated = np.any(img > 250)
         if cam_view == 0:
@@ -465,7 +590,7 @@ if __name__ == "__main__":
         cam_y_line.setPos(com_y)
         cam_x_line.setVisible(True)
         cam_y_line.setVisible(True)
-        if (cam_x_data.size < 100):
+        if (cam_x_data.size < int(ui.le_num_points.text())):
             cam_x_data = np.append(cam_x_data, com_x)
             cam_y_data = np.append(cam_y_data, com_y)
         else:
@@ -492,6 +617,7 @@ if __name__ == "__main__":
         global state, calib_index, cam1_threshold, cam2_threshold
         global cam1_index, cam2_index
         global calibration_voltages, starting_v
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         global calib_mat
         global override
         global mot1_x_voltage, mot1_y_voltage, mot2_x_voltage, mot2_y_voltage
@@ -509,26 +635,50 @@ if __name__ == "__main__":
         if (ui.cb_motors_1.currentIndex() < 0):
             error_dialog.showMessage('You need to select Motor 1.')
             state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
             return
         elif (ui.cb_motors_2.currentIndex() < 0):
             error_dialog.showMessage('You need to select Motor 2.')
             state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
             return
         elif ui.cb_motors_1.currentIndex() == ui.cb_motors_2.currentIndex():
             error_dialog.showMessage('You need to select two unique motors.')
             state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
             return
         if cam1_index < 0:
             error_dialog.showMessage('You need to select camera 1.')
             state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
             return
         elif cam2_index < 0:
             error_dialog.showMessage('You need to select camera 2.')
             state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
             return
         elif cam1_index == cam2_index:
             error_dialog.showMessage('You need to select two different cameras.')
             state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
             return
         else:
             num_steps_per_motor = len(calibration_voltages)
@@ -699,7 +849,7 @@ if __name__ == "__main__":
                                         [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])
                 calib_mat = np.linalg.inv(calib_mat)
                 try:
-                    old_calib_mat = np.loadtxt('Most_Recent_Calibration.txt', dtype=int)
+                    old_calib_mat = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
                     Change = np.sqrt(np.sum(np.square(calib_mat)-np.square(old_calib_mat)))
                     RelativeChange = Change/np.sqrt(np.sum(np.square(old_calib_mat)))
                     print(RelativeChange)
@@ -708,7 +858,13 @@ if __name__ == "__main__":
                 print('Calibration done!')
                 print(calib_mat)
                 np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%d')
+                filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat"
+                np.savetxt(filename, calib_mat, fmt='%d')
                 state = STATE_MEASURE
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
 
     def updateMeasure():
         """
@@ -745,7 +901,10 @@ if __name__ == "__main__":
             cam2_y_line.setVisible(False)
 
     def updateLocked():
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         global calib_mat
+        global motor1_x, motor1_y, motor2_x, motor2_y
+        global motor1_x_plot, motor1_y_plot, motor2_x_plot, motor2_y_plot
         global LockTimeStart, TimeLastUnlock
         global num_out_of_voltage_range #Track the number of times the voltage update goes out of range during lock
         global state
@@ -753,12 +912,6 @@ if __name__ == "__main__":
         global saturated_cam1, under_saturated_cam1, saturated_cam2, under_saturated_cam2
         global cam1_reset, cam2_reset
         global cam1_x_time, cam1_y_time, cam2_x_time, cam2_y_time
-        if np.trace(np.matmul(calib_mat,calib_mat))==4:
-            try:
-                calib_mat = np.loadtxt('Most_Recent_Calibration.txt', dtype=int)
-            except OSError:
-                state = STATE_MEASURE
-                raise FileNotFoundError("Hmm there seems to be no saved calibration, rerun calibration.")
         if cam1_index >= 0 and cam2_index >= 0 and cam1_index != cam2_index:
             if cam1_reset:
                 _, com1_x, com1_y, under_saturated_cam1, saturated_cam1 = take_img(cam1_index, cam_view=0,
@@ -780,11 +933,21 @@ if __name__ == "__main__":
                                                                                    resetView=False)
             # Calculate dX
             # The convention here is how much has the position on the camera changed from the set point.
-            cam1_dx = com1_x - set_cam1_x
-            cam1_dy = com1_y - set_cam1_y
-            cam2_dx = com2_x - set_cam2_x
-            cam2_dy = com2_y - set_cam2_y
-            dX = np.array([cam1_dx, cam1_dy, cam2_dx, cam2_dy])
+            try:
+                cam1_dx = com1_x - set_cam1_x
+                cam1_dy = com1_y - set_cam1_y
+                cam2_dx = com2_x - set_cam2_x
+                cam2_dy = com2_y - set_cam2_y
+                dX = np.array([cam1_dx, cam1_dy, cam2_dx, cam2_dy])
+            except:
+                state = STATE_MEASURE
+                global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
+                raise FileNotFoundError("Hmm there seems to be no saved Home Position, Press the Define new Home button before locking.")
+
             # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
             # in the change observed in dX
             dV = np.matmul(calib_mat, dX)
@@ -803,11 +966,37 @@ if __name__ == "__main__":
                 # then locks for more than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than
                 # 10 times in a row in less than a minute each time, then the code unlocks and returns to measuring state.
                 print("Warning: The update voltages went out of range, resetting piezos and attempting to relock")
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
                 # Reset the voltages to 75.0 the OG settings, and skip this update. Try again.
                 motor_list[0].ch1_v = 75.0
                 motor_list[0].ch2_v = 75.0
                 motor_list[1].ch1_v = 75.0
                 motor_list[1].ch2_v = 75.0
+                ##############################
+                # Update Piezo voltage Plots #
+                ##############################
+                if (motor1_x.size < int(ui.le_num_points.text())):
+                    motor1_x = np.append(motor1_x, 75.0)
+                    motor1_y = np.append(motor1_y, 75.0)
+                    motor2_x = np.append(motor2_x, 75.0)
+                    motor2_y = np.append(motor2_y, 75.0)
+                else:
+                    motor1_x = np.roll(motor1_x, -1)
+                    motor1_x[-1] = 75.0
+                    motor1_y = np.roll(motor1_y, -1)
+                    motor1_y[-1] = 75.0
+                    motor2_x = np.roll(motor2_x, -1)
+                    motor2_x[-1] = 75.0
+                    motor2_y = np.roll(motor2_y, -1)
+                    motor2_y[-1] = 75.0
+                motor1_x_plot.setData(motor1_x)
+                motor1_y_plot.setData(motor1_y)
+                motor2_x_plot.setData(motor2_x)
+                motor2_y_plot.setData(motor2_y)
+
                 first_unlock = False #First time since initial lock that piezos went out of bounds?
                 # Track time since last unlock and the number of times unlocked in less than 1 minute since previous
                 # lock.
@@ -822,14 +1011,167 @@ if __name__ == "__main__":
                     num_out_of_voltage_range = 0
                     TimeLastUnlock = 0
                     state = STATE_MEASURE
+                    ROICam1_Lock.setVisible(False)
+                    ROICam2_Lock.setVisible(False)
+                    ROICam1_Unlock.setVisible(True)
+                    ROICam2_Unlock.setVisible(True)
                     successful_lock_time = time.monotonic() - LockTimeStart
                     print("Successfully locked pointing for", successful_lock_time)
                     raise NotImplementedError('The piezo voltages have gone outside of the allowed range! Stop Lock')
             else:
+                ROICam1_Unlock.setVisible(False)
+                ROICam2_Unlock.setVisible(False)
+                ROICam1_Lock.setVisible(True)
+                ROICam2_Lock.setVisible(True)
                 motor_list[0].ch1_v = update_voltage[0]
                 motor_list[0].ch2_v = update_voltage[1]
                 motor_list[1].ch1_v = update_voltage[2]
                 motor_list[1].ch2_v = update_voltage[3]
+
+                ##############################
+                # Update Piezo voltage Plots #
+                ##############################
+                if (motor1_x.size < int(ui.le_num_points.text())):
+                    motor1_x = np.append(motor1_x, update_voltage[0])
+                    motor1_y = np.append(motor1_y, update_voltage[1])
+                    motor2_x = np.append(motor2_x, update_voltage[2])
+                    motor2_y = np.append(motor2_y, update_voltage[3])
+                else:
+                    motor1_x = np.roll(motor1_x,-1)
+                    motor1_x[-1] = update_voltage[0]
+                    motor1_y = np.roll(motor1_y,-1)
+                    motor1_y[-1] = update_voltage[1]
+                    motor2_x = np.roll(motor2_x,-1)
+                    motor2_x[-1] = update_voltage[2]
+                    motor2_y = np.roll(motor2_y,-1)
+                    motor2_y[-1] = update_voltage[3]
+                motor1_x_plot.setData(motor1_x)
+                motor1_y_plot.setData(motor1_y)
+                motor2_x_plot.setData(motor2_x)
+                motor2_y_plot.setData(motor2_y)
+        else:
+            if cam1_index < 0:
+                cam1_x_line.setVisible(False)
+                cam1_y_line.setVisible(False)
+            if cam2_index < 0:
+                cam2_x_line.setVisible(False)
+                cam2_y_line.setVisible(False)
+
+    def updateAlign():
+        global calib_mat
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        global Cam1_LeftArrow, Cam1_RightArrow, Cam1_DownArrow, Cam1_UpArrow
+        global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
+        global motor1_x, motor1_y, motor2_x, motor2_y
+        global motor1_x_plot, motor1_y_plot, motor2_x_plot, motor2_y_plot
+        global LockTimeStart, TimeLastUnlock
+        global state
+        global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
+        global saturated_cam1, under_saturated_cam1, saturated_cam2, under_saturated_cam2
+        global cam1_reset, cam2_reset
+        global cam1_x_time, cam1_y_time, cam2_x_time, cam2_y_time
+        if cam1_index >= 0 and cam2_index >= 0 and cam1_index != cam2_index:
+            if cam1_reset:
+                _, com1_x, com1_y, under_saturated_cam1, saturated_cam1 = take_img(cam1_index, cam_view=0,
+                                                                                   threshold=cam1_threshold,
+                                                                                   resetView=True)
+                cam1_reset = False
+            else:
+                _, com1_x, com1_y, under_saturated_cam1, saturated_cam1 = take_img(cam1_index, cam_view=0,
+                                                                                   threshold=cam1_threshold,
+                                                                                   resetView=False)
+            if cam2_reset:
+                _, com2_x, com2_y, under_saturated_cam2, saturated_cam2 = take_img(cam2_index, cam_view=1,
+                                                                                   threshold=cam2_threshold,
+                                                                                   resetView=True)
+                cam2_reset = False
+            else:
+                _, com2_x, com2_y, under_saturated_cam2, saturated_cam2 = take_img(cam2_index, cam_view=1,
+                                                                                   threshold=cam2_threshold,
+                                                                                   resetView=False)
+            # Calculate dX
+            # The convention here is how much has the position on the camera changed from the set point.
+            try:
+                cam1_dx = com1_x - set_cam1_x
+                cam1_dy = com1_y - set_cam1_y
+                cam2_dx = com2_x - set_cam2_x
+                cam2_dy = com2_y - set_cam2_y
+                dX = np.array([cam1_dx, cam1_dy, cam2_dx, cam2_dy])
+            except:
+                state = STATE_MEASURE
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
+                raise FileNotFoundError(
+                    "Hmm there seems to be no saved Home Position, Press the Define new Home button before locking.")
+
+            # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
+            # in the change observed in dX
+            dV = np.matmul(calib_mat, dX)
+            dV = np.floor(
+                10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal place.
+
+            # If the beams are within 10V displacements in any direction, then make the home circle green to let the
+            # user know. This is the condition when the user should stop trying to align.
+            #ToDO: Make this threshold setable in the GUI.
+            if np.any(dV)>10.0:
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
+            else:
+                ROICam1_Unlock.setVisible(False)
+                ROICam2_Unlock.setVisible(False)
+                ROICam1_Lock.setVisible(True)
+                ROICam2_Lock.setVisible(True)
+
+            # The goal here is to provide the user feedback about which direction to steer the beam.
+            # x and y are switched relative to your expectation of L/R up/down,
+            # because the cameras happen to be rotated
+            # ToDo: Test the configuration of the cameras and confirm which displacement should correspond to which
+            #  arrow
+            #ToDo: Maybe make the orientation of the Camera setable in the GUI.
+            displacementThreshold = 1
+            if dX[0] > displacementThreshold:
+                Cam1_DownArrow.setVisible(False)
+                Cam1_UpArrow.setVisible(True)
+            elif dX[0] < -displacementThreshold:
+                Cam1_UpArrow.setVisible(False)
+                Cam1_DownArrow.setVisible(True)
+            else:
+                Cam1_UpArrow.setVisible(False)
+                Cam1_DownArrow.setVisible(False)
+
+            if dX[1] > displacementThreshold:
+                Cam1_RightArrow.setVisible(False)
+                Cam1_LeftArrow.setVisible(True)
+            elif dX[1] < -displacementThreshold:
+                Cam1_LeftArrow.setVisible(False)
+                Cam1_RightArrow.setVisible(True)
+            else:
+                Cam1_LeftArrow.setVisible(False)
+                Cam1_RightArrow.setVisible(False)
+
+            if dX[2] > displacementThreshold:
+                Cam2_DownArrow.setVisible(False)
+                Cam2_UpArrow.setVisible(True)
+            elif dX[2] < -displacementThreshold:
+                Cam2_UpArrow.setVisible(False)
+                Cam2_DownArrow.setVisible(True)
+            else:
+                Cam2_UpArrow.setVisible(False)
+                Cam2_DownArrow.setVisible(False)
+
+            if dX[3] > displacementThreshold:
+                Cam2_RightArrow.setVisible(False)
+                Cam2_LeftArrow.setVisible(True)
+            elif dX[3] < -displacementThreshold:
+                Cam2_LeftArrow.setVisible(False)
+                Cam2_RightArrow.setVisible(True)
+            else:
+                Cam2_LeftArrow.setVisible(False)
+                Cam2_RightArrow.setVisible(False)
         else:
             if cam1_index < 0:
                 cam1_x_line.setVisible(False)
@@ -888,6 +1230,7 @@ if __name__ == "__main__":
         cam1_decimate = ui.cb_cam1_decimate.isChecked()
         cam_list[cam1_index].set_gain(cam1_gain)
         cam_list[cam1_index].set_exposure_time(cam1_exp_time)
+        cam_list[cam1_index].update_frame()
         cam_list[cam1_index].set_decimation(cam1_decimate)
         ui.le_cam1_exp_time.setText('%.2f' % (cam_list[cam1_index].exposure_time))
         ui.le_cam1_gain.setText('%.2f' % (cam_list[cam1_index].gain/8))
@@ -903,6 +1246,7 @@ if __name__ == "__main__":
         cam2_decimate = ui.cb_cam2_decimate.isChecked()
         cam_list[cam2_index].set_gain(cam2_gain)
         cam_list[cam2_index].set_exposure_time(cam2_exp_time)
+        cam_list[cam1_index].update_frame()
         cam_list[cam2_index].set_decimation(cam2_decimate)
         ui.le_cam2_exp_time.setText('%.2f' % (cam_list[cam2_index].exposure_time))
         ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
@@ -927,9 +1271,14 @@ if __name__ == "__main__":
     
     def begin_calibration():
         global state, starting_v, motor_list, calib_index
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         calib_index = 0
         if len(motor_list) == 0:
             update_motors()
+        ROICam1_Unlock.setVisible(False)
+        ROICam2_Unlock.setVisible(False)
+        ROICam1_Lock.setVisible(False)
+        ROICam2_Lock.setVisible(False)
         starting_v[0] = motor_list[0].ch1_v
         starting_v[1] = motor_list[0].ch2_v
         starting_v[2] = motor_list[1].ch1_v
@@ -944,32 +1293,134 @@ if __name__ == "__main__":
         cam2_y = np.array([])
     
     def lock_pointing():
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        global state
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        global Cam1_LeftArrow, Cam1_RightArrow, Cam1_DownArrow, Cam1_UpArrow
+        global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
+        global LockTimeStart
+        Cam1_LeftArrow.setVisible(False)
+        Cam1_RightArrow.setVisible(False)
+        Cam1_DownArrow.setVisible(False)
+        Cam1_UpArrow.setVisible(False)
+        Cam2_LeftArrow.setVisible(False)
+        Cam2_RightArrow.setVisible(False)
+        Cam2_DownArrow.setVisible(False)
+        Cam2_UpArrow.setVisible(False)
         if (ui.btn_lock.isChecked()):
-            global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
-            global cam1_x, cam1_y, cam2_x, cam2_y
-            global state
             if cam1_index >= 0 and cam2_index >= 0:
-                set_cam1_x = cam1_x[-1]
-                set_cam1_y = cam1_y[-1]
-                set_cam2_x = cam2_x[-1]
-                set_cam2_y = cam2_y[-1]
-                print('Set cam 1 x', set_cam1_x)
-                print('Set cam 1 y', set_cam1_y)
-                print('Set cam 2 x', set_cam2_x)
-                print('Set cam 2 y', set_cam2_y)
                 state = STATE_LOCKED
+                LockTimeStart = time.monotonic()
+                ROICam1_Unlock.setVisible(False)
+                ROICam2_Unlock.setVisible(False)
+                ROICam1_Lock.setVisible(True)
+                ROICam2_Lock.setVisible(True)
+                if len(motor_list) == 0:
+                    update_motors()
             else:
                 ui.btn_lock.toggle()
         else:
             state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
 
+    def define_home():
+        global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
+        global cam1_x, cam1_y, cam2_x, cam2_y
+        if cam1_index >= 0 and cam2_index >= 0:
+            set_cam1_x = cam1_x[-1]
+            set_cam1_y = cam1_y[-1]
+            set_cam2_x = cam2_x[-1]
+            set_cam2_y = cam2_y[-1]
+            print('Set cam 1 x', set_cam1_x)
+            print('Set cam 1 y', set_cam1_y)
+            print('Set cam 2 x', set_cam2_x)
+            print('Set cam 2 y', set_cam2_y)
+            HomePosition = np.array([set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y])
+            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+            filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
+            np.savetxt(filename, HomePosition, fmt='%d')
+            try:
+                ROICam1_Unlock.setVisible(False)
+                ROICam2_Unlock.setVisible(False)
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+            except:
+                pass
+            set_home_marker()
+
+    def load_home():
+        global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        root = tk.Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename()
+        HomePosition = np.loadtxt(file_path, dtype=float)
+        np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+        set_cam1_x = HomePosition[0]
+        set_cam1_y = HomePosition[1]
+        set_cam2_x = HomePosition[2]
+        set_cam2_y = HomePosition[3]
+        print("Set Positions:", HomePosition)
+        try:
+            ROICam1_Unlock.setVisible(False)
+            ROICam2_Unlock.setVisible(False)
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+        except:
+            pass
+        set_home_marker()
+
+    def begin_align():
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        global Cam1_LeftArrow, Cam1_RightArrow, Cam1_DownArrow, Cam1_UpArrow
+        global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
+        global state
+        if state == STATE_ALIGN:
+            state = STATE_MEASURE
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
+            Cam1_LeftArrow.setVisible(False)
+            Cam1_RightArrow.setVisible(False)
+            Cam1_DownArrow.setVisible(False)
+            Cam1_UpArrow.setVisible(False)
+            Cam2_LeftArrow.setVisible(False)
+            Cam2_RightArrow.setVisible(False)
+            Cam2_DownArrow.setVisible(False)
+            Cam2_UpArrow.setVisible(False)
+        else:
+            state = STATE_ALIGN
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
+            if len(motor_list) == 0:
+                update_motors()
+            try:
+                motor_list[0].ch1_v = 75.0
+                motor_list[0].ch2_v = 75.0
+                motor_list[1].ch1_v = 75.0
+                motor_list[1].ch2_v = 75.0
+            except:
+                msg += "WARNING! Alignment should be done w/ piezos at 75 V, but motors are not connected and " \
+                       "voltages are unkown!"
+                ui.statusbar.showMessage('{0}\tUpdate time: {1:.3f} (s)'.format(msg, time.time() - start_time))
+                time.sleep(5)
+                raise AssertionError("Make Piezo voltages 75.0 before aligning.")
 
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
     ui.btn_motor_connect.clicked.connect(update_motors)
     ui.act_calibrate.triggered.connect(begin_calibration)
+    ui.actionLoad_Old_Home.triggered.connect(load_home)
     ui.btn_clear.clicked.connect(clear_pointing_plots)
     ui.btn_lock.clicked.connect(lock_pointing)
+    ui.btn_Home.clicked.connect(define_home)
+    ui.btn_Align.clicked.connect(begin_align)
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)

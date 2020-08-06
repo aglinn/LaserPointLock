@@ -43,7 +43,7 @@
       <property name="geometry">
        <rect>
         <x>740</x>
-        <y>40</y>
+        <y>20</y>
         <width>221</width>
         <height>173</height>
        </rect>
@@ -138,7 +138,7 @@
       <property name="geometry">
        <rect>
         <x>740</x>
-        <y>330</y>
+        <y>320</y>
         <width>221</width>
         <height>173</height>
        </rect>
@@ -233,7 +233,7 @@
       <property name="geometry">
        <rect>
         <x>790</x>
-        <y>520</y>
+        <y>540</y>
         <width>131</width>
         <height>24</height>
        </rect>
@@ -262,7 +262,7 @@
       <property name="geometry">
        <rect>
         <x>790</x>
-        <y>230</y>
+        <y>240</y>
         <width>131</width>
         <height>24</height>
        </rect>
@@ -286,6 +286,58 @@
         </widget>
        </item>
       </layout>
+     </widget>
+     <widget class="QLabel" name="label_14">
+      <property name="geometry">
+       <rect>
+        <x>740</x>
+        <y>200</y>
+        <width>101</width>
+        <height>21</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string># of Frames 2 Avg</string>
+      </property>
+     </widget>
+     <widget class="QLineEdit" name="Cam1_AvgFrames">
+      <property name="geometry">
+       <rect>
+        <x>840</x>
+        <y>200</y>
+        <width>121</width>
+        <height>21</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>1</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_15">
+      <property name="geometry">
+       <rect>
+        <x>740</x>
+        <y>500</y>
+        <width>101</width>
+        <height>21</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string># of Frames 2 Avg</string>
+      </property>
+     </widget>
+     <widget class="QLineEdit" name="Cam2_AvgFrames">
+      <property name="geometry">
+       <rect>
+        <x>840</x>
+        <y>500</y>
+        <width>121</width>
+        <height>21</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>1</string>
+      </property>
      </widget>
     </widget>
     <widget class="QWidget" name="tab_2">
@@ -338,7 +390,7 @@
           <string>100</string>
          </property>
          <property name="readOnly">
-          <bool>true</bool>
+          <bool>false</bool>
          </property>
         </widget>
        </item>
@@ -421,6 +473,42 @@
      <bool>true</bool>
     </property>
    </widget>
+   <widget class="QPushButton" name="btn_Home">
+    <property name="geometry">
+     <rect>
+      <x>180</x>
+      <y>660</y>
+      <width>111</width>
+      <height>51</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Define New Home</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_Align">
+    <property name="geometry">
+     <rect>
+      <x>330</x>
+      <y>660</y>
+      <width>111</width>
+      <height>51</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>20</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Align</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -428,7 +516,7 @@
      <x>0</x>
      <y>0</y>
      <width>1067</width>
-     <height>26</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuCalibrate">
@@ -436,6 +524,7 @@
      <string>File</string>
     </property>
     <addaction name="act_calibrate"/>
+    <addaction name="actionLoad_Old_Home"/>
    </widget>
    <addaction name="menuCalibrate"/>
   </widget>
@@ -443,6 +532,11 @@
   <action name="act_calibrate">
    <property name="text">
     <string>Calibrate</string>
+   </property>
+  </action>
+  <action name="actionLoad_Old_Home">
+   <property name="text">
+    <string>Load Old Home</string>
    </property>
   </action>
  </widget>
