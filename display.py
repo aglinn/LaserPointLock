@@ -134,7 +134,6 @@ if __name__ == "__main__":
 
     # Initialize global variables for Locking
     LockTimeStart = 0
-    TimeLastUnlock = 0
 
     saturated_cam1 = False
     under_saturated_cam1 = False
@@ -952,7 +951,9 @@ if __name__ == "__main__":
             global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
             global cam1_x, cam1_y, cam2_x, cam2_y
             global state
+            global TimeLastUnlock
             if cam1_index >= 0 and cam2_index >= 0:
+                TimeLastUnlock = 0
                 set_cam1_x = cam1_x[-1]
                 set_cam1_y = cam1_y[-1]
                 set_cam2_x = cam2_x[-1]
