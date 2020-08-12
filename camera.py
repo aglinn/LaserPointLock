@@ -1,14 +1,11 @@
-import usb.core
-import usb.util
-import numpy as np
-import time
-from abc import ABC, abstractmethod
-from typing import List, Dict, Set, Tuple
 import ctypes
+import numpy as np
 import re
 import operator
 import random
 from functools import reduce
+from typing import List, Dict, Set, Tuple
+from abc import ABC, abstractmethod
 
 class DeviceNotFoundError(Exception):
     pass
@@ -158,6 +155,12 @@ class MightexEngine:
     def GetExposure(self,serial_no):
         return self.exposureTime[serial_no]
 
+from PyQt5 import QtCore
+import time
+from flirpy.camera.boson import Boson
+
+lock = QtCore.QReadWriteLock()
+
 
 class Camera(ABC):
     @abstractmethod
@@ -288,6 +291,7 @@ class MightexCamera(Camera):
         return self.engine.dev_num[self.serial_no]
 """
 
+
 class FakeCamera(Camera):
     """Multithreaded fake camera. Must subclass QRunnable to utilize Qt multithreading."""
     def __init__(self, **kwargs):
@@ -307,8 +311,8 @@ class FakeCamera(Camera):
         self.date = '011219'
 
         self.res = kwargs.get('res', (1024, 1280))
-        self.exposure_time = kwargs.get('exposure_time', 0.05)
-        self.gain = kwargs.get('gain', 1)
+        self._exposure_time = kwargs.get('exposure_time', 0.05)
+        self._gain = kwargs.get('gain', 1)
         self.decimation = kwargs.get('decimation', 1)
         self.xcen = kwargs.get('xcen', 0)
         self.ycen = kwargs.get('ycen', 0)
@@ -356,9 +360,249 @@ class FakeCamera(Camera):
         self.xcen = min(self.xres // 2, max(-self.xres // 2, self.xcen + random.randint(-10, 10)))
         self.ycen = min(self.yres // 2, max(-self.yres // 2, self.ycen + random.randint(-10, 10)))
         # Simulate a laser spot
+
         width = 0.02 * self._grid[0].shape[0]
         image = np.round(230 * np.exp(
             -((self._grid[0] - self.xcen) ** 2 + (self._grid[1] - self.ycen) ** 2) / (2 * width ** 2))).astype(np.uint8)
         image += np.round(10*np.random.random(image.shape)).astype(np.uint8)
         time.sleep(self.comm_time)  # simulate communication time
         self.frame = image
+
+class BosonCamera(Camera):
+    def __init__(self, port=None):
+        self.frame = None
+        self.port = port
+        self.engine = Boson(port=self.port)
+        self.serial_no = self.engine.get_camera_serial()
+        self.set_ffc_manual()
+
+    def get_frame(self):
+        return self.frame
+
+    def update_frame(self):
+        """
+        Grab a frame from the camera and store it as a uint16.
+        """
+        self.frame = self.engine.grab()
+
+    def set_exposure_time(self, time):
+        pass
+
+    def set_resolution(self, res):
+        pass
+
+    def set_gain(self, gain):
+        pass
+
+    def set_decimation(self, gain):
+        pass
+
+    def set_ffc_manual(self):
+        self.engine.set_ffc_manual()
+        return
+
+    def get_ffc_mode(self):
+        """
+        Get the current FFC mode
+
+        0 = FLR_BOSON_NO_FFC_PERFORMED
+        1 = FLR_BOSON_FFC_IMMINENT
+        2 = FLR_BOSON_FFC_IN_PROGRESS
+        3 = FLR_BOSON_FFC_COMPLETE
+        4 = FLR_BOSON_FFCSTATUS_END
+
+        Returns
+        -------
+
+            int
+                FFC mode
+        """
+        return self.engine.get_ffc_mode()
+
+    def set_ffc_auto(self):
+        self.engine.set_ffc_auto()
+        return
+
+    def do_ffc(self):
+        """
+        Manually request a flat field correction (FFC)
+        """
+        self.engine.do_ffc()
+        return
+
+    def get_ffc_state(self):
+        """
+        Returns the FFC state:
+
+        0 = FLR_BOSON_NO_FFC_PERFORMED
+        1 = FLR_BOSON_FFC_IMMINENT
+        2 = FLR_BOSON_FFC_IN_PROGRESS
+        3 = FLR_BOSON_FFC_COMPLETE
+        4 = FLR_BOSON_FFCSTATUS_END
+
+        These return values are available as e.g.:
+
+        flirpy.camera.boson.FLR_BOSON_NO_FFC_PERFORMED
+
+        Returns
+        -------
+
+            int
+                FFC state
+
+        """
+        return self.engine.get_ffc_state()
+
+    def set_ffc_temperature_threshold(self, temp_change):
+        """
+        Set the change in camera temperature (Celsius) required before an FFC is requested.
+
+        Parameters
+        ----------
+            float
+                temperature change in Celsius
+        """
+        self.engine.set_ffc_temperature_threshold(temp_change)
+        return
+
+    def get_ffc_temperature_threshold(self):
+        """
+        Get the change in camera temperature before an FFC is requested
+
+        Returns
+        -------
+            float
+                temperature change in Celsius
+        """
+        return self.engine.get_ffc_temperature_threshold()
+
+    def set_ffc_frame_threshold(self, seconds):
+        """
+        Set the number of seconds before an FFC is requested.
+
+        Parameters
+        ----------
+            int
+                seconds between FFC requests
+        """
+        self.engine.set_ffc_frame_threshold(seconds)
+        return
+
+    def get_ffc_frame_threshold(self):
+        """
+        Get the number of frames before an FFC is requested.
+        """
+        return self.engine.get_ffc_frame_threshold()
+
+    def set_num_ffc_frame(self, num_frame):
+        """
+        Set the number of frames for the camera to integrate during FFC. 8 is factory default. With averager on, the
+        time to perform ffc is doubled.
+        :param num_frame: int 2, 4, 8, 16.
+        :return:
+        """
+        self.engine.set_num_ffc_frame(num_frame)
+
+        return
+
+    def get_num_ffc_frame(self):
+        """
+        Get the number of frames the camera integrates during FFC.
+        :return: int: 2,4,6, or 8
+        """
+        return self.engine.get_num_ffc_frame()
+
+    def get_ffc_desired(self):
+        """
+        Get the state of the FFC desired flag. 0 = not desired. 1 = desired.
+        :return: int 0 or 1
+        """
+        return self.engine.get_ffc_desired()
+
+    def get_nuc_desired(self):
+        """
+        Get the state of the NUC table switch desired flag. 0 = not desired. 1 = desired.
+        :return: int 0 or 1
+        """
+        return self.engine.get_nuc_desired()
+
+    def do_nuc_table_switch(self):
+        """
+        This will perform a table NUC table switch, if the nuc table switch desired flag is set.
+        :return:
+        """
+        self.engine.do_nuc_table_switch()
+
+        return
+
+    def get_fpa_temperature(self):
+        """
+        Get the current focal plane array (FPA) temperature in Celsius.
+
+        Returns
+        -------
+            float
+                FPA temperature in Celsius
+        """
+        return self.engine.get_fpa_temperature()
+
+    @property
+    def exposure_time(self):
+        return 0.05
+
+    @property
+    def gain(self):
+        return 1
+
+    @property
+    def dev_num(self):
+        return self.engine.dev_num[self.serial_no]
+
+    def get_averager_state(self):
+        return self.engine.get_averager()
+
+    def set_averager_state(self, value):
+        self.engine.set_averager(value)
+        return
+
+    def set_pwr_on_defaults_factory(self):
+        """
+        This will restore power on defaults to factory settings. The camera should be disconnected and reconnected to
+        make sure all changes take effect. A reboot does not appear to be enough.
+        :return:
+        """
+        self.engine.set_pwr_on_defaults_factory()
+        return
+
+    def set_pwr_on_defaults(self):
+        """
+        Apply the current settings as power on defaults.
+        :return:
+        """
+        self.engine.set_pwr_on_defaults()
+        return
+
+    def reboot(self):
+        """
+        Reboot the camera
+        """
+        self.engine.reboot()
+
+        return
+
+    def release(self):
+        """
+        This will release the camera hardware.
+        :return:
+        """
+        self.engine.release()
+
+        return
+
+    def close(self):
+        """
+        Close the port.
+        """
+        self.engine.close()
+
+        return

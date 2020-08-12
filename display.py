@@ -2,16 +2,13 @@
 
 if __name__ == "__main__":
     import sys
-    import usb
     import visa
     import time
     import numpy as np
     import pyqtgraph as pg
     from pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets,QtSvg
-    from camera import MightexCamera
-    from camera import FakeCamera
-    from camera import MightexEngine
+    from camera import MightexCamera, MightexEngine, DeviceNotFoundError, FakeCamera
     from motors import MDT693A_Motor, FakeMotor
     import tkinter as tk
     from tkinter import filedialog
@@ -26,7 +23,7 @@ if __name__ == "__main__":
     pg.setConfigOption('background', 'w')
     pg.setConfigOption('foreground', 'k')
 
-    UPDATE_TIME = 2000  # ms
+    UPDATE_TIME = 500  # ms
 
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
@@ -59,6 +56,7 @@ if __name__ == "__main__":
         cam_list.append(c)
         cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
     """
+    
     # Set models and default values for combo boxes
     ui.cb_cam1.setModel(cam_model)
     ui.cb_cam2.setModel(cam_model)
@@ -194,23 +192,23 @@ if __name__ == "__main__":
     Cam2_UpArrow.setVisible(False)
 
     # Initialize global variables for tracking pointing
-    cam1_x = np.ndarray(0)
-    cam1_y = np.ndarray(0)
-    cam2_x = np.ndarray(0)
-    cam2_y = np.ndarray(0)
-    cam1_x_time = np.ndarray(0)
-    cam1_y_time = np.ndarray(0)
-    cam2_x_time = np.ndarray(0)
-    cam2_y_time = np.ndarray(0)
+    cam1_x = np.zeros(1)
+    cam1_y = np.zeros(1)
+    cam2_x = np.zeros(1)
+    cam2_y = np.zeros(1)
+    cam1_x_time = np.zeros(1)
+    cam1_y_time = np.zeros(1)
+    cam2_x_time = np.zeros(1)
+    cam2_y_time = np.zeros(1)
     cam1_x_plot = ui.gv_cam_xy.addPlot(row=0, col=0, labels={'left': 'Cam 1 X'}).plot()
     cam1_y_plot = ui.gv_cam_xy.addPlot(row=1, col=0, labels={'left': 'Cam 1 Y'}).plot()
     cam2_x_plot = ui.gv_cam_xy.addPlot(row=2, col=0, labels={'left': 'Cam 2 X'}).plot()
     cam2_y_plot = ui.gv_cam_xy.addPlot(row=3, col=0, labels={'left': 'Cam 2 Y'}).plot()
     # Initialize global variables for piezo motor voltages
-    motor1_x = np.ndarray(0)
-    motor1_y = np.ndarray(0)
-    motor2_x = np.ndarray(0)
-    motor2_y = np.ndarray(0)
+    motor1_x = np.zeros(1)
+    motor1_y = np.zeros(1)
+    motor2_x = np.zeros(1)
+    motor2_y = np.zeros(1)
     motor1_x_plot = ui.gv_piezo.addPlot(row=0, col=0).plot()
     motor1_y_plot = ui.gv_piezo.addPlot(row=1, col=0).plot()
     motor2_x_plot = ui.gv_piezo.addPlot(row=2, col=0).plot()
@@ -326,7 +324,7 @@ if __name__ == "__main__":
         try:
             w = img/np.sum(img)
         except RuntimeWarning:
-            pass
+            return 0, 0
         com_x = np.sum(X*w)
         com_y = np.sum(Y*w)
         return com_x, com_y
@@ -374,9 +372,9 @@ if __name__ == "__main__":
         global cam1_x_line, cam2_x_line, cam1_y_line, cam2_y_line
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         # Get a com that is an average over the number of avg_com
-        if avg_com<2:
+        if avg_com < 2:
             # Get an image that is an average over the number of AvgFrames
-            if avg_frames<2:
+            if avg_frames < 2:
                 try:
                     cam_list[cam_index].update_frame()
                     img = cam_list[cam_index].get_frame()
@@ -400,7 +398,7 @@ if __name__ == "__main__":
                         ROICam2_Unlock.setVisible(True)
                         temp_img = np.array([1])
                         img = np.array([1])
-                    if i==0:
+                    if i == 0:
                         img = temp_img
                     else:
                         img += temp_img
