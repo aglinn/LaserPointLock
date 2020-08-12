@@ -254,11 +254,9 @@ if __name__ == "__main__":
     cam2_threshold = 0
     cam1_reset = True
     cam2_reset = True
-    num_out_of_voltage_range = 0
 
     # Initialize global variables for Locking
     LockTimeStart = 0
-    TimeLastUnlock = 0
 
     saturated_cam1 = False
     under_saturated_cam1 = False
@@ -908,6 +906,7 @@ if __name__ == "__main__":
         global LockTimeStart, TimeLastUnlock
         global num_out_of_voltage_range #Track the number of times the voltage update goes out of range during lock
         global state
+        global first_unlock
         global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
         global saturated_cam1, under_saturated_cam1, saturated_cam2, under_saturated_cam2
         global cam1_reset, cam2_reset
@@ -997,15 +996,14 @@ if __name__ == "__main__":
                 motor2_x_plot.setData(motor2_x)
                 motor2_y_plot.setData(motor2_y)
 
-                first_unlock = False #First time since initial lock that piezos went out of bounds?
                 # Track time since last unlock and the number of times unlocked in less than 1 minute since previous
                 # lock.
-                if TimeLastUnlock == 0:
-                    first_unlock = True
-                    TimeLastUnlock = time.monotonic()
                 if time.monotonic()-TimeLastUnlock < 60.0 or first_unlock:
+                    first_unlock = False
                     num_out_of_voltage_range += 1
+                    TimeLastUnlock = time.monotonic()
                 else:
+                    TimeLastUnlock = time.monotonic()
                     num_out_of_voltage_range = 1
                 if num_out_of_voltage_range > 10:
                     num_out_of_voltage_range = 0
@@ -1298,7 +1296,8 @@ if __name__ == "__main__":
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         global Cam1_LeftArrow, Cam1_RightArrow, Cam1_DownArrow, Cam1_UpArrow
         global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
-        global LockTimeStart
+        global LockTimeStart, TimeLastUnlock, num_out_of_voltage_range
+        global first_unlock
         Cam1_LeftArrow.setVisible(False)
         Cam1_RightArrow.setVisible(False)
         Cam1_DownArrow.setVisible(False)
@@ -1310,6 +1309,9 @@ if __name__ == "__main__":
         if (ui.btn_lock.isChecked()):
             if cam1_index >= 0 and cam2_index >= 0:
                 state = STATE_LOCKED
+                TimeLastUnlock = 0
+                num_out_of_voltage_range = 0
+                first_unlock = True  # First time since initial lock that piezos went out of bounds?
                 LockTimeStart = time.monotonic()
                 ROICam1_Unlock.setVisible(False)
                 ROICam2_Unlock.setVisible(False)
