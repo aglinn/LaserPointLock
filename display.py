@@ -19,6 +19,11 @@
 # TODO: 2 Log the information on Grafana.
 # TODO: 3 Move all print statements to the GUI.
 # TODO: 2 Could we cash the current program settings to load automatically on next open?
+# TODO: 2 Add GUI ability to set the averager state of the BOSON camera, and power on defaults.
+# TODO: 3 It would be nice to allow the user to switch between IR and visibile system, which would require disconnecting
+#  devices and reinitializing the cam_list.
+# TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
+#  parallel. 
 
 if __name__ == "__main__":
     import sys
