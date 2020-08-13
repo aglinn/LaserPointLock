@@ -373,7 +373,7 @@ class BosonCamera(Camera):
         self.frame = None
         self.port = port
         self.engine = Boson(port=self.port)
-        self.serial_no = self.engine.get_camera_serial()
+        self.serial_no = str(self.engine.get_camera_serial())
         self.set_ffc_manual()
 
     def get_frame(self):

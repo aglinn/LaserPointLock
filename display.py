@@ -17,6 +17,8 @@
 #  likely give us quite a bit of speed up on the program update time, and it is way simpler than multithreading.
 # TODO: 3 Improve communication with the piezo motors.
 # TODO: 2 Log the information on Grafana.
+# TODO: 3 Move all print statements to the GUI.
+# TODO: 2 Could we cash the current program settings to load automatically on next open?
 
 if __name__ == "__main__":
     import sys
@@ -26,7 +28,7 @@ if __name__ == "__main__":
     import pyqtgraph as pg
     from pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets,QtSvg
-    from camera import MightexCamera, MightexEngine, DeviceNotFoundError, FakeCamera
+    from camera import MightexCamera, MightexEngine, DeviceNotFoundError, FakeCamera, BosonCamera
     from motors import MDT693A_Motor, FakeMotor
     import tkinter as tk
     from tkinter import filedialog
@@ -50,17 +52,6 @@ if __name__ == "__main__":
     cam_model = QtGui.QStandardItemModel()
     motor_model = QtGui.QStandardItemModel()
     error_dialog = QtWidgets.QErrorMessage()
-
-    # Find the cameras
-    mightex_engine = MightexEngine()
-    cam_list = []
-    if len(mightex_engine.serial_no) == 0:
-        print('Could not find any Mightex cameras!')
-    else:
-        for i, serial_no in enumerate(mightex_engine.serial_no):
-            c = MightexCamera(mightex_engine, serial_no)
-            cam_list.append(c)
-            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
 
     # Find motors using VISA
     resourceManager = visa.ResourceManager()
@@ -86,6 +77,66 @@ if __name__ == "__main__":
     else:
         ui.cb_motors_1.setCurrentIndex(-1)
         ui.cb_motors_1.setCurrentIndex(-1)
+
+    # Set the camera settings buttons invisible, until a Point Lock System is chosen. Then, make visible the correct
+    # set of gui buttons.
+    def toggle_mightex_cam_settings_ui_vis(Logic):
+        """
+        Set visibility state of Mightex camera settings UI to true or false. i.e. visibility of settings
+        relavent to only Mightex cameras.
+        input: True/False
+        """
+        ui.label.setVisible(Logic)
+        ui.label_2.setVisible(Logic)
+        ui.le_cam1_exp_time.setVisible(Logic)
+        ui.le_cam1_gain.setVisible(Logic)
+        ui.cb_cam1_decimate.setVisible(Logic)
+        ui.label_5.setVisible(Logic)
+        ui.label_6.setVisible(Logic)
+        ui.le_cam2_exp_time.setVisible(Logic)
+        ui.le_cam2_gain.setVisible(Logic)
+        ui.cb_cam2_decimate.setVisible(Logic)
+
+    def toggle_general_cam_settings_ui_vis(Logic):
+        """
+        Set visibility state of generally useful camera settings UI to true or false. i.e. visibility of settings
+        relavent to both Mightex and Boson cameras.
+        input: True/False
+        """
+        ui.btn_cam1_update.setVisible(Logic)
+        ui.btn_cam2_update.setVisible(Logic)
+        ui.label_7.setVisible(Logic)
+        ui.label_8.setVisible(Logic)
+        ui.le_cam1_threshold.setVisible(Logic)
+        ui.le_cam2_threshold.setVisible(Logic)
+        ui.label_4.setVisible(Logic)
+        ui.label_3.setVisible(Logic)
+        ui.label_7.setVisible(Logic)
+        ui.cb_cam1.setVisible(Logic)
+        ui.cb_cam2.setVisible(Logic)
+        ui.label_14.setVisible(Logic)
+        ui.label_15.setVisible(Logic)
+        ui.Cam1_AvgFrames.setVisible(Logic)
+        ui.Cam2_AvgFrames.setVisible(Logic)
+        ui.label_9.setVisible(Logic)
+        ui.label_10.setVisible(Logic)
+        ui.le_cam1_max.setVisible(Logic)
+        ui.le_cam2_max.setVisible(Logic)
+
+    def toggle_BOSON_cam_settings_ui_vis(Logic):
+        """
+        Set visibility state of generally useful camera settings UI to true or false. i.e. visibility of settings
+        relavent to both Mightex and Boson cameras.
+        input: True/False
+        """
+        ui.label_16.setVisible(Logic)
+        ui.label_17.setVisible(Logic)
+        ui.label_18.setVisible(Logic)
+        ui.label_19.setVisible(Logic)
+
+    toggle_mightex_cam_settings_ui_vis(False)
+    toggle_general_cam_settings_ui_vis(False)
+    toggle_BOSON_cam_settings_ui_vis(False)
 
     # Load Most Recent Calibration Matrix:
     try:
@@ -365,6 +416,8 @@ if __name__ == "__main__":
     def update():
         global LockTimeStart
         global motor_list
+        global msg
+        global start_time
         start_time = time.time()
         msg = ''
         if state == STATE_MEASURE:
@@ -388,6 +441,8 @@ if __name__ == "__main__":
         global cam1_x, cam2_x, cam1_y, cam2_y
         global cam1_x_line, cam2_x_line, cam1_y_line, cam2_y_line
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        if int(ui.cb_SystemSelection.currentIndex()) == 2:
+            service_BOSON(cam_index)
         if cam_view == 0:
             avg_frames = int(ui.Cam1_AvgFrames.text())
         else:
@@ -473,7 +528,6 @@ if __name__ == "__main__":
             cam2_y_plot.setData(cam2_y)
         return img, com
 
-
     def take_img(cam_index, cam_view=0, threshold=0, resetView=False):
         """
         Given the camera at cam_index in the camera list
@@ -490,6 +544,8 @@ if __name__ == "__main__":
         assert cam_index >= 0
         assert cam_view == 0 or cam_view == 1
 
+        if int(ui.cb_SystemSelection.currentIndex()) == 2:
+            service_BOSON(cam_index)
         if cam_view == 0:
             avg_frames = int(ui.Cam1_AvgFrames.text())
         else:
@@ -580,7 +636,6 @@ if __name__ == "__main__":
         else:
             gv_camera.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
         return img, com_x, com_y, under_saturated, saturated
-
 
     def updateCalibrate():
         global state, calib_index, cam1_threshold, cam2_threshold
@@ -874,7 +929,7 @@ if __name__ == "__main__":
         global motor1_x, motor1_y, motor2_x, motor2_y
         global motor1_x_plot, motor1_y_plot, motor2_x_plot, motor2_y_plot
         global LockTimeStart, TimeLastUnlock
-        global num_out_of_voltage_range #Track the number of times the voltage update goes out of range during lock
+        global num_out_of_voltage_range  # Track the number of times the voltage update goes out of range during lock
         global state
         global first_unlock
         global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
@@ -1190,36 +1245,54 @@ if __name__ == "__main__":
     '''
 
     def update_cam1_settings():
-        global cam1_index, cam1_threshold, cam1_reset
-        cam1_index = int(ui.cb_cam1.currentIndex())
-        cam1_exp_time = float(ui.le_cam1_exp_time.text())
-        cam1_gain = float(ui.le_cam1_gain.text())
-        cam1_threshold = float(ui.le_cam1_threshold.text())
-        cam1_decimate = ui.cb_cam1_decimate.isChecked()
-        cam_list[cam1_index].set_gain(cam1_gain)
-        cam_list[cam1_index].set_exposure_time(cam1_exp_time)
-        cam_list[cam1_index].update_frame()
-        cam_list[cam1_index].set_decimation(cam1_decimate)
-        ui.le_cam1_exp_time.setText('%.2f' % (cam_list[cam1_index].exposure_time))
-        ui.le_cam1_gain.setText('%.2f' % (cam_list[cam1_index].gain/8))
-        cam1_reset = True
-        resetHist(ui.gv_camera1)
+        global cam1_index, cam1_threshold, cam1_reset, cam_list
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            cam1_index = int(ui.cb_cam1.currentIndex())
+            cam1_exp_time = float(ui.le_cam1_exp_time.text())
+            cam1_gain = float(ui.le_cam1_gain.text())
+            cam1_threshold = float(ui.le_cam1_threshold.text())
+            cam1_decimate = ui.cb_cam1_decimate.isChecked()
+            cam_list[cam1_index].set_gain(cam1_gain)
+            cam_list[cam1_index].set_exposure_time(cam1_exp_time)
+            cam_list[cam1_index].update_frame()
+            cam_list[cam1_index].set_decimation(cam1_decimate)
+            ui.le_cam1_exp_time.setText('%.2f' % (cam_list[cam1_index].exposure_time))
+            ui.le_cam1_gain.setText('%.2f' % (cam_list[cam1_index].gain/8))
+            cam1_reset = True
+            resetHist(ui.gv_camera1)
+        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            cam1_index = int(ui.cb_cam1.currentIndex())
+            cam1_threshold = float(ui.le_cam1_threshold.text())
+            cam_list[cam1_index].update_frame()
+            cam1_reset = True
+            resetHist(ui.gv_camera1, max=65536)
+        else:
+            print("Choose a Point Lock system first!")
     
     def update_cam2_settings():
-        global cam2_index, cam2_threshold, cam2_reset
-        cam2_index = int(ui.cb_cam2.currentIndex())
-        cam2_exp_time = float(ui.le_cam2_exp_time.text())
-        cam2_gain = float(ui.le_cam2_gain.text())
-        cam2_threshold = float(ui.le_cam2_threshold.text())
-        cam2_decimate = ui.cb_cam2_decimate.isChecked()
-        cam_list[cam2_index].set_gain(cam2_gain)
-        cam_list[cam2_index].set_exposure_time(cam2_exp_time)
-        cam_list[cam1_index].update_frame()
-        cam_list[cam2_index].set_decimation(cam2_decimate)
-        ui.le_cam2_exp_time.setText('%.2f' % (cam_list[cam2_index].exposure_time))
-        ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
-        cam2_reset = True
-        resetHist(ui.gv_camera2)
+        global cam2_index, cam2_threshold, cam2_reset, cam_list
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            cam2_index = int(ui.cb_cam2.currentIndex())
+            cam2_exp_time = float(ui.le_cam2_exp_time.text())
+            cam2_gain = float(ui.le_cam2_gain.text())
+            cam2_threshold = float(ui.le_cam2_threshold.text())
+            cam2_decimate = ui.cb_cam2_decimate.isChecked()
+            cam_list[cam2_index].set_gain(cam2_gain)
+            cam_list[cam2_index].set_exposure_time(cam2_exp_time)
+            cam_list[cam1_index].update_frame()
+            cam_list[cam2_index].set_decimation(cam2_decimate)
+            ui.le_cam2_exp_time.setText('%.2f' % (cam_list[cam2_index].exposure_time))
+            ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
+            cam2_reset = True
+            resetHist(ui.gv_camera2)
+        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            cam2_index = int(ui.cb_cam2.currentIndex())
+            cam2_threshold = float(ui.le_cam2_threshold.text())
+            cam_list[cam1_index].update_frame()
+            cam2_reset = True
+            resetHist(ui.gv_camera2,max=65536)
+        else:
+            print("Choose a Point Lock system first!")
     
     def update_motors():
         global motor1_index, motor2_index
@@ -1349,7 +1422,8 @@ if __name__ == "__main__":
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         global Cam1_LeftArrow, Cam1_RightArrow, Cam1_DownArrow, Cam1_UpArrow
         global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
-        global state
+        global state, start_time
+        global msg
         if state == STATE_ALIGN:
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
@@ -1384,6 +1458,90 @@ if __name__ == "__main__":
                 time.sleep(5)
                 raise AssertionError("Make Piezo voltages 75.0 before aligning.")
 
+    def find_cameras():
+        global cam_list
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            # Find the Mightex cameras
+            mightex_engine = MightexEngine()
+            cam_list = []
+            if len(mightex_engine.serial_no) == 0:
+                raise DeviceNotFoundError('Could not find any Mightex cameras!')
+            else:
+                for i, serial_no in enumerate(mightex_engine.serial_no):
+                    c = MightexCamera(mightex_engine, serial_no)
+                    cam_list.append(c)
+                    cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            # Make appropriate Camera Settings available in GUI:
+            toggle_BOSON_cam_settings_ui_vis(False)
+            toggle_mightex_cam_settings_ui_vis(True)
+            toggle_general_cam_settings_ui_vis(True)
+        elif int(ui.cb_SystemSelection.currentIndex())==2:
+            # Find the Boson Cameras
+            #TODO: Figure out how to correctly connect two BOSONs.
+            cam_list = []
+            c = BosonCamera()
+            c.do_ffc()
+            cam_list.append(c)
+            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            toggle_mightex_cam_settings_ui_vis(False)
+            toggle_general_cam_settings_ui_vis(True)
+            toggle_BOSON_cam_settings_ui_vis(True)
+        else:
+            print("Choose a system!")
+
+    def service_BOSON(cam_index):
+        global cam_list, cam1_index, cam2_index
+
+        if not (cam_index == cam1_index or cam_index==cam2_index):
+            # If you are calling the function and not passing a cam_index that corresponds to 1 of the cameras, then
+            # return without executing the function.
+            return
+        #Check if ffc is desired. If so, perform ffc
+        if cam_list[cam_index].get_ffc_desired():
+            cam_list[cam_index].do_ffc()
+            num_ffc_performed=1
+            # Check to see if the FFC is complete. If not, wait until it is or initiate another FFC if requested.
+            if cam_list[cam_index].get_ffc_state()!=3:
+                switch = True
+                while switch:
+                    ffc_state = cam_list[cam_index].get_ffc_state()
+                    # 2 = FLR_BOSON_FFC_IN_PROGRESS
+                    # 3 = FLR_BOSON_FFC_COMPLETE
+                    if ffc_state == 3:
+                        if cam_list[cam_index].get_ffc_desired():
+                            cam_list[cam_index].do_ffc()
+                            num_ffc_performed+=1
+                            if num_ffc_performed>3:
+                                print("The camera just did 3 successive ffcs.")
+                        else:
+                            switch = False
+                    elif ffc_state == 2:
+                        pass
+                    else:
+                        print("The ffc state should be in progress or complete, but it is in neither. Is FFC Mode Manual?")
+
+        #Check if NUC table switch is desired. If so, switch NUC table.
+        if cam_list[cam_index].get_nuc_desired():
+            cam_list[cam_index].do_nuc_table_switch
+
+        fpa_temp = cam_list[cam_index].get_fpa_temperature()
+        if fpa_temp-68 > -5: # permanent damage to camera at as low as 68 C. Maybe 63 C is too conservative?
+            while True:
+                print("SHUTTER THE BEAM IMMEDIATELY!!!")
+                Cam1_LeftArrow.setVisible(True)
+                Cam1_RightArrow.setVisible(True)
+                Cam1_DownArrow.setVisible(True)
+                Cam1_UpArrow.setVisible(True)
+                Cam2_LeftArrow.setVisible(True)
+                Cam2_RightArrow.setVisible(True)
+                Cam2_DownArrow.setVisible(True)
+                Cam2_UpArrow.setVisible(True)
+        if cam_index == cam1_index:
+            ui.label_17.setText(str(fpa_temp))
+        elif cam_index == cam2_index:
+            ui.label_19.setText(str(fpa_temp))
+
+
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
     ui.btn_motor_connect.clicked.connect(update_motors)
@@ -1393,6 +1551,7 @@ if __name__ == "__main__":
     ui.btn_lock.clicked.connect(lock_pointing)
     ui.btn_Home.clicked.connect(define_home)
     ui.btn_Align.clicked.connect(begin_align)
+    ui.cb_SystemSelection.currentIndexChanged.connect(find_cameras)
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
