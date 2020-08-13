@@ -1117,10 +1117,10 @@ if __name__ == "__main__":
                 ROICam1_Unlock.setVisible(True)
                 ROICam2_Unlock.setVisible(True)
             else:
-                ROICam1_Unlock.setVisible(False)
-                ROICam2_Unlock.setVisible(False)
-                ROICam1_Lock.setVisible(True)
-                ROICam2_Lock.setVisible(True)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
 
             # The goal here is to provide the user feedback about which direction to steer the beam.
             # x and y are switched relative to your expectation of L/R up/down,
