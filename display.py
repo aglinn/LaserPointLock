@@ -37,6 +37,7 @@ if __name__ == "__main__":
     from motors import MDT693A_Motor, FakeMotor
     import tkinter as tk
     from tkinter import filedialog
+    from serial.tools import list_ports
 
     STATE_MEASURE = 0
     STATE_CALIBRATE = 1
@@ -1389,9 +1390,14 @@ if __name__ == "__main__":
             print('Set cam 2 x', set_cam2_x)
             print('Set cam 2 y', set_cam2_y)
             HomePosition = np.array([set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y])
-            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
-            filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
-            np.savetxt(filename, HomePosition, fmt='%d')
+            if int(ui.cb_SystemSelection.currentIndex()) == 1:
+                np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
+                np.savetxt(filename, HomePosition, fmt='%d')
+            elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+                np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%d')
+                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
+                np.savetxt(filename, HomePosition, fmt='%d')
             try:
                 ROICam1_Unlock.setVisible(False)
                 ROICam2_Unlock.setVisible(False)
@@ -1407,8 +1413,12 @@ if __name__ == "__main__":
         root = tk.Tk()
         root.withdraw()
         file_path = filedialog.askopenfilename()
-        HomePosition = np.loadtxt(file_path, dtype=float)
-        np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%d')
         set_cam1_x = HomePosition[0]
         set_cam1_y = HomePosition[1]
         set_cam2_x = HomePosition[2]
@@ -1483,11 +1493,26 @@ if __name__ == "__main__":
         elif int(ui.cb_SystemSelection.currentIndex())==2:
             # Find the Boson Cameras
             #TODO: Figure out how to correctly connect two BOSONs.
+            device_list = list_ports.comports()
+            # Boson VID and PID:
+            VID = 0x09CB
+            PID = 0x4007
+            port_list = []
+            # Find all ports associated with Bosons.
+            for device in device_list:
+                if device.vid == VID and device.pid == PID:
+                    port = device.device
+                    port_list.append(port)
             cam_list = []
-            c = BosonCamera()
-            c.do_ffc()
-            cam_list.append(c)
-            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            for boson_port in port_list:
+                c = BosonCamera(port=boson_port)
+                print(boson_port)
+                ffc_state = 0
+                c.do_ffc()
+                while ffc_state == 0:
+                    ffc_state = c.get_ffc_state()
+                cam_list.append(c)
+                cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
             toggle_mightex_cam_settings_ui_vis(False)
             toggle_general_cam_settings_ui_vis(True)
             toggle_BOSON_cam_settings_ui_vis(True)
@@ -1504,12 +1529,13 @@ if __name__ == "__main__":
         #Check if ffc is desired. If so, perform ffc
         if cam_list[cam_index].get_ffc_desired():
             cam_list[cam_index].do_ffc()
-            num_ffc_performed=1
+            num_ffc_performed = 1
             # Check to see if the FFC is complete. If not, wait until it is or initiate another FFC if requested.
             if cam_list[cam_index].get_ffc_state()!=3:
                 switch = True
                 while switch:
                     ffc_state = cam_list[cam_index].get_ffc_state()
+                    print("FFC state:", ffc_state)
                     # 2 = FLR_BOSON_FFC_IN_PROGRESS
                     # 3 = FLR_BOSON_FFC_COMPLETE
                     if ffc_state == 3:
@@ -1522,8 +1548,11 @@ if __name__ == "__main__":
                             switch = False
                     elif ffc_state == 2:
                         pass
+                    elif ffc_state == 0:
+                        cam_list[cam_index].do_ffc()
                     else:
                         print("The ffc state should be in progress or complete, but it is in neither. Is FFC Mode Manual?")
+                        print(ffc_state)
 
         #Check if NUC table switch is desired. If so, switch NUC table.
         if cam_list[cam_index].get_nuc_desired():
