@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1067</width>
+    <width>1072</width>
     <height>780</height>
    </rect>
   </property>
@@ -43,9 +43,9 @@
       <property name="geometry">
        <rect>
         <x>740</x>
-        <y>20</y>
+        <y>40</y>
         <width>221</width>
-        <height>173</height>
+        <height>211</height>
        </rect>
       </property>
       <layout class="QFormLayout" name="formLayout">
@@ -63,13 +63,6 @@
          </property>
         </widget>
        </item>
-       <item row="1" column="1">
-        <widget class="QLineEdit" name="le_cam1_gain">
-         <property name="text">
-          <string>1</string>
-         </property>
-        </widget>
-       </item>
        <item row="1" column="0">
         <widget class="QLabel" name="label_2">
          <property name="text">
@@ -77,21 +70,42 @@
          </property>
         </widget>
        </item>
-       <item row="5" column="1">
-        <widget class="QPushButton" name="btn_cam1_update">
+       <item row="1" column="1">
+        <widget class="QLineEdit" name="le_cam1_gain">
          <property name="text">
-          <string>Update</string>
+          <string>1</string>
          </property>
         </widget>
        </item>
-       <item row="2" column="1">
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_3">
+         <property name="text">
+          <string>Select Camera</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
         <widget class="QComboBox" name="cb_cam1">
          <property name="editable">
           <bool>false</bool>
          </property>
         </widget>
        </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_7">
+         <property name="text">
+          <string>Threshold</string>
+         </property>
+        </widget>
+       </item>
        <item row="4" column="1">
+        <widget class="QLineEdit" name="le_cam1_threshold">
+         <property name="text">
+          <string>0</string>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="1">
         <widget class="QCheckBox" name="cb_cam1_decimate">
          <property name="text">
           <string>Decimation</string>
@@ -101,24 +115,38 @@
          </property>
         </widget>
        </item>
-       <item row="3" column="1">
-        <widget class="QLineEdit" name="le_cam1_threshold">
+       <item row="7" column="1">
+        <widget class="QPushButton" name="btn_cam1_update">
          <property name="text">
-          <string>0</string>
+          <string>Update</string>
          </property>
         </widget>
        </item>
        <item row="2" column="0">
-        <widget class="QLabel" name="label_3">
+        <widget class="QLabel" name="label_16">
          <property name="text">
-          <string>Select Camera</string>
+          <string>fpa temp [C] 68=Dmg</string>
          </property>
         </widget>
        </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="label_7">
+       <item row="2" column="1">
+        <widget class="QLabel" name="label_17">
          <property name="text">
-          <string>Threshold</string>
+          <string>fpa temp [C]</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="1">
+        <widget class="QLineEdit" name="Cam1_AvgFrames">
+         <property name="text">
+          <string>1</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="label_14">
+         <property name="text">
+          <string># of Frames 2 Avg</string>
          </property>
         </widget>
        </item>
@@ -140,7 +168,7 @@
         <x>740</x>
         <y>320</y>
         <width>221</width>
-        <height>173</height>
+        <height>197</height>
        </rect>
       </property>
       <layout class="QFormLayout" name="formLayout_2">
@@ -158,13 +186,6 @@
          </property>
         </widget>
        </item>
-       <item row="1" column="1">
-        <widget class="QLineEdit" name="le_cam2_gain">
-         <property name="text">
-          <string>1</string>
-         </property>
-        </widget>
-       </item>
        <item row="1" column="0">
         <widget class="QLabel" name="label_6">
          <property name="text">
@@ -172,21 +193,42 @@
          </property>
         </widget>
        </item>
-       <item row="2" column="1">
-        <widget class="QComboBox" name="cb_cam2">
-         <property name="editable">
-          <bool>false</bool>
+       <item row="1" column="1">
+        <widget class="QLineEdit" name="le_cam2_gain">
+         <property name="text">
+          <string>1</string>
          </property>
         </widget>
        </item>
-       <item row="2" column="0">
+       <item row="3" column="0">
         <widget class="QLabel" name="label_4">
          <property name="text">
           <string>Select Camera:</string>
          </property>
         </widget>
        </item>
+       <item row="3" column="1">
+        <widget class="QComboBox" name="cb_cam2">
+         <property name="editable">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_8">
+         <property name="text">
+          <string>Threshold</string>
+         </property>
+        </widget>
+       </item>
        <item row="4" column="1">
+        <widget class="QLineEdit" name="le_cam2_threshold">
+         <property name="text">
+          <string>0</string>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="1">
         <widget class="QCheckBox" name="cb_cam2_decimate">
          <property name="text">
           <string>Decimation</string>
@@ -196,24 +238,38 @@
          </property>
         </widget>
        </item>
-       <item row="5" column="1">
+       <item row="7" column="1">
         <widget class="QPushButton" name="btn_cam2_update">
          <property name="text">
           <string>Update</string>
          </property>
         </widget>
        </item>
-       <item row="3" column="1">
-        <widget class="QLineEdit" name="le_cam2_threshold">
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_18">
          <property name="text">
-          <string>0</string>
+          <string>fpa temp [C] 68=Dmg</string>
          </property>
         </widget>
        </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="label_8">
+       <item row="2" column="1">
+        <widget class="QLabel" name="label_19">
          <property name="text">
-          <string>Threshold</string>
+          <string>fpa temp [C]</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="1">
+        <widget class="QLineEdit" name="Cam2_AvgFrames">
+         <property name="text">
+          <string>1</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="label_15">
+         <property name="text">
+          <string># of Frames 2 Avg</string>
          </property>
         </widget>
        </item>
@@ -262,7 +318,7 @@
       <property name="geometry">
        <rect>
         <x>790</x>
-        <y>240</y>
+        <y>260</y>
         <width>131</width>
         <height>24</height>
        </rect>
@@ -287,57 +343,30 @@
        </item>
       </layout>
      </widget>
-     <widget class="QLabel" name="label_14">
+     <widget class="QComboBox" name="cb_SystemSelection">
       <property name="geometry">
        <rect>
-        <x>740</x>
-        <y>200</y>
-        <width>101</width>
+        <x>780</x>
+        <y>0</y>
+        <width>141</width>
         <height>21</height>
        </rect>
       </property>
-      <property name="text">
-       <string># of Frames 2 Avg</string>
-      </property>
-     </widget>
-     <widget class="QLineEdit" name="Cam1_AvgFrames">
-      <property name="geometry">
-       <rect>
-        <x>840</x>
-        <y>200</y>
-        <width>121</width>
-        <height>21</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>1</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="label_15">
-      <property name="geometry">
-       <rect>
-        <x>740</x>
-        <y>500</y>
-        <width>101</width>
-        <height>21</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string># of Frames 2 Avg</string>
-      </property>
-     </widget>
-     <widget class="QLineEdit" name="Cam2_AvgFrames">
-      <property name="geometry">
-       <rect>
-        <x>840</x>
-        <y>500</y>
-        <width>121</width>
-        <height>21</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>1</string>
-      </property>
+      <item>
+       <property name="text">
+        <string>Select Point Lock System</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Visible Point Lock</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>IR Point Lock</string>
+       </property>
+      </item>
      </widget>
     </widget>
     <widget class="QWidget" name="tab_2">
@@ -509,13 +538,41 @@
      <string>Align</string>
     </property>
    </widget>
+   <widget class="QScrollArea" name="scrollArea">
+    <property name="geometry">
+     <rect>
+      <x>9</x>
+      <y>9</y>
+      <width>1021</width>
+      <height>721</height>
+     </rect>
+    </property>
+    <property name="widgetResizable">
+     <bool>true</bool>
+    </property>
+    <widget class="QWidget" name="scrollAreaWidgetContents">
+     <property name="geometry">
+      <rect>
+       <x>0</x>
+       <y>0</y>
+       <width>1019</width>
+       <height>719</height>
+      </rect>
+     </property>
+    </widget>
+   </widget>
+   <zorder>scrollArea</zorder>
+   <zorder>tabWidget</zorder>
+   <zorder>btn_lock</zorder>
+   <zorder>btn_Home</zorder>
+   <zorder>btn_Align</zorder>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1067</width>
+     <width>1072</width>
      <height>21</height>
     </rect>
    </property>

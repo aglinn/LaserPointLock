@@ -1,4 +1,29 @@
-# TODO: stop using global vars and put this code into a fucking window
+# TODO: 2 stop using global vars and put this code into a fucking window
+# TODO: 1 Add statistics logging.
+# TODO: 1 Let me FFT the camera COM coordinates to find out which frequencies are generating the noise.
+# TODO: 1 For the above two, it may be useful to have a new state or even a seperate program to run diagnostics in a super
+#  lean fashion; so we can be sensitive to the highest possible frequencies.
+# TODO: 1 Finish overhauling code to allow for operation with IR Cameras.
+# TODO: 3 Try using OpenCV with the Mightex cameras for faster operation
+# TODO: 2 Try to shutter the TOPAS if the BOSON FPAs get too hot. Can I even control the TOPAS shutter?
+# TODO: 2 Stupid bug fix: When I reduce the number of points to be plotted for COM and piezzo values, I need to make the
+#  number of points plotted actually smaller.
+# TODO: 2 try the other algorithm from the paper I found.
+# TODO: 2 Implement PID, instead of just D.
+# TODO: 2 Make the GUI compatible with multiple screen formats.
+# TODO: 3 multithread the program.
+# TODO: 2 Generally improve the coding.
+# TODO: 3 Make it possible to set a ROI on the camera; so that the cameras only read the pixels in the ROI. This will
+#  likely give us quite a bit of speed up on the program update time, and it is way simpler than multithreading.
+# TODO: 3 Improve communication with the piezo motors.
+# TODO: 2 Log the information on Grafana.
+# TODO: 3 Move all print statements to the GUI.
+# TODO: 2 Could we cash the current program settings to load automatically on next open?
+# TODO: 2 Add GUI ability to set the averager state of the BOSON camera, and power on defaults.
+# TODO: 3 It would be nice to allow the user to switch between IR and visibile system, which would require disconnecting
+#  devices and reinitializing the cam_list.
+# TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
+#  parallel. 
 
 if __name__ == "__main__":
     import sys
@@ -8,10 +33,11 @@ if __name__ == "__main__":
     import pyqtgraph as pg
     from pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets,QtSvg
-    from camera import MightexCamera, MightexEngine, DeviceNotFoundError, FakeCamera
+    from camera import MightexCamera, MightexEngine, DeviceNotFoundError, FakeCamera, BosonCamera
     from motors import MDT693A_Motor, FakeMotor
     import tkinter as tk
     from tkinter import filedialog
+    from serial.tools import list_ports
 
     STATE_MEASURE = 0
     STATE_CALIBRATE = 1
@@ -32,17 +58,6 @@ if __name__ == "__main__":
     cam_model = QtGui.QStandardItemModel()
     motor_model = QtGui.QStandardItemModel()
     error_dialog = QtWidgets.QErrorMessage()
-
-    # Find the cameras
-    mightex_engine = MightexEngine()
-    cam_list = []
-    if len(mightex_engine.serial_no) == 0:
-        print('Could not find any Mightex cameras!')
-    else:
-        for i, serial_no in enumerate(mightex_engine.serial_no):
-            c = MightexCamera(mightex_engine, serial_no)
-            cam_list.append(c)
-            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
 
     # Find motors using VISA
     resourceManager = visa.ResourceManager()
@@ -68,6 +83,66 @@ if __name__ == "__main__":
     else:
         ui.cb_motors_1.setCurrentIndex(-1)
         ui.cb_motors_1.setCurrentIndex(-1)
+
+    # Set the camera settings buttons invisible, until a Point Lock System is chosen. Then, make visible the correct
+    # set of gui buttons.
+    def toggle_mightex_cam_settings_ui_vis(Logic):
+        """
+        Set visibility state of Mightex camera settings UI to true or false. i.e. visibility of settings
+        relavent to only Mightex cameras.
+        input: True/False
+        """
+        ui.label.setVisible(Logic)
+        ui.label_2.setVisible(Logic)
+        ui.le_cam1_exp_time.setVisible(Logic)
+        ui.le_cam1_gain.setVisible(Logic)
+        ui.cb_cam1_decimate.setVisible(Logic)
+        ui.label_5.setVisible(Logic)
+        ui.label_6.setVisible(Logic)
+        ui.le_cam2_exp_time.setVisible(Logic)
+        ui.le_cam2_gain.setVisible(Logic)
+        ui.cb_cam2_decimate.setVisible(Logic)
+
+    def toggle_general_cam_settings_ui_vis(Logic):
+        """
+        Set visibility state of generally useful camera settings UI to true or false. i.e. visibility of settings
+        relavent to both Mightex and Boson cameras.
+        input: True/False
+        """
+        ui.btn_cam1_update.setVisible(Logic)
+        ui.btn_cam2_update.setVisible(Logic)
+        ui.label_7.setVisible(Logic)
+        ui.label_8.setVisible(Logic)
+        ui.le_cam1_threshold.setVisible(Logic)
+        ui.le_cam2_threshold.setVisible(Logic)
+        ui.label_4.setVisible(Logic)
+        ui.label_3.setVisible(Logic)
+        ui.label_7.setVisible(Logic)
+        ui.cb_cam1.setVisible(Logic)
+        ui.cb_cam2.setVisible(Logic)
+        ui.label_14.setVisible(Logic)
+        ui.label_15.setVisible(Logic)
+        ui.Cam1_AvgFrames.setVisible(Logic)
+        ui.Cam2_AvgFrames.setVisible(Logic)
+        ui.label_9.setVisible(Logic)
+        ui.label_10.setVisible(Logic)
+        ui.le_cam1_max.setVisible(Logic)
+        ui.le_cam2_max.setVisible(Logic)
+
+    def toggle_BOSON_cam_settings_ui_vis(Logic):
+        """
+        Set visibility state of generally useful camera settings UI to true or false. i.e. visibility of settings
+        relavent to both Mightex and Boson cameras.
+        input: True/False
+        """
+        ui.label_16.setVisible(Logic)
+        ui.label_17.setVisible(Logic)
+        ui.label_18.setVisible(Logic)
+        ui.label_19.setVisible(Logic)
+
+    toggle_mightex_cam_settings_ui_vis(False)
+    toggle_general_cam_settings_ui_vis(False)
+    toggle_BOSON_cam_settings_ui_vis(False)
 
     # Load Most Recent Calibration Matrix:
     try:
@@ -347,6 +422,8 @@ if __name__ == "__main__":
     def update():
         global LockTimeStart
         global motor_list
+        global msg
+        global start_time
         start_time = time.time()
         msg = ''
         if state == STATE_MEASURE:
@@ -365,96 +442,54 @@ if __name__ == "__main__":
             msg += 'ERROR'
         ui.statusbar.showMessage('{0}\tUpdate time: {1:.3f} (s)'.format(msg, time.time() - start_time))
 
-    # TODO: make it possible to set avg_frames and avg_com through the GUI.
-    def take_img_calibration(cam_index, cam_view=0, threshold=0, avg_frames=3, avg_com=1):
+    def take_img_calibration(cam_index, cam_view=0, threshold=0):
         global state
         global cam1_x, cam2_x, cam1_y, cam2_y
         global cam1_x_line, cam2_x_line, cam1_y_line, cam2_y_line
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
-        # Get a com that is an average over the number of avg_com
-        if avg_com < 2:
-            # Get an image that is an average over the number of AvgFrames
-            if avg_frames < 2:
+        if int(ui.cb_SystemSelection.currentIndex()) == 2:
+            service_BOSON(cam_index)
+        if cam_view == 0:
+            avg_frames = int(ui.Cam1_AvgFrames.text())
+        else:
+            avg_frames = int(ui.Cam2_AvgFrames.text())
+        # Get an image that is an average over the number of AvgFrames
+        if avg_frames < 2:
+            try:
+                cam_list[cam_index].update_frame()
+                img = cam_list[cam_index].get_frame()
+            except RuntimeError:
+                state = STATE_MEASURE
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
+                img = np.array([1])
+        else:
+            for i in range(avg_frames):
                 try:
                     cam_list[cam_index].update_frame()
-                    img = cam_list[cam_index].get_frame()
+                    temp_img = cam_list[cam_index].get_frame()
                 except RuntimeError:
                     state = STATE_MEASURE
                     ROICam1_Lock.setVisible(False)
                     ROICam2_Lock.setVisible(False)
                     ROICam1_Unlock.setVisible(True)
                     ROICam2_Unlock.setVisible(True)
+                    temp_img = np.array([1])
                     img = np.array([1])
-            else:
-                for i in range(avg_frames):
-                    try:
-                        cam_list[cam_index].update_frame()
-                        temp_img = cam_list[cam_index].get_frame()
-                    except RuntimeError:
-                        state = STATE_MEASURE
-                        ROICam1_Lock.setVisible(False)
-                        ROICam2_Lock.setVisible(False)
-                        ROICam1_Unlock.setVisible(True)
-                        ROICam2_Unlock.setVisible(True)
-                        temp_img = np.array([1])
-                        img = np.array([1])
-                    if i == 0:
-                        img = temp_img
-                    else:
-                        img += temp_img
-                img = img/avg_frames
-            if threshold > 0:
-                img[img < threshold*avg_frames] = 0
-            if cam_view == 0:
-                ui.le_cam1_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
-            else:
-                ui.le_cam2_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
-            com = calc_com(img)  # Grab COM
+                if i == 0:
+                    img = temp_img
+                else:
+                    img += temp_img
+            img = img/avg_frames
+        if threshold > 0:
+            img[img < threshold*avg_frames] = 0
+        if cam_view == 0:
+            ui.le_cam1_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
         else:
-            for j in range(avg_com):
-                # Get an image that is an average over the number of AvgFrames
-                if avg_frames < 2:
-                    try:
-                        cam_list[cam_index].update_frame()
-                        img = cam_list[cam_index].get_frame()
-                    except RuntimeError:
-                        state = STATE_MEASURE
-                        ROICam1_Lock.setVisible(False)
-                        ROICam2_Lock.setVisible(False)
-                        ROICam1_Unlock.setVisible(True)
-                        ROICam2_Unlock.setVisible(True)
-                        img = np.array([1])
-                else:
-                    for i in range(avg_frames):
-                        try:
-                            cam_list[cam_index].update_frame()
-                            temp_img = cam_list[cam_index].get_frame()
-                        except RuntimeError:
-                            state = STATE_MEASURE
-                            ROICam1_Lock.setVisible(False)
-                            ROICam2_Lock.setVisible(False)
-                            ROICam1_Unlock.setVisible(True)
-                            ROICam2_Unlock.setVisible(True)
-                            temp_img = np.array([1])
-                            img = np.array([1])
-                        if i == 0:
-                            img = temp_img
-                        else:
-                            img += temp_img
-                    img = img / avg_frames
-                if threshold > 0:
-                    img[img < threshold * avg_frames] = 0
-                if cam_view == 0:
-                    ui.le_cam1_max.setText(str(
-                        np.max(img / avg_frames)))  # Just updates the GUI to say what the max value of the camera is
-                else:
-                    ui.le_cam2_max.setText(str(
-                        np.max(img / avg_frames)))  # Just updates the GUI to say what the max value of the camera is
-                temp_com = calc_com(img)  # Grab COM
-                if j == 0:
-                    com = temp_com
-                else:
-                    com += temp_com
+            ui.le_cam2_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
+        com = calc_com(img)  # Grab COM
 
         # The below just plots the last 100 points of the COM for x and y
         if cam_view == 0:  # Decide whether cam 0 or 1, which camera?
@@ -499,7 +534,6 @@ if __name__ == "__main__":
             cam2_y_plot.setData(cam2_y)
         return img, com
 
-
     def take_img(cam_index, cam_view=0, threshold=0, resetView=False):
         """
         Given the camera at cam_index in the camera list
@@ -516,6 +550,8 @@ if __name__ == "__main__":
         assert cam_index >= 0
         assert cam_view == 0 or cam_view == 1
 
+        if int(ui.cb_SystemSelection.currentIndex()) == 2:
+            service_BOSON(cam_index)
         if cam_view == 0:
             avg_frames = int(ui.Cam1_AvgFrames.text())
         else:
@@ -578,8 +614,7 @@ if __name__ == "__main__":
             cam_y_plot = cam2_y_plot
             gv_camera = ui.gv_camera2
         # Calculate COM
-        # TODO: optimize COM calculation by slicing window near
-        # the max value
+        # TODO: 3 optimize COM calculation by slicing window near the max value
         com_x = com[0]
         com_y = com[1]
         cam_x_line.setPos(com_x)
@@ -607,7 +642,6 @@ if __name__ == "__main__":
         else:
             gv_camera.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
         return img, com_x, com_y, under_saturated, saturated
-
 
     def updateCalibrate():
         global state, calib_index, cam1_threshold, cam2_threshold
@@ -692,13 +726,13 @@ if __name__ == "__main__":
                         # update motor voltages
                         motor1_x = addToPlot(motor1_x, motor1_x_plot, voltage)
                         # get a frame from cam1 for x motor
-                        img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold, avg_frames = 2, avg_com = 2) #ToDo: set avg_.. with GUI
+                        img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold)
                         # put in list, update image
                         mot1_x_cam1_x[voltage_step] = com[0]
                         mot1_x_cam1_y[voltage_step] = com[1]
                         ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
                         # get a frame from cam2 for x motor
-                        img, com = take_img_calibration(cam2_index, cam_view=1, threshold = cam2_threshold, avg_frames = 2, avg_com = 2)
+                        img, com = take_img_calibration(cam2_index, cam_view=1, threshold = cam2_threshold)
                         # put in list
                         mot1_x_cam2_x[voltage_step] = com[0]
                         mot1_x_cam2_y[voltage_step] = com[1]
@@ -866,7 +900,6 @@ if __name__ == "__main__":
         """
         GUI update function
         """
-        # TODO: talk to piezo controller
         global saturated_cam1, under_saturated_cam1, saturated_cam2, under_saturated_cam2
         global cam1_reset, cam2_reset
         global cam1_x, cam1_y, cam2_x, cam2_y
@@ -902,7 +935,7 @@ if __name__ == "__main__":
         global motor1_x, motor1_y, motor2_x, motor2_y
         global motor1_x_plot, motor1_y_plot, motor2_x_plot, motor2_y_plot
         global LockTimeStart, TimeLastUnlock
-        global num_out_of_voltage_range #Track the number of times the voltage update goes out of range during lock
+        global num_out_of_voltage_range  # Track the number of times the voltage update goes out of range during lock
         global state
         global first_unlock
         global set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y
@@ -1110,24 +1143,24 @@ if __name__ == "__main__":
 
             # If the beams are within 10V displacements in any direction, then make the home circle green to let the
             # user know. This is the condition when the user should stop trying to align.
-            #ToDO: Make this threshold setable in the GUI.
+            #ToDO: 2 Make this threshold (the 10.0 below) setable in the GUI.
             if np.any(dV)>10.0:
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
                 ROICam1_Unlock.setVisible(True)
                 ROICam2_Unlock.setVisible(True)
             else:
-                ROICam1_Unlock.setVisible(False)
-                ROICam2_Unlock.setVisible(False)
-                ROICam1_Lock.setVisible(True)
-                ROICam2_Lock.setVisible(True)
+                ROICam1_Unlock.setVisible(True)
+                ROICam2_Unlock.setVisible(True)
+                ROICam1_Lock.setVisible(False)
+                ROICam2_Lock.setVisible(False)
 
             # The goal here is to provide the user feedback about which direction to steer the beam.
             # x and y are switched relative to your expectation of L/R up/down,
             # because the cameras happen to be rotated
-            # ToDo: Test the configuration of the cameras and confirm which displacement should correspond to which
-            #  arrow
-            #ToDo: Maybe make the orientation of the Camera setable in the GUI.
+            # ToDo: 2 Make the orientation of the Cameras setable in the GUI, without breaking the whole code.
+            #  i.e. let me rotate and reflect the cameras as needed; so I can set L/R U/D to be consistent with true
+            #  orientations.
             displacementThreshold = 1
             if dX[0] > displacementThreshold:
                 Cam1_DownArrow.setVisible(False)
@@ -1218,36 +1251,54 @@ if __name__ == "__main__":
     '''
 
     def update_cam1_settings():
-        global cam1_index, cam1_threshold, cam1_reset
-        cam1_index = int(ui.cb_cam1.currentIndex())
-        cam1_exp_time = float(ui.le_cam1_exp_time.text())
-        cam1_gain = float(ui.le_cam1_gain.text())
-        cam1_threshold = float(ui.le_cam1_threshold.text())
-        cam1_decimate = ui.cb_cam1_decimate.isChecked()
-        cam_list[cam1_index].set_gain(cam1_gain)
-        cam_list[cam1_index].set_exposure_time(cam1_exp_time)
-        cam_list[cam1_index].update_frame()
-        cam_list[cam1_index].set_decimation(cam1_decimate)
-        ui.le_cam1_exp_time.setText('%.2f' % (cam_list[cam1_index].exposure_time))
-        ui.le_cam1_gain.setText('%.2f' % (cam_list[cam1_index].gain/8))
-        cam1_reset = True
-        resetHist(ui.gv_camera1)
+        global cam1_index, cam1_threshold, cam1_reset, cam_list
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            cam1_index = int(ui.cb_cam1.currentIndex())
+            cam1_exp_time = float(ui.le_cam1_exp_time.text())
+            cam1_gain = float(ui.le_cam1_gain.text())
+            cam1_threshold = float(ui.le_cam1_threshold.text())
+            cam1_decimate = ui.cb_cam1_decimate.isChecked()
+            cam_list[cam1_index].set_gain(cam1_gain)
+            cam_list[cam1_index].set_exposure_time(cam1_exp_time)
+            cam_list[cam1_index].update_frame()
+            cam_list[cam1_index].set_decimation(cam1_decimate)
+            ui.le_cam1_exp_time.setText('%.2f' % (cam_list[cam1_index].exposure_time))
+            ui.le_cam1_gain.setText('%.2f' % (cam_list[cam1_index].gain/8))
+            cam1_reset = True
+            resetHist(ui.gv_camera1)
+        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            cam1_index = int(ui.cb_cam1.currentIndex())
+            cam1_threshold = float(ui.le_cam1_threshold.text())
+            cam_list[cam1_index].update_frame()
+            cam1_reset = True
+            resetHist(ui.gv_camera1, max=65536)
+        else:
+            print("Choose a Point Lock system first!")
     
     def update_cam2_settings():
-        global cam2_index, cam2_threshold, cam2_reset
-        cam2_index = int(ui.cb_cam2.currentIndex())
-        cam2_exp_time = float(ui.le_cam2_exp_time.text())
-        cam2_gain = float(ui.le_cam2_gain.text())
-        cam2_threshold = float(ui.le_cam2_threshold.text())
-        cam2_decimate = ui.cb_cam2_decimate.isChecked()
-        cam_list[cam2_index].set_gain(cam2_gain)
-        cam_list[cam2_index].set_exposure_time(cam2_exp_time)
-        cam_list[cam1_index].update_frame()
-        cam_list[cam2_index].set_decimation(cam2_decimate)
-        ui.le_cam2_exp_time.setText('%.2f' % (cam_list[cam2_index].exposure_time))
-        ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
-        cam2_reset = True
-        resetHist(ui.gv_camera2)
+        global cam2_index, cam2_threshold, cam2_reset, cam_list
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            cam2_index = int(ui.cb_cam2.currentIndex())
+            cam2_exp_time = float(ui.le_cam2_exp_time.text())
+            cam2_gain = float(ui.le_cam2_gain.text())
+            cam2_threshold = float(ui.le_cam2_threshold.text())
+            cam2_decimate = ui.cb_cam2_decimate.isChecked()
+            cam_list[cam2_index].set_gain(cam2_gain)
+            cam_list[cam2_index].set_exposure_time(cam2_exp_time)
+            cam_list[cam1_index].update_frame()
+            cam_list[cam2_index].set_decimation(cam2_decimate)
+            ui.le_cam2_exp_time.setText('%.2f' % (cam_list[cam2_index].exposure_time))
+            ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
+            cam2_reset = True
+            resetHist(ui.gv_camera2)
+        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            cam2_index = int(ui.cb_cam2.currentIndex())
+            cam2_threshold = float(ui.le_cam2_threshold.text())
+            cam_list[cam1_index].update_frame()
+            cam2_reset = True
+            resetHist(ui.gv_camera2,max=65536)
+        else:
+            print("Choose a Point Lock system first!")
     
     def update_motors():
         global motor1_index, motor2_index
@@ -1339,9 +1390,14 @@ if __name__ == "__main__":
             print('Set cam 2 x', set_cam2_x)
             print('Set cam 2 y', set_cam2_y)
             HomePosition = np.array([set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y])
-            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
-            filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
-            np.savetxt(filename, HomePosition, fmt='%d')
+            if int(ui.cb_SystemSelection.currentIndex()) == 1:
+                np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
+                np.savetxt(filename, HomePosition, fmt='%d')
+            elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+                np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%d')
+                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
+                np.savetxt(filename, HomePosition, fmt='%d')
             try:
                 ROICam1_Unlock.setVisible(False)
                 ROICam2_Unlock.setVisible(False)
@@ -1357,8 +1413,12 @@ if __name__ == "__main__":
         root = tk.Tk()
         root.withdraw()
         file_path = filedialog.askopenfilename()
-        HomePosition = np.loadtxt(file_path, dtype=float)
-        np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%d')
         set_cam1_x = HomePosition[0]
         set_cam1_y = HomePosition[1]
         set_cam2_x = HomePosition[2]
@@ -1377,7 +1437,8 @@ if __name__ == "__main__":
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         global Cam1_LeftArrow, Cam1_RightArrow, Cam1_DownArrow, Cam1_UpArrow
         global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
-        global state
+        global state, start_time
+        global msg
         if state == STATE_ALIGN:
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
@@ -1412,6 +1473,109 @@ if __name__ == "__main__":
                 time.sleep(5)
                 raise AssertionError("Make Piezo voltages 75.0 before aligning.")
 
+    def find_cameras():
+        global cam_list
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            # Find the Mightex cameras
+            mightex_engine = MightexEngine()
+            cam_list = []
+            if len(mightex_engine.serial_no) == 0:
+                raise DeviceNotFoundError('Could not find any Mightex cameras!')
+            else:
+                for i, serial_no in enumerate(mightex_engine.serial_no):
+                    c = MightexCamera(mightex_engine, serial_no)
+                    cam_list.append(c)
+                    cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            # Make appropriate Camera Settings available in GUI:
+            toggle_BOSON_cam_settings_ui_vis(False)
+            toggle_mightex_cam_settings_ui_vis(True)
+            toggle_general_cam_settings_ui_vis(True)
+        elif int(ui.cb_SystemSelection.currentIndex())==2:
+            # Find the Boson Cameras
+            #TODO: Figure out how to correctly connect two BOSONs.
+            device_list = list_ports.comports()
+            # Boson VID and PID:
+            VID = 0x09CB
+            PID = 0x4007
+            port_list = []
+            # Find all ports associated with Bosons.
+            for device in device_list:
+                if device.vid == VID and device.pid == PID:
+                    port = device.device
+                    port_list.append(port)
+            cam_list = []
+            for boson_port in port_list:
+                c = BosonCamera(port=boson_port)
+                print(boson_port)
+                ffc_state = 0
+                c.do_ffc()
+                while ffc_state == 0:
+                    ffc_state = c.get_ffc_state()
+                cam_list.append(c)
+                cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            toggle_mightex_cam_settings_ui_vis(False)
+            toggle_general_cam_settings_ui_vis(True)
+            toggle_BOSON_cam_settings_ui_vis(True)
+        else:
+            print("Choose a system!")
+
+    def service_BOSON(cam_index):
+        global cam_list, cam1_index, cam2_index
+
+        if not (cam_index == cam1_index or cam_index==cam2_index):
+            # If you are calling the function and not passing a cam_index that corresponds to 1 of the cameras, then
+            # return without executing the function.
+            return
+        #Check if ffc is desired. If so, perform ffc
+        if cam_list[cam_index].get_ffc_desired():
+            cam_list[cam_index].do_ffc()
+            num_ffc_performed = 1
+            # Check to see if the FFC is complete. If not, wait until it is or initiate another FFC if requested.
+            if cam_list[cam_index].get_ffc_state()!=3:
+                switch = True
+                while switch:
+                    ffc_state = cam_list[cam_index].get_ffc_state()
+                    print("FFC state:", ffc_state)
+                    # 2 = FLR_BOSON_FFC_IN_PROGRESS
+                    # 3 = FLR_BOSON_FFC_COMPLETE
+                    if ffc_state == 3:
+                        if cam_list[cam_index].get_ffc_desired():
+                            cam_list[cam_index].do_ffc()
+                            num_ffc_performed+=1
+                            if num_ffc_performed>3:
+                                print("The camera just did 3 successive ffcs.")
+                        else:
+                            switch = False
+                    elif ffc_state == 2:
+                        pass
+                    elif ffc_state == 0:
+                        cam_list[cam_index].do_ffc()
+                    else:
+                        print("The ffc state should be in progress or complete, but it is in neither. Is FFC Mode Manual?")
+                        print(ffc_state)
+
+        #Check if NUC table switch is desired. If so, switch NUC table.
+        if cam_list[cam_index].get_nuc_desired():
+            cam_list[cam_index].do_nuc_table_switch
+
+        fpa_temp = cam_list[cam_index].get_fpa_temperature()
+        if fpa_temp-68 > -5: # permanent damage to camera at as low as 68 C. Maybe 63 C is too conservative?
+            while True:
+                print("SHUTTER THE BEAM IMMEDIATELY!!!")
+                Cam1_LeftArrow.setVisible(True)
+                Cam1_RightArrow.setVisible(True)
+                Cam1_DownArrow.setVisible(True)
+                Cam1_UpArrow.setVisible(True)
+                Cam2_LeftArrow.setVisible(True)
+                Cam2_RightArrow.setVisible(True)
+                Cam2_DownArrow.setVisible(True)
+                Cam2_UpArrow.setVisible(True)
+        if cam_index == cam1_index:
+            ui.label_17.setText(str(fpa_temp))
+        elif cam_index == cam2_index:
+            ui.label_19.setText(str(fpa_temp))
+
+
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
     ui.btn_motor_connect.clicked.connect(update_motors)
@@ -1421,6 +1585,7 @@ if __name__ == "__main__":
     ui.btn_lock.clicked.connect(lock_pointing)
     ui.btn_Home.clicked.connect(define_home)
     ui.btn_Align.clicked.connect(begin_align)
+    ui.cb_SystemSelection.currentIndexChanged.connect(find_cameras)
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
