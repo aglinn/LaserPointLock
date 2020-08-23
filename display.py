@@ -31,15 +31,17 @@ if __name__ == "__main__":
     import time
     import numpy as np
     import pyqtgraph as pg
-    from pointing_ui import Ui_MainWindow
+    from Packages.pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets,QtSvg
-    from camera import MightexCamera, MightexEngine, DeviceNotFoundError, FakeCamera, BosonCamera
-    from motors import MDT693A_Motor, FakeMotor
+    #from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
+    from Packages.motors import MDT693A_Motor
     import tkinter as tk
     from tkinter import filedialog
     from serial.tools import list_ports
-    from UpdateManager import UpdateManager
-    from UpdateManager import InsufficientInformation
+
+    print('__file__={0:<35} | __name__={1:<20} | __package__={2:<20}'.format(__file__, __name__, str(__package__)))
+    from Packages.UpdateManager import UpdateManager
+    from Packages.UpdateManager import InsufficientInformation
 
     STATE_MEASURE = 0
     STATE_CALIBRATE = 1
