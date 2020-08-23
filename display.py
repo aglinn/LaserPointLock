@@ -1063,7 +1063,6 @@ if __name__ == "__main__":
             except InsufficientInformation:
                 # catch exception and return to measure state.
                 state = STATE_MEASURE
-                global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
                 ROICam1_Unlock.setVisible(True)
