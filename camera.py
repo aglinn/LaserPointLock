@@ -369,7 +369,7 @@ class FakeCamera(Camera):
         self.frame = image
 
 class BosonCamera(Boson):
-    def __init__(self, port=None):
+    def __init__(self, port=None, device_id=None):
         self.port = port
         super().__init__(port=self.port)
         self.frame = None
@@ -381,7 +381,7 @@ class BosonCamera(Boson):
             print("The ffc correction is not being applied.")
         if not self.get_ffc_mode() == 0:
             print("The IR cameras need to be run in manual FFC mode.")
-        self.device_id = self.find_video_device()
+        self.device_id = self.find_video_device(device_id=device_id)
 
     def get_frame(self):
         return self.frame

@@ -1504,8 +1504,9 @@ if __name__ == "__main__":
                     port = device.device
                     port_list.append(port)
             cam_list = []
+            device_id = None
             for boson_port in port_list:
-                c = BosonCamera(port=boson_port)
+                c = BosonCamera(port=boson_port, device_id=device_id)
                 print(boson_port)
                 ffc_state = 0
                 c.do_ffc()
@@ -1513,6 +1514,7 @@ if __name__ == "__main__":
                     ffc_state = c.get_ffc_state()
                 cam_list.append(c)
                 cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+                device_id = 1
             toggle_mightex_cam_settings_ui_vis(False)
             toggle_general_cam_settings_ui_vis(True)
             toggle_BOSON_cam_settings_ui_vis(True)
