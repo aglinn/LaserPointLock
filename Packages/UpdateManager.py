@@ -88,7 +88,7 @@ class UpdateManager:
         return
 
     def com(self):
-        return np.concatenate(self.cam_1_com, self.cam_2_com, axis=0)
+        return np.concatenate((self.cam_1_com, self.cam_2_com), axis=0)
 
     @property
     def dx(self):
