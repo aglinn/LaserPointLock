@@ -13,6 +13,14 @@ class UpdateManager:
     def __init__(self, mode=0):
         self.calibration_matrix = None
         self.set_pos = None
+        self.dV = None
+        self.update_voltage = None
+        self.cam_1_com = None
+        self.cam_2_com = None
+        self.cam_1_img = None
+        self.cam_2_img = None
+        self.dx = None
+        self.V0 = None
 
     def get_update(self):
         """
@@ -39,48 +47,52 @@ class UpdateManager:
 
     @property
     def update_voltage(self):
-        return self.update_voltage
+        return self._update_voltage
 
     @update_voltage.setter
     def update_voltage(self, vector):
-        self.update_voltage = vector
+        self._update_voltage = vector
+        return
 
     @property
     def dV(self):
-        return self.dV
+        return self._dV
 
     @dV.setter
     def dV(self, vector):
-        self.dV = vector
+        self._dV = vector
+        return
 
     @property
     def cam_1_com(self):
-        return self.cam_1_com
+        return self._cam_1_com
 
     @cam_1_com.setter
     def cam_1_com(self, vector):
         """
         vector is a row vector (row position, column position) of COM on cam 1
         """
-        self.cam_1_com = vector
+        self._cam_1_com = vector
+        return
 
     @property
     def cam_2_com(self):
-        return self.cam_1_com
+        return self._cam_2_com
 
     @cam_2_com.setter
     def cam_2_com(self, vector):
         """
         vector is a row vector (row position, column position) of COM on cam 2
         """
-        self.cam_2_com = vector
+        self._cam_2_com = vector
+        return
 
     def com(self):
         return np.concatenate(self.cam_1_com, self.cam_2_com, axis=0)
 
     @property
     def dx(self):
-        return self.dx
+        return self._dx
 
     @dx.setter
     def dx(self, vector):
@@ -90,44 +102,50 @@ class UpdateManager:
         The convention for the vector will vector = (camera 1 row position, camera 1 column position,
         camera 2 row position, camera 2 column position).
         """
-        self.dx = vector
+        self._dx = vector
+        return
 
     @property
     def V0(self):
-        return self.V0
+        return self._V0
 
     @V0.setter
     def V0(self, vector):
-        self.V0 = vector
+        self._V0 = vector
+        return
 
     @property
     def calibration_matrix(self):
-        return self.calibration_matrix
+        return self._calibration_matrix
 
     @calibration_matrix.setter
     def calibration_matrix(self, matrix):
-        self.calibration_matrix = matrix
+        self._calibration_matrix = matrix
+        return
 
     @property
     def set_pos(self):
-        return self.set_pos
+        return self._set_pos
 
     @set_pos.setter
     def set_pos(self, vector):
-        self.set_pos = vector
+        self._set_pos = vector
+        return
 
     @property
     def cam_1_img(self):
-        return self.cam_1_img
+        return self._cam_1_img
 
     @cam_1_img.setter
     def cam_1_img(self, img):
-        self.cam_1_img = img
+        self._cam_1_img = img
+        return
 
     @property
     def cam_2_img(self):
-        return self.cam_2_img
+        return self._cam_2_img
 
     @cam_2_img.setter
     def cam_2_img(self, img):
-        self.cam_2_img = img
+        self._cam_2_img = img
+        return
