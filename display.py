@@ -33,13 +33,11 @@ if __name__ == "__main__":
     import pyqtgraph as pg
     from Packages.pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets,QtSvg
-    #from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
+    from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
     from Packages.motors import MDT693A_Motor
     import tkinter as tk
     from tkinter import filedialog
     from serial.tools import list_ports
-
-    print('__file__={0:<35} | __name__={1:<20} | __package__={2:<20}'.format(__file__, __name__, str(__package__)))
     from Packages.UpdateManager import UpdateManager
     from Packages.UpdateManager import InsufficientInformation
 
