@@ -207,6 +207,7 @@ if __name__ == "__main__":
     try:
         HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
         UpdateManager.set_pos = np.asarray(HomePosition)
+        set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = HomePosition
         set_home_marker()
     except OSError:
         set_cam1_x = 'dummy'
