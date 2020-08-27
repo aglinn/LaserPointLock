@@ -32,7 +32,7 @@ if __name__ == "__main__":
     import numpy as np
     import pyqtgraph as pg
     from Packages.pointing_ui import Ui_MainWindow
-    from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg, QAction
+    from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
     from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
     from Packages.motors import MDT693A_Motor
     import tkinter as tk
@@ -461,6 +461,7 @@ if __name__ == "__main__":
                 cam_list[cam_index].update_frame()
                 img = cam_list[cam_index].get_frame()
             except RuntimeError:
+                shut_down()
                 state = STATE_MEASURE
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
@@ -473,6 +474,7 @@ if __name__ == "__main__":
                     cam_list[cam_index].update_frame()
                     temp_img = cam_list[cam_index].get_frame()
                 except RuntimeError:
+                    shut_down()
                     state = STATE_MEASURE
                     ROICam1_Lock.setVisible(False)
                     ROICam2_Lock.setVisible(False)
@@ -564,6 +566,7 @@ if __name__ == "__main__":
                 cam_list[cam_index].update_frame()
                 img = cam_list[cam_index].get_frame()
             except RuntimeError:
+                shut_down()
                 state = STATE_MEASURE
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
@@ -576,6 +579,7 @@ if __name__ == "__main__":
                     cam_list[cam_index].update_frame()
                     temp_img = cam_list[cam_index].get_frame()
                 except RuntimeError:
+                    shut_down()
                     state = STATE_MEASURE
                     ROICam1_Lock.setVisible(False)
                     ROICam2_Lock.setVisible(False)
@@ -592,12 +596,14 @@ if __name__ == "__main__":
             img[img < threshold*avg_frames] = 0
         if cam_view == 0:
             ui.le_cam1_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
-            UpdateManager.cam_1_img = img
-            UpdateManager.t1 = cam_list[cam_index].time
+            if cam1_index>=0 and cam2_index>=0:
+                UpdateManager.cam_1_img = img
+                UpdateManager.t1 = cam_list[cam_index].time
         else:
             ui.le_cam2_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
-            UpdateManager.cam_2_img = img
-            UpdateManager.t2 = cam_list[cam_index].time
+            if cam1_index >= 0 and cam2_index >= 0:
+                UpdateManager.cam_2_img = img
+                UpdateManager.t2 = cam_list[cam_index].time
         com = calc_com(img)  # Grab COM
         under_saturated = np.all(img < 50)
         saturated = np.any(img > 250)
@@ -671,6 +677,7 @@ if __name__ == "__main__":
         global reset_piezo  #Switch variable.
         if (ui.cb_motors_1.currentIndex() < 0):
             error_dialog.showMessage('You need to select Motor 1.')
+            shut_down()
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
@@ -679,6 +686,7 @@ if __name__ == "__main__":
             return
         elif (ui.cb_motors_2.currentIndex() < 0):
             error_dialog.showMessage('You need to select Motor 2.')
+            shut_down()
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
@@ -687,6 +695,7 @@ if __name__ == "__main__":
             return
         elif ui.cb_motors_1.currentIndex() == ui.cb_motors_2.currentIndex():
             error_dialog.showMessage('You need to select two unique motors.')
+            shut_down()
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
@@ -695,6 +704,7 @@ if __name__ == "__main__":
             return
         if cam1_index < 0:
             error_dialog.showMessage('You need to select camera 1.')
+            shut_down()
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
@@ -703,6 +713,7 @@ if __name__ == "__main__":
             return
         elif cam2_index < 0:
             error_dialog.showMessage('You need to select camera 2.')
+            shut_down()
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
@@ -711,6 +722,7 @@ if __name__ == "__main__":
             return
         elif cam1_index == cam2_index:
             error_dialog.showMessage('You need to select two different cameras.')
+            shut_down()
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
@@ -897,6 +909,7 @@ if __name__ == "__main__":
                 np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%f')
                 filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat"
                 np.savetxt(filename, calib_mat, fmt='%f')
+                shut_down()
                 state = STATE_MEASURE
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
@@ -1026,6 +1039,7 @@ if __name__ == "__main__":
                     if num_out_of_voltage_range > 10:
                         num_out_of_voltage_range = 0
                         TimeLastUnlock = 0
+                        shut_down()
                         state = STATE_MEASURE
                         ROICam1_Lock.setVisible(False)
                         ROICam2_Lock.setVisible(False)
@@ -1068,6 +1082,7 @@ if __name__ == "__main__":
                     motor2_y_plot.setData(motor2_y)
             except InsufficientInformation:
                 # catch exception and return to measure state.
+                shut_down()
                 state = STATE_MEASURE
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
@@ -1116,6 +1131,7 @@ if __name__ == "__main__":
             try:
                 update_voltage = UpdateManager.get_update()
             except InsufficientInformation:
+                shut_down()
                 state = STATE_MEASURE
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
@@ -1145,40 +1161,40 @@ if __name__ == "__main__":
             #  i.e. let me rotate and reflect the cameras as needed; so I can set L/R U/D to be consistent with true
             #  orientations.
             displacementThreshold = 1
-            if UpdateManager.dx[0] > displacementThreshold:
+            if UpdateManager.dx[-1, 0] > displacementThreshold:
                 Cam1_DownArrow.setVisible(False)
                 Cam1_UpArrow.setVisible(True)
-            elif UpdateManager.dx[0] < -displacementThreshold:
+            elif UpdateManager.dx[-1, 0] < -displacementThreshold:
                 Cam1_UpArrow.setVisible(False)
                 Cam1_DownArrow.setVisible(True)
             else:
                 Cam1_UpArrow.setVisible(False)
                 Cam1_DownArrow.setVisible(False)
 
-            if UpdateManager.dx[1] > displacementThreshold:
+            if UpdateManager.dx[-1, 1] > displacementThreshold:
                 Cam1_RightArrow.setVisible(False)
                 Cam1_LeftArrow.setVisible(True)
-            elif UpdateManager.dx[1] < -displacementThreshold:
+            elif UpdateManager.dx[-1, 1] < -displacementThreshold:
                 Cam1_LeftArrow.setVisible(False)
                 Cam1_RightArrow.setVisible(True)
             else:
                 Cam1_LeftArrow.setVisible(False)
                 Cam1_RightArrow.setVisible(False)
 
-            if UpdateManager.dx[2] > displacementThreshold:
+            if UpdateManager.dx[-1, 2] > displacementThreshold:
                 Cam2_DownArrow.setVisible(False)
                 Cam2_UpArrow.setVisible(True)
-            elif UpdateManager.dx[2] < -displacementThreshold:
+            elif UpdateManager.dx[-1, 2] < -displacementThreshold:
                 Cam2_UpArrow.setVisible(False)
                 Cam2_DownArrow.setVisible(True)
             else:
                 Cam2_UpArrow.setVisible(False)
                 Cam2_DownArrow.setVisible(False)
 
-            if UpdateManager.dx[3] > displacementThreshold:
+            if UpdateManager.dx[-1, 3] > displacementThreshold:
                 Cam2_RightArrow.setVisible(False)
                 Cam2_LeftArrow.setVisible(True)
-            elif UpdateManager.dx[3] < -displacementThreshold:
+            elif UpdateManager.dx[-1, 3] < -displacementThreshold:
                 Cam2_LeftArrow.setVisible(False)
                 Cam2_RightArrow.setVisible(True)
             else:
@@ -1313,6 +1329,7 @@ if __name__ == "__main__":
         starting_v[1] = motor_list[0].ch2_v
         starting_v[2] = motor_list[1].ch1_v
         starting_v[3] = motor_list[1].ch1_v
+        shut_down()
         state = STATE_CALIBRATE
     
     def clear_pointing_plots():
@@ -1340,6 +1357,7 @@ if __name__ == "__main__":
         Cam2_UpArrow.setVisible(False)
         if (ui.btn_lock.isChecked()):
             if cam1_index >= 0 and cam2_index >= 0:
+                shut_down()
                 state = STATE_LOCKED
                 TimeLastUnlock = 0
                 num_out_of_voltage_range = 0
@@ -1354,6 +1372,8 @@ if __name__ == "__main__":
             else:
                 ui.btn_lock.toggle()
         else:
+            if state != STATE_MEASURE:
+                shut_down()
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
@@ -1418,6 +1438,7 @@ if __name__ == "__main__":
         global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
         global state, start_time
         global msg
+        shut_down()
         if state == STATE_ALIGN:
             state = STATE_MEASURE
             ROICam1_Lock.setVisible(False)
@@ -1546,6 +1567,7 @@ if __name__ == "__main__":
         fpa_temp = cam_list[cam_index].get_fpa_temperature()
         if fpa_temp-68 > -5: # permanent damage to camera at as low as 68 C. Maybe 63 C is too conservative?
             while True:
+                # TODO: Can I connect to an automatic shutter?
                 print("SHUTTER THE BEAM IMMEDIATELY!!!")
                 Cam1_LeftArrow.setVisible(True)
                 Cam1_RightArrow.setVisible(True)
@@ -1561,10 +1583,11 @@ if __name__ == "__main__":
             ui.label_19.setText(str(fpa_temp))
 
     def shut_down():
-        UpdateManager.store_data()
-        #TODO: I should close cameras and com ports etc.
+        global state
+        UpdateManager.store_data(state = state)
+        UpdateManager.reset_data()
+        return
 
-    QAction("Quit", ui).triggered.connect(shut_down)
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
     ui.btn_motor_connect.clicked.connect(update_motors)

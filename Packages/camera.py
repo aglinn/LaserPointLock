@@ -216,7 +216,7 @@ class MightexCamera(Camera):
     def update_frame(self):
         #lock.lockForRead()
         # print("serial number just before calling the engine get frame function:",self.serial_no)
-        self.frame, self.time = self.engine.get_frame(self.serial_no, 1, getExposureTime=1)
+        self.frame, self.time = self.engine.get_frame(self.serial_no, 1, getTimeStamp=1)
         #lock.unlock()
 
     def set_exposure_time(self, time):
