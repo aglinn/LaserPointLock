@@ -1,6 +1,6 @@
 import numpy as np
 import nfft
-print('__file__={0:<35} | __name__={1:<20} | __package__={2:<20}'.format(__file__, __name__, str(__package__)))
+
 
 class InsufficientInformation(Exception):
 
@@ -53,22 +53,44 @@ class UpdateManager:
         self.dx = self.com()-self.set_pos
         return
 
-    def store_data(self):
+    def store_data(self, state):
+        """
+        STATE_MEASURE = 0
+        STATE_CALIBRATE = 1
+        STATE_LOCKED = 2
+        STATE_ALIGN = 3
+        """
+        if state == 0:
+            state = "Measure"
+        elif state == 1:
+            state = "Calibrate"
+        elif state == 2:
+            state = "Locked"
+        elif state == 3:
+            state = "Align"
         date = str(np.datetime64('today', 'D'))
         if len(self.dx) > 0:
-            filename = 'Data/' + date +'_dx'
+            filename = 'Data/' + date + state + '_dx'
             np.savetxt(filename, self.dx, fmt='%f')
         if len(self.t1) > 0:
-            filename = 'Data/' + date + '_t1'
+            filename = 'Data/' + date + state + '_t1'
             np.savetxt(filename, self.t1, fmt='%f')
         if len(self.t2) > 0:
-            filename = 'Data/' + date + '_t2'
+            filename = 'Data/' + date + state + '_t2'
             np.savetxt(filename, self.t2, fmt='%f')
+        return
+
+    def reset_data(self):
+        self._dx = []
+        self._t1 = []
+        self._t2 = []
+        self._t1_wrapper_count = 0
+        self._t2_wrapper_count = 0
         return
 
     @property
     def standard_deviation(self):
-        return np.std(self.dx, axis=1)
+        return np.std(self.dx, axis=0)
 
     @property
     def update_voltage(self):
@@ -206,7 +228,7 @@ class UpdateManager:
 
     @t1.setter
     def t1(self, value):
-        if len(self.t1>0):
+        if len(self.t1 > 0):
             if value < self.t1[-1]:
                 self._t1_wrapper_count += 1  # Convert to a monotonic timestamp
         self._t1.append(self._t1_wrapper_count*(65535+1)+value)
@@ -219,10 +241,10 @@ class UpdateManager:
 
     @t2.setter
     def t2(self, value):
-        if len(self.t1>0):
+        if len(self.t2 > 0):
             if value < self.t2[-1]:
                 self._t2_wrapper_count += 1  # Convert to a monotonic timestamp
-            self._t2.append(self._t2_wrapper_count * (65535 + 1) + value)
+        self._t2.append(self._t2_wrapper_count * (65535 + 1) + value)
         return
 
 
