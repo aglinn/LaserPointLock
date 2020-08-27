@@ -32,7 +32,7 @@ if __name__ == "__main__":
     import numpy as np
     import pyqtgraph as pg
     from Packages.pointing_ui import Ui_MainWindow
-    from PyQt5 import QtCore, QtGui, QtWidgets,QtSvg
+    from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg, QAction
     from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
     from Packages.motors import MDT693A_Motor
     import tkinter as tk
@@ -593,9 +593,11 @@ if __name__ == "__main__":
         if cam_view == 0:
             ui.le_cam1_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
             UpdateManager.cam_1_img = img
+            UpdateManager.t1 = cam_list[cam_index].time
         else:
             ui.le_cam2_max.setText(str(np.max(img/avg_frames))) #Just updates the GUI to say what the max value of the camera is
             UpdateManager.cam_2_img = img
+            UpdateManager.t2 = cam_list[cam_index].time
         com = calc_com(img)  # Grab COM
         under_saturated = np.all(img < 50)
         saturated = np.any(img > 250)
@@ -892,9 +894,9 @@ if __name__ == "__main__":
                     pass
                 print('Calibration done!')
                 print(calib_mat)
-                np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%d')
+                np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%f')
                 filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat"
-                np.savetxt(filename, calib_mat, fmt='%d')
+                np.savetxt(filename, calib_mat, fmt='%f')
                 state = STATE_MEASURE
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
@@ -933,6 +935,9 @@ if __name__ == "__main__":
         else:
             cam2_x_line.setVisible(False)
             cam2_y_line.setVisible(False)
+        # Update dx with update manager if 2 cameras are connected:
+        if cam1_index >=0 and cam2_index>=0:
+            UpdateManager.calc_dx()
 
     def updateLocked():
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
@@ -1369,13 +1374,13 @@ if __name__ == "__main__":
             HomePosition = np.array([set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y])
             UpdateManager.set_pos = HomePosition
             if int(ui.cb_SystemSelection.currentIndex()) == 1:
-                np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+                np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
                 filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
-                np.savetxt(filename, HomePosition, fmt='%d')
+                np.savetxt(filename, HomePosition, fmt='%f')
             elif int(ui.cb_SystemSelection.currentIndex()) == 2:
-                np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%d')
+                np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
                 filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
-                np.savetxt(filename, HomePosition, fmt='%d')
+                np.savetxt(filename, HomePosition, fmt='%f')
             try:
                 ROICam1_Unlock.setVisible(False)
                 ROICam2_Unlock.setVisible(False)
@@ -1392,10 +1397,10 @@ if __name__ == "__main__":
         file_path = filedialog.askopenfilename()
         if int(ui.cb_SystemSelection.currentIndex()) == 1:
             HomePosition = np.loadtxt(file_path, dtype=float)
-            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%d')
+            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
         elif int(ui.cb_SystemSelection.currentIndex()) == 2:
             HomePosition = np.loadtxt(file_path, dtype=float)
-            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%d')
+            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
         UpdateManager.set_pos = np.asarray(HomePosition)
         print("Set Positions:", HomePosition)
         try:
@@ -1555,7 +1560,11 @@ if __name__ == "__main__":
         elif cam_index == cam2_index:
             ui.label_19.setText(str(fpa_temp))
 
+    def shut_down():
+        UpdateManager.store_data()
+        #TODO: I should close cameras and com ports etc.
 
+    QAction("Quit", ui).triggered.connect(shut_down)
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
     ui.btn_motor_connect.clicked.connect(update_motors)

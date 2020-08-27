@@ -206,6 +206,7 @@ class MightexCamera(Camera):
         self.serial_no = serial_no
         self.frame = None
         self._exposure_time = 0.05
+        self._time = None
         # self.run_thread = CameraThread(self)
         # self.signals = CameraSignals()
 
@@ -215,7 +216,7 @@ class MightexCamera(Camera):
     def update_frame(self):
         #lock.lockForRead()
         # print("serial number just before calling the engine get frame function:",self.serial_no)
-        self.frame = self.engine.get_frame(self.serial_no, 1)
+        self.frame, self.time = self.engine.get_frame(self.serial_no, 1, getExposureTime=1)
         #lock.unlock()
 
     def set_exposure_time(self, time):
@@ -243,6 +244,14 @@ class MightexCamera(Camera):
     @property
     def dev_num(self):
         return self.engine.dev_num[self.serial_no]
+
+    @property
+    def time(self):
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        self._time = value
 
 """
 # TODO: multithread the frame grabbing
