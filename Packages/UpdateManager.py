@@ -90,7 +90,7 @@ class UpdateManager:
 
     @property
     def standard_deviation(self):
-        return np.std(self.dx, axis=1)
+        return np.std(self.dx, axis=0)
 
     @property
     def update_voltage(self):

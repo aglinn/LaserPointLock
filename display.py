@@ -350,6 +350,12 @@ if __name__ == "__main__":
     mot2_y_cam1_x, mot2_y_cam1_y, mot2_y_cam2_x, mot2_y_cam2_y = np.empty((4, len(calibration_voltages)))
     starting_v = 75.0*np.ones(4)
 
+    def GUI_update_std(std):
+        ui.le_cam1_dx_std.setText("{:.5f}".format(std[0]))
+        ui.le_cam1_dy_std.setText("{:.5f}".format(std[1]))
+        ui.le_cam2_dx_std.setText("{:.5f}".format(std[2]))
+        ui.le_cam2_dy_std.setText("{:.5f}".format(std[3]))
+
     def resetHist(ref, min=0, max=255):
         """
         Given a reference to an image view, set the histogram's range and levels to min and max
@@ -951,6 +957,7 @@ if __name__ == "__main__":
         # Update dx with update manager if 2 cameras are connected:
         if cam1_index >=0 and cam2_index>=0:
             UpdateManager.calc_dx()
+            GUI_update_std(UpdateManager.standard_deviation)
 
     def updateLocked():
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
@@ -1080,6 +1087,7 @@ if __name__ == "__main__":
                     motor1_y_plot.setData(motor1_y)
                     motor2_x_plot.setData(motor2_x)
                     motor2_y_plot.setData(motor2_y)
+                GUI_update_std(UpdateManager.standard_deviation)
             except InsufficientInformation:
                 # catch exception and return to measure state.
                 shut_down()
