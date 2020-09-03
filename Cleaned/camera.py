@@ -214,7 +214,6 @@ class MightexCamera(Camera):
         self.serial_no = serial_no
         self.frame = None
         self._exposure_time = 0.05
-        self._time = None
         # self.run_thread = CameraThread(self)
         # self.signals = CameraSignals()
 
@@ -224,7 +223,7 @@ class MightexCamera(Camera):
     def update_frame(self):
         #lock.lockForRead()
         # print("serial number just before calling the engine get frame function:",self.serial_no)
-        self.frame, self.time = self.engine.get_frame(self.serial_no, 1, getTimeStamp=1)
+        self.frame = self.engine.get_frame(self.serial_no, 1)
         #lock.unlock()
 
     def set_exposure_time(self, time):
@@ -252,14 +251,6 @@ class MightexCamera(Camera):
     @property
     def dev_num(self):
         return self.engine.dev_num[self.serial_no]
-
-    @property
-    def time(self):
-        return self._time
-
-    @time.setter
-    def time(self, value):
-        self._time = value
 
 """
 # TODO: multithread the frame grabbing
@@ -386,7 +377,7 @@ class FakeCamera(Camera):
         self.frame = image
 
 class BosonCamera(Boson):
-    def __init__(self, port=None, device_id=None):
+    def __init__(self, port=None):
         self.port = port
         super().__init__(port=self.port)
         self.frame = None
@@ -398,8 +389,7 @@ class BosonCamera(Boson):
             print("The ffc correction is not being applied.")
         if not self.get_ffc_mode() == 0:
             print("The IR cameras need to be run in manual FFC mode.")
-        self.device_id = self.find_video_device(device_id=device_id)
-        self._time = 0
+        self.device_id = self.find_video_device()
 
     def get_frame(self):
         return self.frame
@@ -409,12 +399,3 @@ class BosonCamera(Boson):
         Grab a frame from the camera and store it as a uint16.
         """
         self.frame = self.grab(device_id=self.device_id)
-
-    @property
-    def time(self):
-        return self._time
-
-    @time.setter
-    def time(self, value):
-        self._time = value
-        return

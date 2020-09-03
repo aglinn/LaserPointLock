@@ -62,3 +62,6 @@ target/
 
 # PyCharm stuff
 .idea/
+
+# Matthew Stuff
+flirpy
