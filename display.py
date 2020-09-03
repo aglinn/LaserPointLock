@@ -1592,7 +1592,11 @@ if __name__ == "__main__":
 
     def shut_down():
         global state
-        UpdateManager.store_data(state = state)
+        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            IR = 0
+        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            IR = 1
+        UpdateManager.store_data(state = state, IR=IR)
         UpdateManager.reset_data()
         return
 

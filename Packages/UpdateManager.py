@@ -25,6 +25,7 @@ class UpdateManager:
         self._t2 = []
         self._t1_wrapper_count = 0
         self._t2_wrapper_count = 0
+        self._frequency_domain = None
 
     def get_update(self):
         """
@@ -53,21 +54,31 @@ class UpdateManager:
         self.dx = self.com()-self.set_pos
         return
 
-    def store_data(self, state):
+    def store_data(self, state, IR):
         """
         STATE_MEASURE = 0
         STATE_CALIBRATE = 1
         STATE_LOCKED = 2
         STATE_ALIGN = 3
         """
-        if state == 0:
-            state = "Measure"
-        elif state == 1:
-            state = "Calibrate"
-        elif state == 2:
-            state = "Locked"
-        elif state == 3:
-            state = "Align"
+        if IR:
+            if state == 0:
+                state = "_Measure_IR"
+            elif state == 1:
+                state = "_Calibrate_IR"
+            elif state == 2:
+                state = "_Locked_IR"
+            elif state == 3:
+                state = "_Align_IR"
+        else:
+            if state == 0:
+                state = "_Measure_Vis"
+            elif state == 1:
+                state = "_Calibrate_Vis"
+            elif state == 2:
+                state = "_Locked_Vis"
+            elif state == 3:
+                state = "_Align_Vis"
         date = str(np.datetime64('today', 'D'))
         if len(self.dx) > 0:
             filename = 'Data/' + date + state + '_dx'
@@ -90,7 +101,7 @@ class UpdateManager:
 
     @property
     def standard_deviation(self):
-        return np.std(self.dx, axis=0)
+        return np.nanstd(self.dx, axis=0)
 
     @property
     def update_voltage(self):
@@ -98,23 +109,56 @@ class UpdateManager:
 
     @property
     def frequency_domain(self):
-        pass
+        return self._frequency_domain
+
+    @frequency_domain.setter
+    def frequency_domain(self, list):
+        """
+        Nu is in Hz
+        list[0] is Nu for cam 1 dx[:,0:2]
+        list[1] is Nu for cam 2 dx[:,2,:]
+        """
+        self._frequency_domain = list
+        return
 
     @property
     def frequency_data(self):
-        dt1_min = np.amin(self.t1[1:-1]-self.t1[0:-2])
-        dt2_min = np.amin(self.t2[1:-1]-self.t2[0:-2])
+        """
+        Find the frequency data on a uniformly spaced grid from a non-uniformly sampled time domain.
+        The NyQuist freq >= the (2 * minnimum dt)^-1 in the time-domain signal.
+        The spacing in frequency space is defined by the time window, T.
+        So, with dt, we can find the number of points we expect if we sample up to +/-1/2dt_min
+        With the above, we can find Nu in 1/[unit time], which is ms here; so scale Nu by 1000 to yield Hz.
+        Finally to satisfy Parseval's theorem, we need to scale the resulting frequency data by dt.
+        Oh, and we scaled the time coordinate by the time window, because nfft wants -1/2 to 1/2 domain. We choose to
+        define t=0 at the center of the time window. A shift in time just adds a linear phase in frequency domain.
+
+        Set the frequency domain property and return a list of frequency data.
+        """
+        dt1 = self.t1[1:]-self.t1[0:-1]
+        dt1_min = np.amin(dt1)
+        dt2 = self.t2[1:]-self.t2[0:-1]
+        dt2_min = np.amin(dt2)
         T1 = self.t1[-1]-self.t1[0]
         T2 = self.t2[-1]-self.t2[0]
-        N1 = np.floor(T1/dt1_min)
+        time1 = (self.t1-np.amin(self.t1))-T1/2 #t=0 at the center of the data
+        time2 = (self.t2 - np.amin(self.t2)) - T2 / 2  # t=0 at the center of the data
+        N1 = int(np.floor(T1/dt1_min))
         if N1 % 2 == 1:
             N1 = N1-1
-        N2 = np.floor(T2/dt2_min)
+        N2 = int(np.floor(T2/dt2_min))
         if N2 % 2 == 1:
             N2 = N2-1
-        FT_cam1_dx = nfft.nfft_adjoint(self.t1, self.dx[:, 0], N1, m)
-        nfft.nfft_adjoint()
-        return
+        dNu1 = 1/T1
+        dNu2 = 1/T2
+        Nu1 = np.linspace(-N1/2, N1/2-1, N1)*dNu1*1000.0  # Hz
+        Nu2 = np.linspace(-N2 / 2, N2 / 2 - 1, N2) * dNu2*1000.0  # Hz
+        self.frequency_domain = [Nu1, Nu2]
+        FT_cam1_dx = nfft.nfft_adjoint(time1/T1, self.dx[:, 0], N1)*T1/len(self.t1)
+        FT_cam1_dy = nfft.nfft_adjoint(time1/T1, self.dx[:, 1], N1)*T1/len(self.t1)
+        FT_cam2_dx = nfft.nfft_adjoint(time2/T2, self.dx[:, 2], N2)*T2/len(self.t2)
+        FT_cam2_dy = nfft.nfft_adjoint(time2/T2, self.dx[:, 3], N2)*T2/len(self.t2)
+        return [FT_cam1_dx, FT_cam1_dy, FT_cam2_dx, FT_cam2_dy]
 
     @update_voltage.setter
     def update_voltage(self, vector):
@@ -223,7 +267,7 @@ class UpdateManager:
 
     @property
     def t1(self, index=None):
-        """Camera 1 image timestamp"""
+        """Camera 1 image timestamp units of ms."""
         return np.asarray(self._t1)
 
     @t1.setter
@@ -236,7 +280,7 @@ class UpdateManager:
 
     @property
     def t2(self):
-        """Camera 2 image timestamp"""
+        """Camera 2 image timestamp units of ms"""
         return np.asarray(self._t2)
 
     @t2.setter
@@ -247,6 +291,11 @@ class UpdateManager:
         self._t2.append(self._t2_wrapper_count * (65535 + 1) + value)
         return
 
+    def load_data(self, dx, t1, t2):
+        self._dx = dx
+        self._t1 = t1
+        self._t2 = t2
+        return
 
 class PIDUpdateManager(UpdateManager):
 

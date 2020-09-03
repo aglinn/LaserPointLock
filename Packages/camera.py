@@ -391,6 +391,7 @@ class BosonCamera(Boson):
         if not self.get_ffc_mode() == 0:
             print("The IR cameras need to be run in manual FFC mode.")
         self.device_id = self.find_video_device(device_id=device_id)
+        self._time = 0
 
     def get_frame(self):
         return self.frame
@@ -400,3 +401,12 @@ class BosonCamera(Boson):
         Grab a frame from the camera and store it as a uint16.
         """
         self.frame = self.grab(device_id=self.device_id)
+
+    @property
+    def time(self):
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        self._time = value
+        return
