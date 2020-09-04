@@ -154,10 +154,10 @@ class MDT693AMotor(Motor):
         super().__init__()
         
         self.inst = resourceInst
-        self.inst.query('XV75.0')
-        self.inst.query('YV75.0')
         self.xv = 75.0
         self.yv = 75.0
+        self.setXVoltage(self.xv)
+        self.setYVoltage(self.yv)
 
     def getXVoltage(self):
         cmd = f'{self.xID} R?'
@@ -246,8 +246,7 @@ class MDT693AMotor(Motor):
         return None
 
     def setVoltages(self, v: tuple):
-        self.setXVoltage(v[0])
-        self.setYVoltage(v[1])
+        return (self.setXVoltage(v[0]), self.setYVoltage(v[1]))
     
     def getInfo(self):
         cmd = 'I'

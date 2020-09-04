@@ -25,27 +25,39 @@
 # TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
 #  parallel. 
 
-if __name__ == "__main__":
-    import sys
-    import visa
-    import time
-    import numpy as np
-    import pyqtgraph as pg
-    from Packages.pointing_ui import Ui_MainWindow
-    from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
-    from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
-    from Packages.motors import MDT693A_Motor
-    import tkinter as tk
-    from tkinter import filedialog
-    from serial.tools import list_ports
-    from Packages.UpdateManager import UpdateManager
-    from Packages.UpdateManager import InsufficientInformation
+import sys
+import visa
+import time
+import numpy as np
+import pyqtgraph as pg
+from Packages.pointing_ui import Ui_MainWindow
+from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
+from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
+from Packages.motors import MotorManager, FakeMotor, MDT693A_Motor
+import tkinter as tk
+from tkinter import filedialog
+from serial.tools import list_ports
+from Packages.UpdateManager import UpdateManager
+from Packages.UpdateManager import InsufficientInformation
 
-    STATE_MEASURE = 0
-    STATE_CALIBRATE = 1
-    STATE_LOCKED = 2
-    STATE_ALIGN = 3
-    state = STATE_MEASURE
+import States
+
+if __name__ == "__main__":
+
+    # Define a state machine
+    machine = QtCore.QStateMachine()
+
+    STATE_MEASURE = States.Measure()
+    STATE_CALIBRATE = States.Calibrate()
+    STATE_LOCKED = States.Locked()
+    STATE_ALIGN = States.Align()
+
+    machine.addState(STATE_MEASURE)
+    machine.addState(STATE_CALIBRATE)
+    machine.addState(STATE_LOCKED)
+    machine.addState(STATE_ALIGN)
+
+    machine.setInitialState(STATE_MEASURE)
 
     pg.setConfigOptions(imageAxisOrder='row-major')
     pg.setConfigOption('background', 'w')
@@ -64,8 +76,10 @@ if __name__ == "__main__":
     #  Instantiate Update Manager
     UpdateManager = UpdateManager()
 
+    # Instantiate MotorManager
+
     # Find motors using VISA
-    resourceManager = visa.ResourceManager()
+    # resourceManager = visa.ResourceManager()
     for dev in resourceManager.list_resources():
         motor_model.appendRow(QtGui.QStandardItem(str(dev)))
     motor_list = []
