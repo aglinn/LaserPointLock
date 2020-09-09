@@ -11,13 +11,54 @@ from abc import ABC, abstractmethod
 class DeviceNotFoundError(Exception):
     pass
 
+class CameraManager():
+
+    def __init__(self):
+
+        self.cam_list = []
+
+
+# typedef struct {
+#     int CameraID;
+#     int Row;
+#     int Column;
+#     int Bin;
+#     int XStart;
+#     int YStart;
+#     int ExposureTime;
+#     int RedGain;
+#     int GreenGain;
+#     int BlueGain;
+#     int TimeStamp;
+#     int TriggerOccurred;
+#     int TriggerEventCount;
+#     int ProcessFrameType；
+# } TProcessedDataProperty; 
+
+class TProcessedDataProperty(ctypes.Structure):
+    _fields_ = [("CameraID",            ctypes.c_int),
+                ("Row",                 ctypes.c_int),
+                ("Column",              ctypes.c_int),
+                ("Bin",                 ctypes.c_int),
+                ("XStart",              ctypes.c_int),
+                ("YStart",              ctypes.c_int),
+                ("ExposureTime",        ctypes.c_int),
+                ("RedGain",             ctypes.c_int),
+                ("GreenGain",           ctypes.c_int),
+                ("BlueGain",            ctypes.c_int),
+                ("TimeStamp",           ctypes.c_int),
+                ("TriggerOccured",      ctypes.c_int),
+                ("TriggerEventCount",   ctypes.c_int),
+                ("ProcessFrameType",    ctypes.c_int)  ]
+
+
 class MightexEngine:
 
-    def load_driver():
+    def load_driver(self):
         try:
             if (platform.system() != "Windows"):
                 raise OSError('This program requires a Windows system to interface with the Mightex cameras.')
-            lib = ctypes.WinDLL(r'C:\Users\Kingdel\Documents\Mightex_SCX_CDROM_20190104\SDK\Lib\x64\NewClassic_USBCamera_SDK.dll')
+            lib = ctypes.WinDLL(r'NewClassic_USBCamera_SDK.dll')
         except FileNotFoundError:
             raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
         GRAB_FRAME_FOREVER = 34952
@@ -37,6 +78,16 @@ class MightexEngine:
         _getModuleNoSerialNo.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
         _setExposureTime = lib['NewClassicUSB_SetExposureTime']
 
+        _installFrameHooker = lib['NewClassicUSB_InstallFrameHooker']
+        #                                   int FrameType,  FrameDataCallBack FrameHooker
+        _installFrameHooker.argtypes = [    ctypes.int,     ctypes.CFUNCTYPE                ]
+
+        def frameCallBack(attributes, frameptr):
+            print("frameCallBack reached!")
+
+        self.cFunc = ctypes.CFUNCTYPE(None, [TProcessedDataProperty, ctypes.c_char_p])(frameCallBack)
+
+
         _getFrame = lib['NewClassicUSB_GetCurrentFrame']
         _getFrame.argtypes = [ctypes.c_int, ctypes.c_int, c_ubyte_p]
         _getFrame.restype = c_ubyte_p
@@ -51,6 +102,10 @@ class MightexEngine:
         ret = self._initDevice()
         if ret <= 0:
             raise DeviceNotFoundError('No Mightex cameras were connected to the system')
+
+        # Install Callback Function
+        self._installFrameHooker(ctypes.c_int(0), self.cFunc)
+
         self.num_devices = ret
         # Find the module and serial numbers of connected cameras
         self.module_no: List[str] = []

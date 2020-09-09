@@ -3,7 +3,7 @@ import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets
 import sys
 
-from camera import FakeCamera, MightexEngine, MightexCamera
+from Packages.camera import FakeCamera, MightexEngine, MightexCamera
 
 if __name__ == '__main__':
     # Create the GUI window

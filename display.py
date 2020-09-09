@@ -47,7 +47,7 @@ class App:
     def __init__(self):
         # Create Window w/ main loop
         self.app = QApplication(sys.argv)
-        MainWindow = QtWidgets.QMainWindow()
+        self.MainWindow = QtWidgets.QMainWindow()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(MainWindow)
 
@@ -679,7 +679,7 @@ if __name__ == "__main__":
 
         ## Moved to Calibrate State file
         # if (ui.cb_motors_1.currentIndex() < 0):
-        #     error_dialog.showMessage('You need to select Motor 1.')
+        #     self.ui.error_dialog.showMessage('You need to select Motor 1.')
         #     shut_down()
         #     state = STATE_MEASURE
         #     ROICam1_Lock.setVisible(False)
@@ -688,7 +688,7 @@ if __name__ == "__main__":
         #     ROICam2_Unlock.setVisible(True)
         #     return
         # elif (ui.cb_motors_2.currentIndex() < 0):
-        #     error_dialog.showMessage('You need to select Motor 2.')
+        #     self.ui.error_dialog.showMessage('You need to select Motor 2.')
         #     shut_down()
         #     state = STATE_MEASURE
         #     ROICam1_Lock.setVisible(False)
@@ -697,7 +697,7 @@ if __name__ == "__main__":
         #     ROICam2_Unlock.setVisible(True)
         #     return
         # elif self.ui.cb_motors_1.currentIndex() == self.ui.cb_motors_2.currentIndex():
-        #     error_dialog.showMessage('You need to select two unique motors.')
+        #     self.ui.error_dialog.showMessage('You need to select two unique motors.')
         #     shut_down()
         #     state = STATE_MEASURE
         #     ROICam1_Lock.setVisible(False)
@@ -706,7 +706,7 @@ if __name__ == "__main__":
         #     ROICam2_Unlock.setVisible(True)
         #     return
         # if cam1_index < 0:
-        #     error_dialog.showMessage('You need to select camera 1.')
+        #     self.ui.error_dialog.showMessage('You need to select camera 1.')
         #     shut_down()
         #     state = STATE_MEASURE
         #     ROICam1_Lock.setVisible(False)
@@ -715,7 +715,7 @@ if __name__ == "__main__":
         #     ROICam2_Unlock.setVisible(True)
         #     return
         # elif cam2_index < 0:
-        #     error_dialog.showMessage('You need to select camera 2.')
+        #     self.ui.error_dialog.showMessage('You need to select camera 2.')
         #     shut_down()
         #     state = STATE_MEASURE
         #     ROICam1_Lock.setVisible(False)
@@ -724,7 +724,7 @@ if __name__ == "__main__":
         #     ROICam2_Unlock.setVisible(True)
         #     return
         # elif cam1_index == cam2_index:
-        #     error_dialog.showMessage('You need to select two different cameras.')
+        #     self.ui.error_dialog.showMessage('You need to select two different cameras.')
         #     shut_down()
         #     state = STATE_MEASURE
         #     ROICam1_Lock.setVisible(False)
