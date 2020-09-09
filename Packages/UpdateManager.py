@@ -54,20 +54,7 @@ class UpdateManager:
         return
 
     def store_data(self, state):
-        """
-        STATE_MEASURE = 0
-        STATE_CALIBRATE = 1
-        STATE_LOCKED = 2
-        STATE_ALIGN = 3
-        """
-        if state == 0:
-            state = "Measure"
-        elif state == 1:
-            state = "Calibrate"
-        elif state == 2:
-            state = "Locked"
-        elif state == 3:
-            state = "Align"
+        state = state.label
         date = str(np.datetime64('today', 'D'))
         if len(self.dx) > 0:
             filename = 'Data/' + date + state + '_dx'
