@@ -48,7 +48,7 @@ class MotorManager():
             if m.kind == "MDT693AMotor":
                 m.inst.close()
 
-    def removeMotors(self):
+    def removeAllMotors(self):
         for i in range(len(self.motorList)):
             self.removeMotor(i)
 
