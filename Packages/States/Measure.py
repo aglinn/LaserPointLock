@@ -1,9 +1,9 @@
-from StateMachine import State
+from Packages.States import State
 
 # Extend QState to implement the measure state
 # The measure state ......
 
-class Measure(State):
+class Measure(State.State):
 
     def preAction(self):
         pass

@@ -1,9 +1,9 @@
-from StateMachine import State
+from Packages.States import State
 
 # Extend State to implement the calibrate state
 # The calibrate state ......
 
-class Calibrate(State):
+class Calibrate(State.State):
 
     label = "CALIBRATE"
 

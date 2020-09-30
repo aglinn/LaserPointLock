@@ -1,9 +1,9 @@
-from StateMachine import State
+from Packages.States import State
 
 # Extend State to implement the locked state
 # The locked state ......
 
-class Locked(State):
+class Locked(State.State):
 
     label = "LOCKED"
 

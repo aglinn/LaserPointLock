@@ -1,9 +1,9 @@
-from StateMachine import State
+from Packages.States import State
 
 # Extend QState to implement the align state
 # The align state ......
 
-class Align(State):
+class Align(State.State):
 
     def preAction(self):
         shut_down()

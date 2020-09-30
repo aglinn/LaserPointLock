@@ -26,27 +26,26 @@
 #  parallel. 
 
 import sys
-import visa
 
 import numpy as np
 import pyqtgraph as pg
 from Packages.pointing_ui import Ui_MainWindow
 from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
-from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
-from Packages.motors import MotorManager, FakeMotor, MDT693A_Motor
 import tkinter as tk
 from tkinter import filedialog
 from serial.tools import list_ports
+
 from Packages.UpdateManager import UpdateManager
 from Packages.UpdateManager import InsufficientInformation
-
-from States import StateMachine, Measure, Calibrate, Align, Locked
+from Packages.Cameras import CameraManager
+from Packages.Motors import MotorManager
+from Packages.States import StateMachine, Measure, Calibrate, Align, Locked
 
 class App:
 
     def __init__(self):
         # Create Window w/ main loop
-        self.app = QApplication(sys.argv)
+        self.app = QtGui.QApplication(sys.argv)
         self.MainWindow = QtWidgets.QMainWindow()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(MainWindow)

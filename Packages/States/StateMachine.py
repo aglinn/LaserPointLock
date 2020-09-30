@@ -1,17 +1,12 @@
 
 import time
+from typing import List
 
-class State:
-    label = "Generic State"
-
-    def __init__(self, label, preAction, action, postAction):
-        self.preAction = preAction
-        self.action = action
-        self.postAction = postAction
+from Packages.States import State
 
 class StateMachine:
 
-    def StateMachine(self, states: State[], state: State, UPDATE_TIME_MS=500):
+    def StateMachine(self, states: List[State.State], state: State, UPDATE_TIME_MS=500):
         assert len(states) > 0
         self.states = states
         self.stateIndex = getStateIndex(state)
@@ -22,7 +17,7 @@ class StateMachine:
 
     def getStateIndex(self, state):
         for i in range(len(states)):
-            if (states[i] === state):
+            if (states[i] == state):
                 return i
         raise KeyError(state)
 
