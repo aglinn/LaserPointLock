@@ -8,6 +8,7 @@ import platform
 # from PIL import Image
 
 from Packages.Errors import DeviceNotFoundError
+from Packages.Cameras.MightexCamera import MightexCamera
 
 """
 Mightex Camera C-API Wrapper
@@ -63,12 +64,13 @@ class MightexCameraAPI:
         self.load_driver()
 
         # Initialize the API
-        ret = self._initDevice()
-        if ret <= 0:
+        self.num_devices = self._initDevice()
+        if self.num_devices <= 0:
             raise DeviceNotFoundError('No Mightex cameras were connected to the system')
 
+        # Instantiate Mightex Camera instances for each connected camera
+        self.device_list: List[MightexCamera] = []
 
-        self.num_devices = ret
         # Find the module and serial numbers of connected cameras
         self.module_no: List[str] = []
         self.serial_no: List[str] = []
@@ -92,6 +94,9 @@ class MightexCameraAPI:
             self.module_no.append(module_no)
             self.serial_no.append(serial_no)
             self.dev_num[serial_no] = i + 1
+
+            self.device_list.append(MightexCamera(self, serial_no, module_no))
+
         print('Connected Cameras:')
         for ser, mod in zip(self.serial_no, self.module_no):
             print(ser, mod)
@@ -110,6 +115,9 @@ class MightexCameraAPI:
         # self._startFrameGrab(self.GRAB_FRAME_FOREVER)
         # Install Callback Function
         self._installFrameHooker(ctypes.c_int(1), self.cGetFrameCallbackFuncPointer)
+
+    def getDeviceList(self):
+        return self.device_list
     
     def load_driver(self):
         try:

@@ -3,6 +3,9 @@
 class Motor():
     kind = "Motor"
 
+    def __init__(self):
+        self.serial_no = ""
+
     def getVoltageRange(self):
         return [0.0, 100.0]
 

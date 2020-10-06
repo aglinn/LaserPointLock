@@ -6,9 +6,9 @@ import random
 class FakeCamera(Camera.Camera):
     kind = "FakeCamera"
 
-    def __init__(self):
+    def __init__(self, serial_no):
         self.frame = None
-        self.serial_no = ""
+        self.serial_no = serial_no
 
 
     # Generate random solid color for fake frame

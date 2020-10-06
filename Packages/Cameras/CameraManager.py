@@ -1,11 +1,14 @@
 from typing import List
+from serial.tools import list_ports
 
 from Packages.Errors import DeviceNotFoundError
 from Packages.Cameras import MightexCameraAPI
 # Import all camera types here
-from Packages.Cameras import Camera
-from Packages.Cameras import FakeCamera
-from Packages.Cameras import MightexCamera
+from Packages.Cameras.Camera import Camera
+from Packages.Cameras.FakeCamera import FakeCamera
+from Packages.Cameras.MightexCamera import MightexCamera
+from Packages.Cameras.BosonCamera import BosonCamera
+
 
 # CameraManager()
 #   enableMightexAPI()
@@ -17,57 +20,75 @@ from Packages.Cameras import MightexCamera
 
 class CameraManager():
 
+    # Boson VID and PID:
+    VID = 0x09CB
+    PID = 0x4007
+
     def __init__(self):
         # Create resource manager to talk to devices
 
         self.MightexAPI = None
         
+        self.deviceList: List[Camera] = [] # All connected devices
+        self.selectedDevices: List[int] = [] # Selected devices indecies
 
-        self.serialList: List[str] = []
-        self.cameraList: List[Camera] = []
+        self.getDeviceList()
 
     def enableMightexAPI(self):
-        self.MightexAPI = MightexCameraAPI()
+        if not self.MightexAPI:
+            self.MightexAPI = MightexCameraAPI()
+
+    def getDeviceList(self):
+        if len(self.deviceList) > 0:
+            return self.deviceList
+
+        # Append two fake cameras
+        self.deviceList = []
+        self.deviceList.append(FakeCamera(1))
+        self.deviceList.append(FakeCamera(2))
+
+        # Append Mightex
+        if self.MightexAPI:
+            self.deviceList.append(self.MightexAPI.getDeviceList())
+
+        # Append Bosons
+        #TODO: Figure out how to correctly connect two BOSONs.
+        device_id = None
+        for device in list_ports.comports():
+                if device.vid == VID and device.pid == PID:
+                    port = device.device
+                    # self.deviceList.append(port)
+                    c = BosonCamera(port=port, device_id=device_id)
+                    print(port)
+                    ffc_state = 0
+                    c.do_ffc()
+                    while ffc_state == 0:
+                        ffc_state = c.get_ffc_state()
+                    self.deviceList.append(c)
+                    device_id = 1
+
+        return self.deviceList
     
-    def getCameraList(self):
-        return self.cameraList
-
-    def getCamera(self, index):
-        return self.cameraList[index]
-
     # Returns None if port is already in use
-    def addCamera(self, serial_no: str, kind: str):
-        # ALl cameras in the list must be unique
-        if self.serialList.index(serial_no):
-            return None
-        
-        c: Camera = None
-        if kind == "Mightex":
-            # Try to add camera from serial_no parameter
-            for i, ser_no in self.MightexAPI.serial_no:
-                if ser_no == serial_no:
-                    self.serialList.append(serial_no)
-                    c = MightexCamera(self.MightexAPI, serial_no)
-                    
-            if not c:
-                raise DeviceNotFoundError("Invalid serial number!")
-            return None
-                    
+    def selectCamera(self, index: int):
+        # All cameras in the list must be unique
+        if not self.selectedDevices.index(index):
+            self.selectedDevices.append(index)
+            return index
         else:
-            c = FakeCamera()
+            return -1
+    
+    # Returns camera object given index of device index stored in selected devices
+    def getSelectedCamera(self, index: int):
+        if index >=0 and index < len(self.selectedDevices):
+            return self.deviceList[index]
+        else:
+            return None
 
-        self.cameraList.append(c)
-        return c
 
-    def removeCamera(self, index):
-        for i, c in self.cameraList:
-            if c.kind == "Mightex":
-                c.deactivate_cam()
-            self.serialList.remove(i)
-            self.cameraList.remove(i)
-
-    def removeAllCameras(self):
-        for i in range(len(self.cameraList)):
-            self.removeCamera(i)
+    def terminate(self):
+        # Terminate all cameras
+        for device in self.deviceList:
+            device.terminate()
 
 

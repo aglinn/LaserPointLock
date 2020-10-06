@@ -2,7 +2,9 @@
 import time
 from flirpy.camera.boson import Boson
 
-class BosonCamera(Boson):
+from Packages.Cameras.Camera import Camera
+
+class BosonCamera(Boson, Camera):
 
     kind = "BosonCamera"
 

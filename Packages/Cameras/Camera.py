@@ -54,3 +54,7 @@ class Camera(ABC):
     def gain(self):
         pass
 
+    @abstractmethod
+    def terminate(self):
+        pass
+

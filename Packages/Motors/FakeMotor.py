@@ -4,7 +4,8 @@ class FakeMotor(Motor):
     kind = "FakeMotor"
     voltageRange = (0.0, 100.0)
 
-    def __init__(self):
+    def __init__(self, serial_no):
+        self.serial_no = serial_no
         self.xv = 0 # X Voltage
         self.yv = 0 # Y Voltage
         self.xcount = 2

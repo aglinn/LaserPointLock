@@ -1,18 +1,5 @@
-# TODO: 2 stop using global vars and put this code into a fucking window
-# TODO: 1 Add statistics logging.
-# TODO: 1 Let me FFT the camera COM coordinates to find out which frequencies are generating the noise.
-# TODO: 1 For the above two, it may be useful to have a new state or even a seperate program to run diagnostics in a super
-#  lean fashion; so we can be sensitive to the highest possible frequencies.
-# TODO: 1 Finish overhauling code to allow for operation with IR Cameras.
-# TODO: 3 Try using OpenCV with the Mightex cameras for faster operation
-# TODO: 2 Try to shutter the TOPAS if the BOSON FPAs get too hot. Can I even control the TOPAS shutter?
-# TODO: 2 Stupid bug fix: When I reduce the number of points to be plotted for COM and piezzo values, I need to make the
-#  number of points plotted actually smaller.
-# TODO: 2 try the other algorithm from the paper I found.
-# TODO: 2 Implement PID, instead of just D.
-# TODO: 2 Make the GUI compatible with multiple screen formats.
-# TODO: 3 multithread the program.
-# TODO: 2 Generally improve the coding.
+# Done - TODO: 1 Add statistics logging.
+# Done - TODO: 1 Let me FFT the camera COM coordinates to find out which frequencies are generating the noise.
 # TODO: 3 Make it possible to set a ROI on the camera; so that the cameras only read the pixels in the ROI. This will
 #  likely give us quite a bit of speed up on the program update time, and it is way simpler than multithreading.
 # TODO: 3 Improve communication with the piezo motors.
@@ -25,6 +12,24 @@
 # TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
 #  parallel. 
 
+# Improve usability
+# In Progress -  TODO: 2 stop using global vars and put this code into a fucking window
+# TODO: 2 Make the GUI compatible with multiple screen formats.
+# TODO: 2 Stupid bug fix: When I reduce the number of points to be plotted for COM and piezzo values, I need to make the
+# TODO: 1 Finish overhauling code to allow for operation with IR Cameras.
+#  number of points plotted actually smaller.
+# TODO: 2 Generally improve the coding.
+# 
+
+# Improve speed
+# TODO: 3 multithread the program. Try speeding up the set and get voltages for the motors
+# 
+
+# Test new update algorithms
+# In Progress - Garrison TODO: 2 Implement PID, instead of just D.
+# TODO: 2 try the other algorithm from the paper I found.
+# 
+
 import sys
 
 import numpy as np
@@ -33,12 +38,11 @@ from Packages.pointing_ui import Ui_MainWindow
 from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
 import tkinter as tk
 from tkinter import filedialog
-from serial.tools import list_ports
 
 from Packages.UpdateManager import UpdateManager
 from Packages.UpdateManager import InsufficientInformation
-from Packages.Cameras import CameraManager
-from Packages.Motors import MotorManager
+from Packages.Cameras.CameraManager import CameraManager
+from Packages.Motors.MotorManager import MotorManager
 from Packages.States import StateMachine, Measure, Calibrate, Align, Locked
 
 class App:
@@ -48,21 +52,26 @@ class App:
         self.app = QtGui.QApplication(sys.argv)
         self.MainWindow = QtWidgets.QMainWindow()
         self.ui = Ui_MainWindow()
-        self.ui.setupUi(MainWindow)
+        self.ui.setupUi(self.MainWindow)
+
+        self.system = "VIS"
 
         # Define a state machine
-        self.STATE_MEASURE = Measure()
-        self.STATE_CALIBRATE = Calibrate()
-        self.STATE_LOCKED = Locked()
         self.UPDATE_TIME = 500  # ms
-        self.STATE_ALIGN = Align()
-        self.StateMachine = StateMachine([STATE_MEASURE, STATE_CALIBRATE, STATE_LOCKED, STATE_ALIGN], STATE_MEASURE)
+        self.STATE_MEASURE = Measure.Measure()
+        self.STATE_CALIBRATE = Calibrate.Calibrate()
+        self.STATE_LOCKED = Locked.Locked()
+        self.STATE_ALIGN = Align.Align()
+        self.StateMachine = StateMachine.StateMachine([self.STATE_MEASURE, self.STATE_CALIBRATE, self.STATE_LOCKED, self.STATE_ALIGN], self.STATE_MEASURE)
 
-        #  Instantiate Update Manager
+        # Instantiate Update Manager
         self.UpdateManager = UpdateManager()
 
         # Instantiate Motor Manager
         self.MotorManager = MotorManager()
+
+        # Instantiate Camera Manager
+        self.CameraManager = CameraManager()
 
         ## UI Stuff
         # pyqtgraph
@@ -74,36 +83,36 @@ class App:
         self.ui.cam_model = QtGui.QStandardItemModel()
         self.ui.motor_model = QtGui.QStandardItemModel()
         self.ui.error_dialog = QtWidgets.QErrorMessage()
-
-        # Motor Dropdown UI - Append 2 fake cameras then available motors to UI list
-        self.ui.motor_model.appendRow(QtGui.QStandardItemModel("Fake Camera 1"))
-        self.ui.motor_model.appendRow(QtGui.QStandardItemModel("Fake Camera 2"))
-        for dev in MotorManager.getDevices():
-            dropdownItem = QtGui.QStandardItem(str(dev))
-            self.ui.motor_model.appendRow(dropdownItem)
-
-        # Set models and default values for combo boxes
         self.ui.cb_cam1.setModel(self.ui.cam_model)
         self.ui.cb_cam2.setModel(self.ui.cam_model)
         self.ui.cb_motors_1.setModel(self.ui.motor_model)
         self.ui.cb_motors_2.setModel(self.ui.motor_model)
-        if len(resourceManager.list_resources()) >= 2:
+
+        # Set models and default values for combo boxes
+        if len(self.MotorManager.getDevices()) >= 2:
             self.ui.cb_motors_1.setCurrentIndex(0)
             self.ui.cb_motors_2.setCurrentIndex(1)
         else:
             self.ui.cb_motors_1.setCurrentIndex(-1)
             self.ui.cb_motors_1.setCurrentIndex(-1)
 
-        self.ui.btn_cam1_update.clicked.connect(update_cam1_settings)
-        self.ui.btn_cam2_update.clicked.connect(update_cam2_settings)
-        self.ui.btn_motor_connect.clicked.connect(update_motors)
-        self.ui.act_calibrate.triggered.connect(beginCalibration)
-        self.ui.actionLoad_Old_Home.triggered.connect(load_home)
-        self.ui.btn_clear.clicked.connect(clear_pointing_plots)
-        self.ui.btn_lock.clicked.connect(lock_pointing)
-        self.ui.btn_Home.clicked.connect(define_home)
-        self.ui.btn_Align.clicked.connect(beginAlign)
-        self.ui.cb_SystemSelection.currentIndexChanged.connect(find_cameras)
+        self.toggle_mightex_cam_settings_ui_vis(False)
+        self.toggle_general_cam_settings_ui_vis(False)
+        self.toggle_BOSON_cam_settings_ui_vis(False)
+
+        # Connect UI button to functions
+        self.ui.btn_cam1_update.clicked.connect(self.update_cam1_settings)
+        self.ui.btn_cam2_update.clicked.connect(self.update_cam2_settings)
+        self.ui.btn_motor_connect.clicked.connect(self.update_motors)
+        self.ui.act_calibrate.triggered.connect(self.beginCalibration)
+        self.ui.actionLoad_Old_Home.triggered.connect(self.load_home)
+        self.ui.btn_clear.clicked.connect(self.clear_pointing_plots)
+        self.ui.btn_lock.clicked.connect(self.lock_pointing)
+        self.ui.btn_Home.clicked.connect(self.define_home)
+        self.ui.btn_Align.clicked.connect(self.beginAlign)
+        self.ui.cb_SystemSelection.currentIndexChanged.connect(self.set_system) # Dropdown Selector for Vis or IR modes
+
+        self.updateUI()
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.StateMachine.update)
@@ -113,21 +122,48 @@ class App:
 
         sys.exit(self.app.exec_())
 
-if __name__ == "__main__":
-    app = App()
+    def set_system(self):
+        sys_index = int(self.ui.cb_SystemSelection.currentIndex())
+        if sys_index == 1:
+            self.system = "VIS"
+            self.CameraManager.enableMightexAPI()
+        elif sys_index == 2:
+            self.system = "IR"
+        self.updateUI()
 
+    def updateUI(self):
+        # Make appropriate Camera Settings available in GUI:
+        if self.system == "VIS":
+            toggle_BOSON_cam_settings_ui_vis(False)
+            toggle_mightex_cam_settings_ui_vis(True)
+            toggle_general_cam_settings_ui_vis(True)
+        elif self.system == "IR":
+            toggle_mightex_cam_settings_ui_vis(False)
+            toggle_general_cam_settings_ui_vis(True)
+            toggle_BOSON_cam_settings_ui_vis(True)
+        else:
+            print("Choose a system!")
+            return None
 
-    """
-    # Add fake cameras
-    for i in range(3):
-        c = FakeCamera()
-        cam_list.append(c)
-        self.ui.cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
-    """
+        self.update_motor_list()
+        self.update_camera_list()
+
+    def update_motor_list(self):
+        self.ui.motor_model.clear()
+        for dev in self.MotorManager.getDeviceList():
+            dropdownItem = QtGui.QStandardItem('{dev.kind}:{dev.serial_no}')
+            self.ui.motor_model.appendRow(dropdownItem)
+
+    def update_camera_list(self):
+        self.ui.cam_model.clear()
+        # Find the cameras
+        for cam in self.CameraManager.getDeviceList():
+            dropdownItem = QtGui.QStandardItem('{cam.kind}:{cam.serial_no}')
+            self.ui.cam_model.appendRow(dropdownItem)
 
     # Set the camera settings buttons invisible, until a Point Lock System is chosen. Then, make visible the correct
     # set of gui buttons.
-    def toggle_mightex_cam_settings_ui_vis(Logic):
+    def toggle_mightex_cam_settings_ui_vis(self, Logic):
         """
         Set visibility state of Mightex camera settings UI to true or false. i.e. visibility of settings
         relavent to only Mightex cameras.
@@ -144,7 +180,7 @@ if __name__ == "__main__":
         self.ui.le_cam2_gain.setVisible(Logic)
         self.ui.cb_cam2_decimate.setVisible(Logic)
 
-    def toggle_general_cam_settings_ui_vis(Logic):
+    def toggle_general_cam_settings_ui_vis(self, Logic):
         """
         Set visibility state of generally useful camera settings UI to true or false. i.e. visibility of settings
         relavent to both Mightex and Boson cameras.
@@ -170,7 +206,7 @@ if __name__ == "__main__":
         self.ui.le_cam1_max.setVisible(Logic)
         self.ui.le_cam2_max.setVisible(Logic)
 
-    def toggle_BOSON_cam_settings_ui_vis(Logic):
+    def toggle_BOSON_cam_settings_ui_vis(self, Logic):
         """
         Set visibility state of generally useful camera settings UI to true or false. i.e. visibility of settings
         relavent to both Mightex and Boson cameras.
@@ -181,27 +217,11 @@ if __name__ == "__main__":
         self.ui.label_18.setVisible(Logic)
         self.ui.label_19.setVisible(Logic)
 
-    toggle_mightex_cam_settings_ui_vis(False)
-    toggle_general_cam_settings_ui_vis(False)
-    toggle_BOSON_cam_settings_ui_vis(False)
-
-    # Load Most Recent Calibration Matrix:
-    try:
-        UpdateManager.calibration_matrix = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
-    except OSError:
-        raise FileNotFoundError("Hmm there seems to be no saved calibration, run calibration.")
-
-    # Initialize Global variables for home position markers:
-    ROICam1_Unlock = None
-    ROICam2_Unlock = None
-    ROICam1_Lock = None
-    ROICam2_Lock = None
-
     # Load the Most Recent Home Position:
-    def set_home_marker():
+    def set_home_marker(self):
         global StateMachine
         global ROICam1_Unlock,ROICam2_Unlock,ROICam1_Lock,ROICam2_Lock
-        set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = UpdateManager.set_pos
+        set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = self.UpdateManager.set_pos
         pen = pg.mkPen(color=(255, 0, 0), width=2)
         ROICam1_Unlock = pg.CircleROI(pos=(set_cam1_y-20, set_cam1_x-20), radius=20,
                                 movable=False, rotatable=False, resizable=False, pen=pen)
@@ -239,17 +259,98 @@ if __name__ == "__main__":
             ROICam2_Unlock.setVisible(True)
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
-    try:
-        HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
+
+    # On program init, use this function to load the last used home position automatically
+    def load_most_recent_home(self):
+        try:
+            HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
+            self.UpdateManager.set_pos = np.asarray(HomePosition)
+            self.set_home_marker()
+        except OSError:
+            self.UpdateManager.set_pos = None
+            print("Hmm there seems to be no saved Home Position, define one before locking.")
+
+    # This opens a file dialog to allow the user to select a different saved home file
+    def load_home(self):
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        root = tk.Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename()
+        HomePosition = None
+        if self.system == "VIS":
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
+        elif self.system == "IR":
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
         UpdateManager.set_pos = np.asarray(HomePosition)
-        set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = HomePosition
-        set_home_marker()
+        print("Set Positions:", HomePosition)
+        try:
+            ROICam1_Unlock.setVisible(False)
+            ROICam2_Unlock.setVisible(False)
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+        except:
+            pass
+        self.set_home_marker()
+
+    def shut_down(self):
+        UpdateManager.store_data(state = self.StateMachine.getState())
+        UpdateManager.reset_data()
+        return
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+    app = App()
+
+
+    """
+    # Add fake cameras
+    for i in range(3):
+        c = FakeCamera()
+        cam_list.append(c)
+        self.ui.cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+    """
+
+    # Load Most Recent Calibration Matrix:
+    try:
+        UpdateManager.calibration_matrix = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
     except OSError:
-        set_cam1_x = 'dummy'
-        set_cam1_y = 'dummy'
-        set_cam2_x = 'dummy'
-        set_cam2_y = 'dummy'
-        print("Hmm there seems to be no saved Home Position, define one before locking.")
+        raise FileNotFoundError("Hmm there seems to be no saved calibration, run calibration.")
+
+    # Initialize Global variables for home position markers:
+    ROICam1_Unlock = None
+    ROICam2_Unlock = None
+    ROICam1_Lock = None
+    ROICam2_Lock = None
+
+    
 
     # Initialize Global Variables for arrows for Alignment Mode:
     Cam1_LeftArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
@@ -475,7 +576,7 @@ if __name__ == "__main__":
         global cam1_x, cam2_x, cam1_y, cam2_y
         global cam1_x_line, cam2_x_line, cam1_y_line, cam2_y_line
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
-        if int(ui.cb_SystemSelection.currentIndex()) == 2:
+        if self.system == "IR":
             service_BOSON(cam_index)
         if cam_view == 0:
             avg_frames = int(ui.Cam1_AvgFrames.text())
@@ -567,7 +668,7 @@ if __name__ == "__main__":
         assert cam_index >= 0
         assert cam_view == 0 or cam_view == 1
 
-        if int(ui.cb_SystemSelection.currentIndex()) == 2:
+        if self.system == "IR":
             service_BOSON(cam_index)
         if cam_view == 0:
             avg_frames = int(ui.Cam1_AvgFrames.text())
@@ -1255,7 +1356,7 @@ if __name__ == "__main__":
 
     def update_cam1_settings():
         global cam1_index, cam1_threshold, cam1_reset, cam_list
-        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+        if self.system == "VIS":
             cam1_index = int(ui.cb_cam1.currentIndex())
             cam1_exp_time = float(ui.le_cam1_exp_time.text())
             cam1_gain = float(ui.le_cam1_gain.text())
@@ -1269,7 +1370,7 @@ if __name__ == "__main__":
             self.ui.le_cam1_gain.setText('%.2f' % (cam_list[cam1_index].gain/8))
             cam1_reset = True
             resetHist(ui.gv_camera1)
-        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+        elif self.system == "IR":
             cam1_index = int(ui.cb_cam1.currentIndex())
             cam1_threshold = float(ui.le_cam1_threshold.text())
             cam_list[cam1_index].update_frame()
@@ -1280,7 +1381,7 @@ if __name__ == "__main__":
     
     def update_cam2_settings():
         global cam2_index, cam2_threshold, cam2_reset, cam_list
-        if int(ui.cb_SystemSelection.currentIndex()) == 1:
+        if self.system == "VIS":
             cam2_index = int(ui.cb_cam2.currentIndex())
             cam2_exp_time = float(ui.le_cam2_exp_time.text())
             cam2_gain = float(ui.le_cam2_gain.text())
@@ -1294,7 +1395,7 @@ if __name__ == "__main__":
             self.ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
             cam2_reset = True
             resetHist(ui.gv_camera2)
-        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+        elif self.system == "IR":
             cam2_index = int(ui.cb_cam2.currentIndex())
             cam2_threshold = float(ui.le_cam2_threshold.text())
             cam_list[cam1_index].update_frame()
@@ -1420,11 +1521,11 @@ if __name__ == "__main__":
             print('Set cam 2 y', set_cam2_y)
             HomePosition = np.array([set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y])
             UpdateManager.set_pos = HomePosition
-            if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            if self.system == "VIS":
                 np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
                 filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
                 np.savetxt(filename, HomePosition, fmt='%f')
-            elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+            elif self.system == "IR":
                 np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
                 filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
                 np.savetxt(filename, HomePosition, fmt='%f')
@@ -1436,28 +1537,6 @@ if __name__ == "__main__":
             except:
                 pass
             set_home_marker()
-
-    def load_home():
-        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
-        root = tk.Tk()
-        root.withdraw()
-        file_path = filedialog.askopenfilename()
-        if int(ui.cb_SystemSelection.currentIndex()) == 1:
-            HomePosition = np.loadtxt(file_path, dtype=float)
-            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
-        elif int(ui.cb_SystemSelection.currentIndex()) == 2:
-            HomePosition = np.loadtxt(file_path, dtype=float)
-            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
-        UpdateManager.set_pos = np.asarray(HomePosition)
-        print("Set Positions:", HomePosition)
-        try:
-            ROICam1_Unlock.setVisible(False)
-            ROICam2_Unlock.setVisible(False)
-            ROICam1_Lock.setVisible(False)
-            ROICam2_Lock.setVisible(False)
-        except:
-            pass
-        set_home_marker()
 
     def beginAlign():
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
@@ -1503,54 +1582,6 @@ if __name__ == "__main__":
         #         self.ui.statusbar.showMessage('{0}\tUpdate time: {1:.3f} (s)'.format(msg, time.time() - start_time))
         #         time.sleep(5)
         #         raise AssertionError("Make Piezo voltages 75.0 before aligning.")
-
-    def find_cameras():
-        global cam_list
-        if int(ui.cb_SystemSelection.currentIndex()) == 1:
-            # Find the Mightex cameras
-            mightex_engine = MightexEngine()
-            cam_list = []
-            if len(mightex_engine.serial_no) == 0:
-                raise DeviceNotFoundError('Could not find any Mightex cameras!')
-            else:
-                for i, serial_no in enumerate(mightex_engine.serial_no):
-                    c = MightexCamera(mightex_engine, serial_no)
-                    cam_list.append(c)
-                    self.ui.cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
-            # Make appropriate Camera Settings available in GUI:
-            toggle_BOSON_cam_settings_ui_vis(False)
-            toggle_mightex_cam_settings_ui_vis(True)
-            toggle_general_cam_settings_ui_vis(True)
-        elif int(ui.cb_SystemSelection.currentIndex())==2:
-            # Find the Boson Cameras
-            #TODO: Figure out how to correctly connect two BOSONs.
-            device_list = list_ports.comports()
-            # Boson VID and PID:
-            VID = 0x09CB
-            PID = 0x4007
-            port_list = []
-            # Find all ports associated with Bosons.
-            for device in device_list:
-                if device.vid == VID and device.pid == PID:
-                    port = device.device
-                    port_list.append(port)
-            cam_list = []
-            device_id = None
-            for boson_port in port_list:
-                c = BosonCamera(port=boson_port, device_id=device_id)
-                print(boson_port)
-                ffc_state = 0
-                c.do_ffc()
-                while ffc_state == 0:
-                    ffc_state = c.get_ffc_state()
-                cam_list.append(c)
-                cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
-                device_id = 1
-            toggle_mightex_cam_settings_ui_vis(False)
-            toggle_general_cam_settings_ui_vis(True)
-            toggle_BOSON_cam_settings_ui_vis(True)
-        else:
-            print("Choose a system!")
 
     def service_BOSON(cam_index):
         global cam_list, cam1_index, cam2_index
@@ -1608,11 +1639,5 @@ if __name__ == "__main__":
             self.ui.label_17.setText(str(fpa_temp))
         elif cam_index == cam2_index:
             self.ui.label_19.setText(str(fpa_temp))
-
-    def shut_down():
-        global state
-        UpdateManager.store_data(state = state)
-        UpdateManager.reset_data()
-        return
 
     # sys.exit(app.exec_())

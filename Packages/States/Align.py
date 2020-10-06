@@ -46,7 +46,7 @@ class Align(State.State):
                 raise AssertionError("Make Piezo voltages 75.0 before aligning.")
         
     def action(self):
-       if cam1_index >= 0 and cam2_index >= 0 and cam1_index != cam2_index:
+        if cam1_index >= 0 and cam2_index >= 0 and cam1_index != cam2_index:
             if cam1_reset:
                 _, _, _, under_saturated_cam1, saturated_cam1 = take_img(cam1_index, cam_view=0,
                                                                                    threshold=cam1_threshold,

@@ -4,6 +4,8 @@ from Packages.States import State
 # The measure state ......
 
 class Measure(State.State):
+    
+    label = "MEASURE"
 
     def preAction(self):
         pass

@@ -1,15 +1,14 @@
-from Packages.Cameras import Camera
-
+from Packages.Cameras.Camera import Camera
 from Packages.Errors import DeviceNotFoundError
 from Packages.Cameras.MightexCameraAPI import MightexCameraAPI
 
 
 # Mightex Camera class
-class MightexCamera(Camera.Camera):
+class MightexCamera(Camera):
 
     kind = "Mightex"
 
-    def __init__(self, engine: MightexCameraAPI, serial_no: str):
+    def __init__(self, engine: MightexCameraAPI, serial_no: str, module_no: str):
         super.__init__()
         
         self.engine: MightexEngine = engine

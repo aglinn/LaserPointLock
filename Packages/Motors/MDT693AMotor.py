@@ -1,4 +1,5 @@
-
+import visa
+from pyvisa.constants import StopBits, Parity, VI_ASRL_FLOW_NONE
 
 class MDT693AMotor(Motor):
     """
@@ -28,6 +29,7 @@ class MDT693AMotor(Motor):
     def __init__(self, resourceInst):
         super().__init__()
         
+        self.serial_no = "temp"
         self.inst = resourceInst
         self.xv = 75.0
         self.yv = 75.0
@@ -36,7 +38,7 @@ class MDT693AMotor(Motor):
 
     def getXVoltage(self):
         cmd = f'{self.xID} R?'
-        while attempt in range(10): # Try to get value at most 10 times before raising an error
+        for attempt in range(10): # Try to get value at most 10 times before raising an error
             try:
                 reading = float(re.findall("\d+\.\d+", self.inst.query(cmd))[0])
                 # Return the last setpoint of the voltage, unless the readout is more than 0.3V away,
@@ -52,7 +54,7 @@ class MDT693AMotor(Motor):
 
     def getYVoltage(self):
         cmd = f'{self.yID} R?'
-        while attempt in range(10): # Try to get value at most 10 times before raising an error
+        for attempt in range(10): # Try to get value at most 10 times before raising an error
             try:
                 reading = float(re.findall("\d+\.\d+", self.inst.query(cmd))[0])
                 # Return the last setpoint of the voltage, unless the readout is more than 0.3V away,
@@ -78,7 +80,7 @@ class MDT693AMotor(Motor):
             self.xv = v
 
         cmd = f'{self.xId}V' + str('{:.1f}'.format(self.xv))
-        while attempt in range(10):
+        for attempt in range(10):
             try:
                 # Set voltage by sending cmd
                 rep = self.inst.query(cmd)
@@ -103,7 +105,7 @@ class MDT693AMotor(Motor):
             self.yv = v
 
         cmd = f'{self.yId}V' + str('{:.1f}'.format(self.yv))
-        while attempt in range(10):
+        for attempt in range(10):
             try:
                 # Set voltage by sending cmd
                 rep = self.inst.query(cmd)
