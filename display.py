@@ -101,6 +101,11 @@ class App:
         self.toggle_BOSON_cam_settings_ui_vis(False)
 
         # Connect UI button to functions
+        """
+        This puzzles me a bit. I think this code needs to sit somewhere that it will constantly be checked, or maybe 
+        I do not understand how this code works? I guess I think of these lines as meaning check to see if clicked, 
+        and so they need to be run periodically to check for clicks rather than one time as an init.
+        """
         self.ui.btn_cam1_update.clicked.connect(self.update_cam1_settings)
         self.ui.btn_cam2_update.clicked.connect(self.update_cam2_settings)
         self.ui.btn_motor_connect.clicked.connect(self.update_motors)
@@ -123,6 +128,9 @@ class App:
         sys.exit(self.app.exec_())
 
     def set_system(self):
+        """
+        Select IR or visible pointlock system, mostly choose cameras to pull in.
+        """
         sys_index = int(self.ui.cb_SystemSelection.currentIndex())
         if sys_index == 1:
             self.system = "VIS"
@@ -134,13 +142,13 @@ class App:
     def updateUI(self):
         # Make appropriate Camera Settings available in GUI:
         if self.system == "VIS":
-            toggle_BOSON_cam_settings_ui_vis(False)
-            toggle_mightex_cam_settings_ui_vis(True)
-            toggle_general_cam_settings_ui_vis(True)
+            self.toggle_BOSON_cam_settings_ui_vis(False)
+            self.toggle_mightex_cam_settings_ui_vis(True)
+            self.toggle_general_cam_settings_ui_vis(True)
         elif self.system == "IR":
-            toggle_mightex_cam_settings_ui_vis(False)
-            toggle_general_cam_settings_ui_vis(True)
-            toggle_BOSON_cam_settings_ui_vis(True)
+            self.toggle_mightex_cam_settings_ui_vis(False)
+            self.toggle_general_cam_settings_ui_vis(True)
+            self.toggle_BOSON_cam_settings_ui_vis(True)
         else:
             print("Choose a system!")
             return None
@@ -149,12 +157,20 @@ class App:
         self.update_camera_list()
 
     def update_motor_list(self):
+        """
+        Add motors to the list of available motors to choose form in the UI.
+        """
         self.ui.motor_model.clear()
         for dev in self.MotorManager.getDeviceList():
+            # TODO: Is this a bug? Same for update camera. Not sure that '{dev.kind}' calls dev.kind and returns a string
+            #  Or does it literally interpret that as a string? Pycharm seems to think dev is unused...
             dropdownItem = QtGui.QStandardItem('{dev.kind}:{dev.serial_no}')
             self.ui.motor_model.appendRow(dropdownItem)
 
     def update_camera_list(self):
+        """
+        Find Cameras and add them to the list of cameras to choose from in the UI.
+        """
         self.ui.cam_model.clear()
         # Find the cameras
         for cam in self.CameraManager.getDeviceList():
