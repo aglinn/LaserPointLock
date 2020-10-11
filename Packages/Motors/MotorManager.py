@@ -19,6 +19,9 @@ class MotorManager():
 
     # returns list of all connected devices
     def getDeviceList(self):
+        """
+        This will be run upon launch of the app.
+        """
         # Append two fake motors first, then real resouces from pyvisa
         self.deviceList = []
         self.deviceList.append(FakeMotor(1))
@@ -43,6 +46,11 @@ class MotorManager():
     
     # Returns mootor object given index of device index stored in selected devices
     def getSelectedMotor(self, index: int):
+        """
+        When the user chooses the motors to use in the GUI selection box, the GUI should inject a state into the
+        statemachine queue. This state will prompt the state machine to trigger this function, which will establish the
+        list of motors to be used in the ApplyVoltages method.
+        """
         if index >=0 and index < len(self.selectedDevices):
             return self.deviceList[index]
         else:
@@ -53,6 +61,27 @@ class MotorManager():
         # Terminate all motor devices
         for device in self.deviceList:
             device.terminate()
+
+    def ApplyVoltages(self, Voltages: list):
+        """
+        This function is run by the state manager.
+
+        Purpose: set voltages on the motors in the list.
+
+        input: 4 component list of voltages=[motor1_x, motor1_y, motor2_x, motor2_y]
+
+        return: nothing.
+
+        You need to loop over your motorlist returned from getSelectedMotors and run the setXVoltage and setYVoltage
+        methods of each motor with the appropriate voltage from the Voltages list.
+        """
+
+    def ReportVoltages(self):
+        """
+        At some point we need to get information about the current voltages into the UpdateManager; so that object can
+        find the new voltages to be applied. We can either assume voltages are always the previous set value, as in we
+        never need to read the voltages from the machines, although we know sometimes setting the voltages failed.
+        """
 
     # # Returns None if port is already in use
     # def addMotor(self, port: str, kind: str):

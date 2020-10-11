@@ -91,4 +91,21 @@ class CameraManager():
         for device in self.deviceList:
             device.terminate()
 
+    def CaptureImages(self, Object):
+        """
+        This function is called by the state manager, and it plays the role of the takeimage function.
+        It requires an object, which will be the Update Manager in our case. This Object must have properties: cam_1_img
+        and cam_2_img.
+
+        Purpose: Tell cameras to take images and store them as Object.cam_x_img, effectively updating the current images
+        stored in the update manager. The update manager will handle the processing of those images for determining update
+        voltages and also reporting the images to the GUI.
+
+        This means you should loop over the cameras in your camera list returned by getSelectedCamera and run getframe
+        and store the returned frame as Object.cam_x_img.
+
+        Return: Nothing from this function.
+        """
+        pass
+
 
