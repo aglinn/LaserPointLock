@@ -1,6 +1,8 @@
 import visa
 from pyvisa.constants import StopBits, Parity, VI_ASRL_FLOW_NONE
 
+import re
+
 class MDT693AMotor(Motor):
     """
     Code that implements a Motor assuming a connection to the ThorLabs MDT693A

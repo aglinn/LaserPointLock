@@ -1,7 +1,6 @@
 import visa
 from pyvisa.constants import StopBits, Parity, VI_ASRL_FLOW_NONE
 from typing import NewType, List
-import re
 import numpy
 
 from Packages.Motors.Motor import Motor
