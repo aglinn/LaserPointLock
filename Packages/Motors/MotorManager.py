@@ -82,6 +82,13 @@ class MotorManager():
         find the new voltages to be applied. We can either assume voltages are always the previous set value, as in we
         never need to read the voltages from the machines, although we know sometimes setting the voltages failed.
         """
+        pass
+
+    def ResetMotors(self):
+        """
+        Apply 75.0 V to all channels of all motors.
+        """
+        pass
 
     # # Returns None if port is already in use
     # def addMotor(self, port: str, kind: str):

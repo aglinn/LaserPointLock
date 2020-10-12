@@ -32,6 +32,8 @@ class CameraManager():
         self.deviceList: List[Camera] = [] # All connected devices
         self.selectedDevices: List[int] = [] # Selected devices indecies
 
+        self._active_cam_list = [None, None]
+
         self.getDeviceList()
 
     def enableMightexAPI(self):
@@ -91,7 +93,22 @@ class CameraManager():
         for device in self.deviceList:
             device.terminate()
 
-    def CaptureImages(self, Object):
+    @property
+    def ActiveCamList(self):
+        """
+        return list of cameras chosen. Could have 0, 1, or 2 cameras in the appropriate location
+        """
+        return self._active_cam_list
+
+    @ActiveCamList.setter
+    def ActiveCamList(self, camera, camera_id):
+        #TODO: Handle creation of active list based on GUI interactions.
+        """
+        Need to select from available devices based on user input the 2 cameras to use for the Measure, Update, etc. states
+        """
+        pass
+
+    def CaptureImages_OneCamera(self):
         """
         This function is called by the state manager, and it plays the role of the takeimage function.
         It requires an object, which will be the Update Manager in our case. This Object must have properties: cam_1_img
@@ -104,8 +121,23 @@ class CameraManager():
         This means you should loop over the cameras in your camera list returned by getSelectedCamera and run getframe
         and store the returned frame as Object.cam_x_img.
 
-        Return: Nothing from this function.
+        Return: Images from camera list
         """
-        pass
+        try:
+            if isinstance(self.ActiveCamList[0], None):
+                return None, self.ActiveCamList[1].get_frame
+            else:
+                return self.ActiveCamList[0].get_frame, None
+
+        except:
+            #We could capture attempts to be in the measure state with more than 2 cameras in the list?
+            pass
+
+
+    def CaptureImages_TwoCameras(self):
+        """
+        Same as CaptureImages_OneCamera, but assumed 2 cameras are connected.
+        """
+        return self.ActiveCamList[0].get_frame, self.ActiveCamList[1].get_frame
 
 
