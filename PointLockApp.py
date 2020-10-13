@@ -238,7 +238,7 @@ class App:
         sys_index = int(self.ui.cb_SystemSelection.currentIndex())
         if sys_index == 1:
             self.system = "VIS"
-            self.CameraManager.enableMightexAPI()
+            self.StateMachine.camera_manager.enableMightexAPI()
         elif sys_index == 2:
             self.system = "IR"
         self.updateUI()
@@ -279,6 +279,8 @@ class App:
         Find Cameras and add them to the list of cameras to choose from in the UI.
         """
         self.ui.cam_model.clear()
+        self.StateMachine.camera_manager.find_devices()
+        print(self.StateMachine.camera_manager.DeviceList)
         # Find the cameras
         for cam in self.StateMachine.camera_manager.DeviceList:
             dropdownItem = QtGui.QStandardItem(f'{cam.kind}:{cam.serial_no}')

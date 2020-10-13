@@ -383,6 +383,7 @@ class QueuedMessageHandler:
         elif self.camera_manager.ActiveCamList[0].kind == "Mightex":
             # Handle Mightex Update
             self.camera_manager.ActiveCamList[0].set_gain(inputs["cam_1_gain"])
+            print(inputs["cam_1_exp_time"])
             self.camera_manager.ActiveCamList[0].set_exposure_time(inputs["cam_1_exp_time"])
             self.camera_manager.ActiveCamList[0].set_decimation(inputs["cam_1_decimate"])
             self.update_manager.cam_1_threshold = inputs["cam_1_threshold"]

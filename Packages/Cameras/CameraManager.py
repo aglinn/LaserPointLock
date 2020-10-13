@@ -2,12 +2,12 @@ from typing import List
 from serial.tools import list_ports
 
 from Packages.Errors import DeviceNotFoundError
-from Packages.Cameras.MightexCamera import MightexCameraAPI
+from Packages.Cameras.MightexCamera_old import MightexCameraAPI
 # Import all camera types here
 from Packages.Cameras.Camera import Camera
 from Packages.Cameras.FakeCamera import FakeCamera
 from Packages.Cameras.BosonCamera import BosonCamera
-from Packages.Cameras.MightexCamera import MightexCamera
+from Packages.Cameras.MightexCamera_old import MightexCamera
 
 
 # CameraManager()
@@ -60,7 +60,7 @@ class CameraManager():
 
         # Append Mightex
         if self.MightexAPI:
-            list_of_cameras.append(self.MightexAPI.getDeviceList())
+            list_of_cameras.extend(self.MightexAPI.getDeviceList())
 
         """
         # Append Bosons

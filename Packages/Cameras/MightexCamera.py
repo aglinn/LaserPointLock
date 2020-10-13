@@ -109,7 +109,7 @@ class MightexCameraAPI:
         self._stopFrameGrab = lib['NewClassicUSB_StopFrameGrab']
         self._getModuleNoSerialNo = lib['NewClassicUSB_GetModuleNoSerialNo']
         self._getModuleNoSerialNo.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
-        self._setExposureTime = lib['NewClassicUSB__setExposureTime']
+        self._setExposureTime = lib['NewClassicUSB_SetExposureTime']
 
         def frameCallBack(attributes, frameptr):
             # print(attributes.XStart, attributes.YStart, attributes.ExposureTime, attributes.TimeStamp)
@@ -163,7 +163,7 @@ class MightexCamera(Camera):
     kind = "Mightex"
 
     def __init__(self, engine: MightexCameraAPI, serial_no: str, module_no: str):
-        super.__init__()
+        super().__init__()
 
         self.kind = "Mightex"
         self.engine: MightexEngine = engine
@@ -189,7 +189,9 @@ class MightexCamera(Camera):
         #lock.unlock()
 
     def set_exposure_time(self, time):
-        self.engine._setExposure(self.serial_no, time)
+        # C code requires int in units of 50 us. 1 = 50 us. 10 = 500 us, etc; so convert ms to this unit.
+        exposureTimeInt = int(time * 1000 / 50)
+        self.engine._setExposureTime(self.serial_no, exposureTimeInt)
         self.frame = self.engine.get_frame(self.serial_no, 1, getExposureTime=1)
         self._exposure_time = self.engine._getExposure(self.serial_no)
 
@@ -209,6 +211,9 @@ class MightexCamera(Camera):
     @property
     def gain(self):
         return 1
+
+    def terminate(self):
+        pass
 
     @property
     def dev_num(self):
