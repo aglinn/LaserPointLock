@@ -2,17 +2,15 @@ import visa
 from pyvisa.constants import StopBits, Parity, VI_ASRL_FLOW_NONE
 from typing import NewType, List
 import numpy
+from Packages.Motors.Motors import MDT693AMotor, FakeMotor, Motor
 
-from Packages.Motors.Motor import Motor
-from Packages.Motors.MDT693AMotor import MDT693AMotor
-from Packages.Motors.FakeMotor import FakeMotor
 
 class MotorManager():
     resourceManager: visa.ResourceManager = None
 
     def __init__(self):
         # Create resource manager to talk to devices
-        self.resourceManager = visa.resourceManager()
+        self.resourceManager = visa.ResourceManager()
 
         self.deviceList: List[Motor] = [] # All connected devices (String identifier)
         self.selectedDevices: List[int] = [] # Indecies of selected devices
@@ -26,7 +24,9 @@ class MotorManager():
         self.deviceList = []
         self.deviceList.append(FakeMotor(1))
         self.deviceList.append(FakeMotor(2))
-        self.deviceList.append(self.resourceManager.list_resources())
+        # TODO: Connect real motors. Resource manager returns str that identify resources, not instantiated motors;
+        #   so we need to use the returned strings to instantiate motors, which we extend to the list.
+        #   self.deviceList.extend(self.resourceManager.list_resources())
         return self.deviceList
     
     def getMotorList(self):

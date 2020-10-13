@@ -1,5 +1,3 @@
-from Packages.States.Measure import Measure
+from PointLockApp import App
 
-M = Measure()
-
-print(M.label)
+Cam = App()

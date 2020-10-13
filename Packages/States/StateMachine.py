@@ -1,15 +1,17 @@
 
 import time
-from typing import List
+from typing import List, Dict
 
 from Packages.States import State
 
 class StateMachine:
 
-    def StateMachine(self, states: List[State.State], state: State, UPDATE_TIME_MS=500):
+    def StateMachine(self, states: Dict, state: State, UPDATE_TIME_MS=500):
         assert len(states) > 0
+        #The "key" should be what we call the states, e.g. Measure and the response to self.states["Measure"] should be
+        #an int that identifies each state. See update in QueuedMessageHandler.
         self.states = states
-        self.stateIndex = getStateIndex(state)
+        self.stateIndex = self.getStateIndex(state)
         self.getState().preAction()
 
     def getState(self):
@@ -34,17 +36,42 @@ class StateMachine:
         """
         start_time = time.time()
         response = self.getState().action()
-        end_time - time.time()
+        end_time = time.time()
 
         if response:
             return response
         return '{0}\tUpdate time: {1:.3f} (s)'.format(self.getState().label, end_time - start_time)
 
-    def StateQueue(self):
-        """
-        We need the state machine to peel off states from a state queue, rather than just a current state.
-        """
+    def update_measure(self):
         pass
+
+    def update_locked(self):
+        pass
+
+    def update_align(self):
+        pass
+
+    def update_calibrate(self):
+        pass
+
+    def update_cam1_settings(self):
+        pass
+
+    def update_cam2_settings(self):
+        pass
+
+    def update_camera_manager_active_list(self):
+        pass
+
+    def update_motor_active_list(self):
+        pass
+
+    def update_motor_available_list(self):
+        pass
+
+    def update_camera_available_list(self):
+        pass
+
 
     """
     Initialize state (maybe __init__ of StateMachine.

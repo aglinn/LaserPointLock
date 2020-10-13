@@ -2,12 +2,12 @@ from typing import List
 from serial.tools import list_ports
 
 from Packages.Errors import DeviceNotFoundError
-from Packages.Cameras import MightexCameraAPI
+from Packages.Cameras.MightexCamera import MightexCameraAPI
 # Import all camera types here
 from Packages.Cameras.Camera import Camera
 from Packages.Cameras.FakeCamera import FakeCamera
-from Packages.Cameras.MightexCamera import MightexCamera
 from Packages.Cameras.BosonCamera import BosonCamera
+from Packages.Cameras.MightexCamera import MightexCamera
 
 
 # CameraManager()
@@ -17,6 +17,8 @@ from Packages.Cameras.BosonCamera import BosonCamera
 #   addCamera(serial_no: str, kind: str)
 #   removeCamera(index)
 #   removeAllCameras()
+cam_list = List[Camera]
+
 
 class CameraManager():
 
@@ -29,30 +31,38 @@ class CameraManager():
 
         self.MightexAPI = None
         
-        self.deviceList: List[Camera] = [] # All connected devices
+        self._device_list: List[Camera] = [] # All connected devices
         self.selectedDevices: List[int] = [] # Selected devices indecies
 
         self._active_cam_list = [None, None]
 
-        self.getDeviceList()
+        self.find_devices()
 
     def enableMightexAPI(self):
         if not self.MightexAPI:
             self.MightexAPI = MightexCameraAPI()
 
-    def getDeviceList(self):
-        if len(self.deviceList) > 0:
-            return self.deviceList
+    @property
+    def DeviceList(self):
+        return self._device_list
+
+    @DeviceList.setter
+    def DeviceList(self, device_list:cam_list):
+        self._device_list = device_list
+        return
+
+    def find_devices(self):
 
         # Append two fake cameras
-        self.deviceList = []
-        self.deviceList.append(FakeCamera(1))
-        self.deviceList.append(FakeCamera(2))
+        list_of_cameras = []
+        list_of_cameras.append(FakeCamera())
+        list_of_cameras.append(FakeCamera())
 
         # Append Mightex
         if self.MightexAPI:
-            self.deviceList.append(self.MightexAPI.getDeviceList())
+            list_of_cameras.append(self.MightexAPI.getDeviceList())
 
+        """
         # Append Bosons
         #TODO: Figure out how to correctly connect two BOSONs.
         device_id = None
@@ -68,8 +78,9 @@ class CameraManager():
                         ffc_state = c.get_ffc_state()
                     self.deviceList.append(c)
                     device_id = 1
-
-        return self.deviceList
+        """
+        self.DeviceList = list_of_cameras
+        return
     
     # Returns None if port is already in use
     def selectCamera(self, index: int):
@@ -90,7 +101,7 @@ class CameraManager():
 
     def terminate(self):
         # Terminate all cameras
-        for device in self.deviceList:
+        for device in self.DeviceList:
             device.terminate()
 
     @property
@@ -101,14 +112,15 @@ class CameraManager():
         return self._active_cam_list
 
     @ActiveCamList.setter
-    def ActiveCamList(self, camera, camera_id):
-        #TODO: Handle creation of active list based on GUI interactions.
+    def ActiveCamList(self, CameraList):
         """
         Need to select from available devices based on user input the 2 cameras to use for the Measure, Update, etc. states
         """
-        pass
+        self._active_cam_list = CameraList
+        return
 
-    def CaptureImages_OneCamera(self):
+
+    def CaptureCam_1_img(self):
         """
         This function is called by the state manager, and it plays the role of the takeimage function.
         It requires an object, which will be the Update Manager in our case. This Object must have properties: cam_1_img
@@ -124,20 +136,26 @@ class CameraManager():
         Return: Images from camera list
         """
         try:
-            if isinstance(self.ActiveCamList[0], None):
-                return None, self.ActiveCamList[1].get_frame
-            else:
-                return self.ActiveCamList[0].get_frame, None
-
+            self.ActiveCamList[0].update_frame()
+            return self.ActiveCamList[0].get_frame()
         except:
             #We could capture attempts to be in the measure state with more than 2 cameras in the list?
             pass
 
+    def CaptureCam_2_img(self):
+        try:
+            self.ActiveCamList[1].update_frame()
+            return self.ActiveCamList[1].get_frame()
+        except:
+            #We could capture attempts to be in the measure state with more than 2 cameras in the list?
+            pass
 
     def CaptureImages_TwoCameras(self):
         """
         Same as CaptureImages_OneCamera, but assumed 2 cameras are connected.
         """
-        return self.ActiveCamList[0].get_frame, self.ActiveCamList[1].get_frame
+        self.ActiveCamList[0].update_frame()
+        self.ActiveCamList[1].update_frame()
+        return [self.ActiveCamList[0].get_frame(), self.ActiveCamList[1].get_frame()]
 
 

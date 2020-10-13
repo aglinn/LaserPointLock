@@ -19,6 +19,8 @@ class UpdateManager:
         self.cam_2_com = None
         self.cam_1_img = None
         self.cam_2_img = None
+        self._cam_1_threshold = 0
+        self._cam_2_threshold = 0
         self._dx = []
         self.V0 = None
         self._t1 = []
@@ -233,6 +235,22 @@ class UpdateManager:
                 self._t2_wrapper_count += 1  # Convert to a monotonic timestamp
         self._t2.append(self._t2_wrapper_count * (65535 + 1) + value)
         return
+
+    @property
+    def cam_1_threshold(self):
+        return self._cam_1_threshold
+
+    @cam_1_threshold.setter
+    def cam_1_threshold(self, value: int):
+        self._cam_1_threshold = vlaue
+
+    @property
+    def cam_2_threshold(self):
+        return self._cam_2_threshold
+
+    @cam_2_threshold.setter
+    def cam_2_threshold(self, value: int):
+        self._cam_2_threshold = vlaue
 
 
 class PIDUpdateManager(UpdateManager):
