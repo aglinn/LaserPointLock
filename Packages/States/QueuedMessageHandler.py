@@ -26,6 +26,7 @@ class MessageQueue:
         self._state_queue = []  # This needs to be an iterable, but we may wish to consider options besides lists.
         self._states = {}
         self.key_error = KeyError()
+        self.lock = QtCore.QReadWriteLock() # This lock will be used for the Message Que read/writes.
 
     @property
     def states(self):
@@ -203,28 +204,31 @@ class StateMachineThread(QtCore.QRunnable):
 
     @QtCore.pyqtSlot()
     def run(self):
-        while not False:
-            if not self.StateMachine._reporting:
-                self.StateMachine.lock.lockForRead()
-                state = self.StateMachine.message_que.state_queue
-                self.StateMachine.lock.unlock()
-                if not state is None:
-                    self.StateMachine.lock.lockForRead()
-                    _ = self.StateMachine.message_que.state_priority
-                    self.StateMachine.lock.unlock()
-                    self.StateMachine.Update(state)
-                    # Maybe we need to always report something; so the switch may be light vs. full report? In this case,
-                    # Move this logic to report method.
-                    if self.StateMachine._send_reports:
-                        self.StateMachine._reporting = True
-                        self.StateMachine.signals.SM_ready_to_report.emit()  # Need to have self.report ready to run.
-                elif not self.StateMachine.measure_block:
-                    self.StateMachine.lock.lockForWrite()
-                    self.StateMachine.message_que.EnqueueMessage(self.StateMachine.message_que.states["begin_measure"],
-                                                                 1, inputs=None)
-                    self.StateMachine.lock.unlock()
-            elif self.StateMachine._reporting:
-                time.sleep(0.001)
+        while True:
+            # I removed the self._reporting check, because now the threads are blocked by read/write locks as appropriate;
+            # however, there may be one edge case to worry about. What if the state is soooo fast, that it makes it all
+            # the way back to reporting its data before the GUI can ever read it. I doubt this is possible. The
+            # report_lock.readlock is obtained by the GUI  as the first line of the function connected by the ready to
+            # report signal. However, I suppose the GUI event loop could be blocked by some other task, which might allow
+            # the state machine to make it all the way around its loop, but maybe it would not be soo bad to just miss a
+            # report all together? Anyway, I am putting this concern here for future reference.
+            self.StateMachine.message_que.lock.lockForRead()
+            state = self.StateMachine.message_que.state_queue
+            self.StateMachine.message_que.lock.unlock()
+            if state is not None:
+                self.StateMachine.message_que.lock.lockForRead()
+                _ = self.StateMachine.message_que.state_priority
+                self.StateMachine.message_que.lock.unlock()
+                self.StateMachine.Update(state)
+                # Maybe we need to always report something; so the switch may be light vs. full report? In this case,
+                # Move this logic to report method.
+                if self.StateMachine._send_reports:
+                    self.StateMachine.signals.SM_ready_to_report.emit()  # Need to have self.report ready to run.
+            elif not self.StateMachine.measure_block:
+                self.StateMachine.message_que.lock.lockForWrite()
+                self.StateMachine.message_que.EnqueueMessage(self.StateMachine.message_que.states["begin_measure"],
+                                                             1, inputs=None)
+                self.StateMachine.message_que.lock.unlock()
             else:
                 print("State Machine Idle")
                 self.StateMachine.signals.SM_Idle.emit()
@@ -264,7 +268,7 @@ class QueuedMessageHandler:
                                    "begin_measure": 4}
 
         # Instantiate a thread lock
-        self.lock = QtCore.QReadWriteLock()
+        self.report_lock = QtCore.QReadWriteLock()
 
         # Define a run_thread
         self.run_thread = StateMachineThread(self)
@@ -317,6 +321,7 @@ class QueuedMessageHandler:
         """
         Prep the report, according to the state we are reporting from.
         """
+        self.report_lock.lockForWrite() # Need to lock this anytime we are writing to the self._report property.
         if state == self.message_que.states["measure"]:
             self._report = {"state": state, "cam_1_img": self.update_manager.cam_1_img,
                             "cam_2_img": self.update_manager.cam_2_img, "cam_1_com": self.update_manager.cam_1_com,
@@ -340,6 +345,7 @@ class QueuedMessageHandler:
             self._report = {"state": state}
         else:
             raise KeyError
+        self.report_lock.unlock()
         return
 
     def update_measure(self):
@@ -361,9 +367,9 @@ class QueuedMessageHandler:
                 # Should be 0, 1, or 2 cameras connected at all times, never more than 2.
                 pass
 
-        self.lock.lockForWrite()
+        self.message_que.lock.lockForWrite()
         self.message_que.EnqueueMessage(self.message_que.states["measure"], 1, inputs=None)
-        self.lock.unlock()
+        self.message_que.lock.unlock()
 
     def update_locked(self):
         pass
@@ -394,7 +400,6 @@ class QueuedMessageHandler:
         self.camera_manager.ActiveCamList[0].update_frame()
         self.reset_cam_1 = True
 
-
     def update_cam2_settings(self):
         pass
 
@@ -416,8 +421,8 @@ class QueuedMessageHandler:
 
     def begin_measure(self):
         try:
-            self.lock.lockForWrite()
+            self.message_que.lock.lockForWrite()
             self.message_que.EnqueueMessage(self.message_que.states["measure"], 1)
-            self.lock.unlock()
+            self.message_que.lock.unlock()
         except:
             self.measure_block = True

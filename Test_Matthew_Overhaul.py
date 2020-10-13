@@ -1,3 +1,3 @@
 from PointLockApp import App
 
-Cam = App()
+App()

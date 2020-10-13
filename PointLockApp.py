@@ -47,6 +47,7 @@ import tkinter as tk
 from tkinter import filedialog
 from Packages.States.QueuedMessageHandler import QueuedMessageHandler, MessageQueue
 from typing import List
+import copy
 
 vector = List[float]
 
@@ -127,8 +128,7 @@ class App:
 
         # Connect Signals to functions.
         self.StateMachine.signals.SM_done_running.connect(self.StateMachineStopped)
-        self.StateMachine.signals.SM_ready_to_report.connect(self.CopyStateMachineReport)
-        self.signals.report_ready.connect(self.UpdateGuiWithReport)
+        self.StateMachine.signals.SM_ready_to_report.connect(self.UpdateGuiWithReport)
         self.StateMachine.signals.SM_Idle.connect(self.StateMachineIdle)
 
         # Initialize Properties
@@ -146,29 +146,33 @@ class App:
         """
         Just copy the StateMachine's report to the App class; so that the SM can get back to work on the next update.
         """
-        self._incoming_report = self.StateMachine.report
+        self.StateMachine.report_lock.lockForRead()
+        self._incoming_report = copy.deepcopy(self.StateMachine.report)
+        self.StateMachine.report_lock.unlock()
         self.StateMachine._reporting = False
         self.signals.report_ready.emit()
         return
 
     def UpdateGuiWithReport(self):
         """
-        use self._incoming_report to update the GUI accordingly.
+        use self.StateMachine.report to update the GUI accordingly.
         """
-        state = self._incoming_report["state"]
+        self.StateMachine.report_lock.lockForRead()
+        self.StateMachine._reporting = False
+        state = self.StateMachine.report["state"]
         if state == self.MessageQueue.states["measure"]:
-            self.update_cam_1_img(self._incoming_report["cam_1_img"], self._incoming_report["cam_1_reset"])
-            self.update_cam_2_img(self._incoming_report["cam_2_img"])
-            self.update_cam_1_COM(self._incoming_report["cam_1_com"])
-            self.update_cam_2_COM(self._incoming_report["cam_2_com"])
-            if not self._incoming_report["dx"] is None:
-                self.update_std(self._incoming_report["std"])
+            self.update_cam_1_img(self.StateMachine.report["cam_1_img"], self.StateMachine.report["cam_1_reset"])
+            self.update_cam_2_img(self.StateMachine.report["cam_2_img"])
+            self.update_cam_1_COM(self.StateMachine.report["cam_1_com"])
+            self.update_cam_2_COM(self.StateMachine.report["cam_2_com"])
+            if not self.StateMachine.report["dx"] is None:
+                self.update_std(self.StateMachine.report["std"])
         elif state == self.MessageQueue.states["cam_1_settings"]:
             if int(self.ui.cb_SystemSelection.currentIndex()) == 0:
                 pass
             elif int(self.ui.cb_SystemSelection.currentIndex()) == 1:
-                self.ui.le_cam1_exp_time.setText('%.2f' % (self._incoming_report["exposure_time"]))
-                self.ui.le_cam1_gain.setText('%.2f' % (self._incoming_report["gain"]))
+                self.ui.le_cam1_exp_time.setText('%.2f' % (self.StateMachine.report["exposure_time"]))
+                self.ui.le_cam1_gain.setText('%.2f' % (self.StateMachine.report["gain"]))
             elif int(self.ui.cb_SystemSelection.currentIndex()) == 2:
                 pass
 
@@ -176,6 +180,8 @@ class App:
         else:
             # Let's not assume every state must report something.
             pass
+
+        self.StateMachine.report_lock.unlock()
         return
 
     def StateMachineStopped(self):
@@ -208,11 +214,11 @@ class App:
 
             # pass over the Queue from the GUI Message Queue to the SM Queue.
             for i in range(len(self.MessageQueue._state_queue)):
-                self.StateMachine.lock.lockForWrite()
+                self.StateMachine.message_que.lock.lockForWrite()
                 self.StateMachine.message_que.EnqueueMessage(self.MessageQueue.state_queue,
                                                          self.MessageQueue.state_priority,
                                                          self.MessageQueue.state_inputs)
-                self.StateMachine.lock.unlock()
+                self.StateMachine.message_que.lock.unlock()
 
             # If the state machine has queued items, get to it state machine!
             if len(self.StateMachine.message_que._state_queue) != 0:
@@ -222,11 +228,11 @@ class App:
     def AttemptToEnqueMessageOnSM(self):
         # pass over the Queue from the GUI Message Queue to the SM Queue.
         for i in range(len(self.MessageQueue._state_queue)):
-            self.StateMachine.lock.lockForWrite()
+            self.StateMachine.message_que.lock.lockForWrite()
             self.StateMachine.message_que.EnqueueMessage(self.MessageQueue.state_queue,
                                                          self.MessageQueue.state_priority,
                                                          self.MessageQueue.state_inputs)
-            self.StateMachine.lock.unlock()
+            self.StateMachine.message_que.lock.unlock()
 
         if self._StateMachineStatus == 2:
             self.LaunchStateMachine()  # Start State Machine as soon as it has a queue.
@@ -473,9 +479,7 @@ class App:
             # Define inputs for the state machine.
             inputs.update({"cam_1_exp_time": cam_1_exp_time, "cam_1_gain": cam_1_gain,
                            "cam_1_threshold": cam_1_threshold, "cam_1_decimate": cam_1_decimate})
-            self.StateMachine.lock.lockForWrite()
             self.MessageQueue.EnqueueMessage(self.MessageQueue.states["cam_1_settings"], 0, inputs=inputs)
-            self.StateMachine.lock.unlock()
         elif int(self.ui.cb_SystemSelection.currentIndex()) == 2:
             # Expect IR Cameras
             pass
