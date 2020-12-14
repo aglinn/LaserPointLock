@@ -368,6 +368,32 @@
        </property>
       </item>
      </widget>
+     <widget class="QPushButton" name="pb_cam2_img_cap">
+      <property name="geometry">
+       <rect>
+        <x>800</x>
+        <y>570</y>
+        <width>101</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Capture Cam2 img</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pb_cam1_img_cap">
+      <property name="geometry">
+       <rect>
+        <x>800</x>
+        <y>290</y>
+        <width>101</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Capture Cam1 img</string>
+      </property>
+     </widget>
     </widget>
     <widget class="QWidget" name="tab_2">
      <attribute name="title">

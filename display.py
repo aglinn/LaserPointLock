@@ -1534,6 +1534,12 @@ if __name__ == "__main__":
             print("Choose a system!")
 
     def service_BOSON(cam_index):
+        """
+        Handle the FFCs and NUCs of Boson.
+        #TODO: I should operate in manual still and correct this to use the right command.
+          See the emails with FLIR, basically the command I was calling in flirpy was really giving a 0 or 1 not the 0-4
+          output option
+        """
         global cam_list, cam1_index, cam2_index
 
         if not (cam_index == cam1_index or cam_index==cam2_index):
@@ -1592,13 +1598,30 @@ if __name__ == "__main__":
 
     def shut_down():
         global state
+        pass
+        """
         if int(ui.cb_SystemSelection.currentIndex()) == 1:
             IR = 0
         elif int(ui.cb_SystemSelection.currentIndex()) == 2:
             IR = 1
         UpdateManager.store_data(state = state, IR=IR)
         UpdateManager.reset_data()
+        """
         return
+
+    def capture_cam1_img():
+        global cam1_index, cam1_threshold
+        img, _, _, _, _ = take_img(cam1_index, cam_view=0, threshold=cam1_threshold,
+                                                                 resetView=False)
+        filename = "CameraImages/" + str(np.datetime64('now', 's')) + "_cam1.txt"
+        np.savetxt(filename, img, fmt='%f')
+
+    def capture_cam2_img():
+        global cam2_index, cam2_threshold
+        img, _, _, _, _ = take_img(cam2_index, cam_view=1, threshold=cam2_threshold,
+                                   resetView=False)
+        filename = "CameraImages/" + str(np.datetime64('now', 's')) + "_cam2.txt"
+        np.savetxt(filename, img, fmt='%f')
 
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
@@ -1609,6 +1632,8 @@ if __name__ == "__main__":
     ui.btn_lock.clicked.connect(lock_pointing)
     ui.btn_Home.clicked.connect(define_home)
     ui.btn_Align.clicked.connect(begin_align)
+    ui.pb_cam1_img_cap.clicked.connect(capture_cam1_img)
+    ui.pb_cam2_img_cap.clicked.connect(capture_cam2_img)
     ui.cb_SystemSelection.currentIndexChanged.connect(find_cameras)
 
     timer = QtCore.QTimer()

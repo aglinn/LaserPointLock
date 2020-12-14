@@ -13,39 +13,36 @@ class DeviceNotFoundError(Exception):
 
 class MightexEngine:
 
-    def load_driver():
-        try:
-            if (platform.system() != "Windows"):
-                raise OSError('This program requires a Windows system to interface with the Mightex cameras.')
-            lib = ctypes.WinDLL(r'C:\Users\Kingdel\Documents\Mightex_SCX_CDROM_20190104\SDK\Lib\x64\NewClassic_USBCamera_SDK.dll')
-        except FileNotFoundError:
-            raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
-        GRAB_FRAME_FOREVER = 34952
+    try:
+        if (platform.system() != "Windows"):
+            raise OSError('This program requires a Windows system to interface with the Mightex cameras.')
+        lib = ctypes.WinDLL(r'C:\Users\Kingdel\Documents\Mightex_SCX_CDROM_20190104\SDK\Lib\x64\NewClassic_USBCamera_SDK.dll')
+    except FileNotFoundError:
+        raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
+    GRAB_FRAME_FOREVER = 34952
 
-        c_ubyte_p = ctypes.POINTER(ctypes.c_ubyte)
+    c_ubyte_p = ctypes.POINTER(ctypes.c_ubyte)
 
-        _initDevice = lib['NewClassicUSB_InitDevice']
-        _addCameraToWorkingSet = lib['NewClassicUSB_AddDeviceToWorkingSet']
-        _removeDeviceFromWorkingSet = lib['NewClassicUSB_RemoveDeviceFromWorkingSet']
-        _startEngine = lib['NewClassicUSB_StartCameraEngine']
-        _stopEngine = lib['NewClassicUSB_StopCameraEngine']
-        _uninitDevice = lib['NewClassicUSB_UnInitDevice']
-        _setResolution = lib['NewClassicUSB_SetCustomizedResolution']
-        _startFrameGrab = lib['NewClassicUSB_StartFrameGrab']
-        _stopFrameGrab = lib['NewClassicUSB_StopFrameGrab']
-        _getModuleNoSerialNo = lib['NewClassicUSB_GetModuleNoSerialNo']
-        _getModuleNoSerialNo.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
-        _setExposureTime = lib['NewClassicUSB_SetExposureTime']
+    _initDevice = lib['NewClassicUSB_InitDevice']
+    _addCameraToWorkingSet = lib['NewClassicUSB_AddDeviceToWorkingSet']
+    _removeDeviceFromWorkingSet = lib['NewClassicUSB_RemoveDeviceFromWorkingSet']
+    _startEngine = lib['NewClassicUSB_StartCameraEngine']
+    _stopEngine = lib['NewClassicUSB_StopCameraEngine']
+    _uninitDevice = lib['NewClassicUSB_UnInitDevice']
+    _setResolution = lib['NewClassicUSB_SetCustomizedResolution']
+    _startFrameGrab = lib['NewClassicUSB_StartFrameGrab']
+    _stopFrameGrab = lib['NewClassicUSB_StopFrameGrab']
+    _getModuleNoSerialNo = lib['NewClassicUSB_GetModuleNoSerialNo']
+    _getModuleNoSerialNo.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
+    _setExposureTime = lib['NewClassicUSB_SetExposureTime']
 
-        _getFrame = lib['NewClassicUSB_GetCurrentFrame']
-        _getFrame.argtypes = [ctypes.c_int, ctypes.c_int, c_ubyte_p]
-        _getFrame.restype = c_ubyte_p
+    _getFrame = lib['NewClassicUSB_GetCurrentFrame']
+    _getFrame.argtypes = [ctypes.c_int, ctypes.c_int, c_ubyte_p]
+    _getFrame.restype = c_ubyte_p
 
-        ctypes.pythonapi.PyMemoryView_FromMemory.restype = ctypes.py_object
+    ctypes.pythonapi.PyMemoryView_FromMemory.restype = ctypes.py_object
 
     def __init__(self):
-        # Attempt loading Mightex driver
-        self.load_driver()
 
         # Initialize the API
         ret = self._initDevice()
