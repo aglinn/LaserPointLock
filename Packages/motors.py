@@ -127,7 +127,7 @@ class MDT693A_Motor():
                 TryAgain = False
             except IndexError:
                 count += 1
-            if count==10:
+            if count==1:
                 print("Shit, never could read the ch1_v, giving up")
                 TryAgain = False
                 return self._ch1_v
@@ -149,7 +149,7 @@ class MDT693A_Motor():
                 TryAgain = False
             except IndexError:
                 count += 1
-            if count == 10:
+            if count == 1:
                 print("Shit, never could read the ch2_v, giving up")
                 TryAgain = False
                 return self._ch2_v
@@ -166,7 +166,7 @@ class MDT693A_Motor():
             rep = re.findall("\d+\.\d+", self.inst.query(cmd)) # Extract set Voltage from the full returned string
             if abs(float('{:.1f}'.format(v))-float(rep[0]))>0.5:
                 count += 1
-                if count > 10:
+                if count == 1:
                     raise NotImplementedError('Shit the Ch1 Voltage was never set correctly.')
             else:
                 TryAgain = False
@@ -184,7 +184,7 @@ class MDT693A_Motor():
             rep = re.findall("\d+\.\d+", self.inst.query(cmd))  # Extract set Voltage from the full returned string
             if abs(float('{:.1f}'.format(v)) - float(rep[0])) > 0.5:
                 count += 1
-                if count > 10:
+                if count == 1:
                     raise NotImplementedError('Shit the Ch2 Voltage was never set correctly.')
             else:
                 TryAgain = False

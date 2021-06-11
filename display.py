@@ -1317,8 +1317,6 @@ if __name__ == "__main__":
             #Garrison Updated to add "0" inside ui.cb_motors_1.currentData(0)
             motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_1.currentData(0), ch1='X', ch2='Y'))
             motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_2.currentData(0), ch1='X', ch2='Y'))
-            #motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_1.currentData(), ch1='X', ch2='Y'))
-            #motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_2.currentData(), ch1='X', ch2='Y'))
         #motor_list.append(FakeMotor('X', 'Y'))
         #motor_list.append(FakeMotor('X', 'Y'))
         #print('Connected two fake motors!')
@@ -1505,10 +1503,11 @@ if __name__ == "__main__":
         elif int(ui.cb_SystemSelection.currentIndex())==2:
             # Find the Boson Cameras
             #TODO: Figure out how to correctly connect two BOSONs.
-            device_list = list_ports.comports()
+            # device_list = list_ports.comports()
             # Boson VID and PID:
             VID = 0x09CB
             PID = 0x4007
+            device_list = list_ports.grep(r'FLIR Control')
             port_list = []
             # Find all ports associated with Bosons.
             for device in device_list:
@@ -1542,7 +1541,7 @@ if __name__ == "__main__":
         """
         global cam_list, cam1_index, cam2_index
 
-        if not (cam_index == cam1_index or cam_index==cam2_index):
+        if not (cam_index == cam1_index or cam_index == cam2_index):
             # If you are calling the function and not passing a cam_index that corresponds to 1 of the cameras, then
             # return without executing the function.
             return
