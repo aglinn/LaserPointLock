@@ -35,6 +35,8 @@ class MightexEngine:
     _getModuleNoSerialNo = lib['NewClassicUSB_GetModuleNoSerialNo']
     _getModuleNoSerialNo.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
     _setExposureTime = lib['NewClassicUSB_SetExposureTime']
+    _setStartXY = lib['NewClassicUSB_SetXYStart']
+
 
     _getFrame = lib['NewClassicUSB_GetCurrentFrame']
     _getFrame.argtypes = [ctypes.c_int, ctypes.c_int, c_ubyte_p]
@@ -128,7 +130,7 @@ class MightexEngine:
             #lock.lockForRead()
             # print("dev num, just prior to pymemoryview:",self.dev_num[serial_no])
             """
-            self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], size)
+            self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], int(size))
             # print("dev num, just prior to copying from buffer:", self.dev_num[serial_no])
             self.z[serial_no] = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
             if (getTimeStamp+getExposureTime)>0:
@@ -159,6 +161,9 @@ class MightexEngine:
 
     def GetExposure(self,serial_no):
         return self.exposureTime[serial_no]
+
+    def update_resolution(self, serial_no, res):
+        self.resolution[serial_no] = res
 
 from PyQt5 import QtCore
 import time
@@ -212,6 +217,8 @@ class MightexCamera(Camera):
         self.frame = None
         self._exposure_time = 0.05
         self._time = None
+        self._ROI_bounds = None
+        self._xy = (0, 0)
         # self.run_thread = CameraThread(self)
         # self.signals = CameraSignals()
 
@@ -230,7 +237,20 @@ class MightexCamera(Camera):
         self._exposure_time = self.engine.GetExposure(self.serial_no)
 
     def set_resolution(self, res):
-        self.engine._setResolution(self.engine.dev_num[self.serial_no], res[0], res[1], 0)
+        self.engine._setResolution(ctypes.c_int(self.engine.dev_num[self.serial_no]), ctypes.c_int(int(res[0])),
+                                   ctypes.c_int(int(res[1])), ctypes.c_int(0))
+        self.engine.update_resolution(self.serial_no, res=res)
+        return
+
+    def set_startXY(self, xy: list):
+        self.engine._setStartXY(ctypes.c_int(self.engine.dev_num[self.serial_no]),
+                                ctypes.c_int(int(xy[0])), ctypes.c_int(int(xy[1])))
+        self._xy = xy
+        return
+
+    @property
+    def startXY(self):
+        return self._xy
 
     def set_gain(self, gain):
         pass
@@ -257,6 +277,26 @@ class MightexCamera(Camera):
     @time.setter
     def time(self, value):
         self._time = value
+
+    def apply_ROI(self):
+        width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
+        width -= np.mod(width, 4)
+        height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
+        height -= np.mod(height, 4)
+        self.set_resolution((height, width))
+        x = int(np.round(self.ROI_bounds[2]))
+        y = int(np.round(self.ROI_bounds[0]))
+        self.set_startXY((x, y))
+        return
+
+    @property
+    def ROI_bounds(self):
+        # xmin, xmax, ymin, ymax
+        return self._ROI_bounds
+
+    @ROI_bounds.setter
+    def ROI_bounds(self, roi: list):
+        self._ROI_bounds = roi
 
 """
 # TODO: multithread the frame grabbing
@@ -382,6 +422,9 @@ class FakeCamera(Camera):
         time.sleep(self.comm_time)  # simulate communication time
         self.frame = image
 
+    def apply_ROI(self):
+        pass
+
 class BosonCamera(Boson):
     def __init__(self, port=None, device_id=None):
         self.port = port
@@ -397,15 +440,18 @@ class BosonCamera(Boson):
             print("The IR cameras need to be run in manual FFC mode.")
         self.device_id = self.find_video_device(device_id=device_id)
         self._time = 0
+        self._ROI_bounds = (0, 1024, 0, 1280)
 
     def get_frame(self):
-        return self.frame
+        return self.frame[int(self.ROI_bounds[0]):int(self.ROI_bounds[1]+1),
+               int(self.ROI_bounds[2]):int(self.ROI_bounds[3]+1)]
 
     def update_frame(self):
         """
         Grab a frame from the camera and store it as a uint16.
         """
         self.frame = self.grab(device_id=self.device_id)
+        return
 
     @property
     def time(self):
@@ -415,3 +461,19 @@ class BosonCamera(Boson):
     def time(self, value):
         self._time = value
         return
+
+    @property
+    def startXY(self):
+        return (self._ROI_bounds[2], self._ROI_bounds[0])
+
+    def apply_ROI(self):
+        pass
+
+    @property
+    def ROI_bounds(self):
+        # xmin, xmax, ymin, ymax
+        return self._ROI_bounds
+
+    @ROI_bounds.setter
+    def ROI_bounds(self, roi: list):
+        self._ROI_bounds = np.round(roi)

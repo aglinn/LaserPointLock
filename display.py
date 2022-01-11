@@ -39,6 +39,7 @@ if __name__ == "__main__":
     from tkinter import filedialog
     from serial.tools import list_ports
     from Packages.UpdateManager import UpdateManager
+    #from Packages.UpdateManager import PIDUpdateManager as UpdateManager
     from Packages.UpdateManager import InsufficientInformation
 
     STATE_MEASURE = 0
@@ -101,12 +102,10 @@ if __name__ == "__main__":
         ui.label_2.setVisible(Logic)
         ui.le_cam1_exp_time.setVisible(Logic)
         ui.le_cam1_gain.setVisible(Logic)
-        ui.cb_cam1_decimate.setVisible(Logic)
         ui.label_5.setVisible(Logic)
         ui.label_6.setVisible(Logic)
         ui.le_cam2_exp_time.setVisible(Logic)
         ui.le_cam2_gain.setVisible(Logic)
-        ui.cb_cam2_decimate.setVisible(Logic)
 
     def toggle_general_cam_settings_ui_vis(Logic):
         """
@@ -149,70 +148,13 @@ if __name__ == "__main__":
     toggle_general_cam_settings_ui_vis(False)
     toggle_BOSON_cam_settings_ui_vis(False)
 
-    # Load Most Recent Calibration Matrix:
-    try:
-        UpdateManager.calibration_matrix = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
-    except OSError:
-        raise FileNotFoundError("Hmm there seems to be no saved calibration, run calibration.")
-
     # Initialize Global variables for home position markers:
     ROICam1_Unlock = None
     ROICam2_Unlock = None
     ROICam1_Lock = None
     ROICam2_Lock = None
-
-    # Load the Most Recent Home Position:
-    def set_home_marker():
-        global state
-        global ROICam1_Unlock,ROICam2_Unlock,ROICam1_Lock,ROICam2_Lock
-        set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = UpdateManager.set_pos
-        pen = pg.mkPen(color=(255, 0, 0), width=2)
-        ROICam1_Unlock = pg.CircleROI(pos=(set_cam1_y-20, set_cam1_x-20), radius=20,
-                                movable=False, rotatable=False, resizable=False, pen=pen)
-
-        ROICam2_Unlock = pg.CircleROI(pos=(set_cam2_y-20, set_cam2_x-20), radius=20,
-                                  movable=False, rotatable=False, resizable=False, pen=pen)
-        ui.gv_camera1.addItem(ROICam1_Unlock)
-        ui.gv_camera2.getView().addItem(ROICam2_Unlock)
-        pen = pg.mkPen(color=(0, 255, 0), width=2)
-        ROICam1_Lock = pg.CircleROI(pos=(set_cam1_y - 20, set_cam1_x - 20), radius=20,
-                               movable=False, rotatable=False, resizable=False, pen=pen)
-
-        ROICam2_Lock = pg.CircleROI(pos=(set_cam2_y - 20, set_cam2_x - 20), radius=20,
-                               movable=False, rotatable=False, resizable=False, pen=pen)
-        ui.gv_camera1.addItem(ROICam1_Lock)
-        ui.gv_camera2.getView().addItem(ROICam2_Lock)
-        if state == STATE_MEASURE:
-            ROICam1_Lock.setVisible(False)
-            ROICam2_Lock.setVisible(False)
-            ROICam1_Unlock.setVisible(True)
-            ROICam2_Unlock.setVisible(True)
-        elif state == STATE_CALIBRATE:
-            ROICam1_Lock.setVisible(False)
-            ROICam2_Lock.setVisible(False)
-            ROICam1_Unlock.setVisible(False)
-            ROICam2_Unlock.setVisible(False)
-        elif state == STATE_LOCKED:
-            ROICam1_Unlock.setVisible(False)
-            ROICam2_Unlock.setVisible(False)
-            ROICam1_Lock.setVisible(True)
-            ROICam2_Lock.setVisible(True)
-        elif state == STATE_ALIGN:
-            ROICam1_Unlock.setVisible(True)
-            ROICam2_Unlock.setVisible(True)
-            ROICam1_Lock.setVisible(False)
-            ROICam2_Lock.setVisible(False)
-    try:
-        HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
-        UpdateManager.set_pos = np.asarray(HomePosition)
-        set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = HomePosition
-        set_home_marker()
-    except OSError:
-        set_cam1_x = 'dummy'
-        set_cam1_y = 'dummy'
-        set_cam2_x = 'dummy'
-        set_cam2_y = 'dummy'
-        print("Hmm there seems to be no saved Home Position, define one before locking.")
+    ROICam1_crop = None
+    ROICam2_crop = None
 
     # Initialize Global Variables for arrows for Alignment Mode:
     Cam1_LeftArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
@@ -239,16 +181,6 @@ if __name__ == "__main__":
     Cam2_RightArrow.setScale(3)
     Cam2_DownArrow.setScale(3)
     Cam2_UpArrow.setScale(3)
-
-    Cam1_LeftArrow.setPos(set_cam1_y + 40, set_cam1_x - 95)
-    Cam1_RightArrow.setPos(set_cam1_y - 40, set_cam1_x + 92)
-    Cam1_DownArrow.setPos(set_cam1_y - 95, set_cam1_x - 40)
-    Cam1_UpArrow.setPos(set_cam1_y + 95, set_cam1_x + 40)
-
-    Cam2_LeftArrow.setPos(set_cam2_y + 40, set_cam2_x - 95)
-    Cam2_RightArrow.setPos(set_cam2_y - 40, set_cam2_x + 92)
-    Cam2_DownArrow.setPos(set_cam2_y - 95, set_cam2_x - 40)
-    Cam2_UpArrow.setPos(set_cam2_y + 95, set_cam2_x + 40)
 
     ui.gv_camera1.addItem(Cam1_LeftArrow)
     ui.gv_camera1.addItem(Cam1_RightArrow)
@@ -611,6 +543,8 @@ if __name__ == "__main__":
                 UpdateManager.cam_2_img = img
                 UpdateManager.t2 = cam_list[cam_index].time
         com = calc_com(img)  # Grab COM
+        x0, y0 = cam_list[cam_index].startXY
+        com = (com[0]+y0, com[1]+x0)
         under_saturated = np.all(img < 50)
         saturated = np.any(img > 250)
         if cam_view == 0:
@@ -634,7 +568,6 @@ if __name__ == "__main__":
             cam_y_plot = cam2_y_plot
             gv_camera = ui.gv_camera2
         # Calculate COM
-        # TODO: 3 optimize COM calculation by slicing window near the max value
         com_x = com[0]
         com_y = com[1]
         cam_x_line.setPos(com_x)
@@ -658,9 +591,9 @@ if __name__ == "__main__":
         cam_x_plot.setData(cam_x_data)
         cam_y_plot.setData(cam_y_data)
         if resetView:
-            gv_camera.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False)
+            gv_camera.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False, pos=(x0, y0))
         else:
-            gv_camera.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
+            gv_camera.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False, pos=(x0, y0))
         return img, com_x, com_y, under_saturated, saturated
 
     def updateCalibrate():
@@ -783,13 +716,14 @@ if __name__ == "__main__":
                         # update motor voltages
                         motor1_y = addToPlot(motor1_y, motor1_y_plot, voltage)
                         # get a frame from cam1
-                        img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold, avg_frames = 2, avg_com = 2)
+                        #img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold, avg_frames = 2, avg_com = 2)
+                        img, com = take_img_calibration(cam1_index, cam_view=0, threshold=cam1_threshold)
                         # put in list
                         mot1_y_cam1_x[voltage_step] = com[0]
                         mot1_y_cam1_y[voltage_step] = com[1]
                         ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
                         # get a frame from cam2
-                        img, com = take_img_calibration(cam2_index, cam_view = 1, threshold = cam2_threshold, avg_frames = 2, avg_com = 2)
+                        img, com = take_img_calibration(cam2_index, cam_view = 1, threshold = cam2_threshold)
                         # put in list
                         mot1_y_cam2_x[voltage_step] = com[0]
                         mot1_y_cam2_y[voltage_step] = com[1]
@@ -815,13 +749,13 @@ if __name__ == "__main__":
                         # update motor voltages
                         motor2_x = addToPlot(motor2_x, motor2_x_plot, voltage)
                         # get a frame from cam1 for x motor
-                        img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold, avg_frames = 2, avg_com = 2)
+                        img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold)
                         # put in list, update image
                         mot2_x_cam1_x[voltage_step] = com[0]
                         mot2_x_cam1_y[voltage_step] = com[1]
                         ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
                         # get a frame from cam2 for x motor
-                        img, com = take_img_calibration(cam2_index, cam_view = 1, threshold = cam2_threshold, avg_frames = 2, avg_com = 2)
+                        img, com = take_img_calibration(cam2_index, cam_view = 1, threshold = cam2_threshold)
                         # put in list
                         mot2_x_cam2_x[voltage_step] = com[0]
                         mot2_x_cam2_y[voltage_step] = com[1]
@@ -847,13 +781,13 @@ if __name__ == "__main__":
                         # update motor voltages
                         motor2_y = addToPlot(motor2_y, motor2_y_plot, voltage)
                         # get a frame from cam1
-                        img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold, avg_frames = 2, avg_com = 2)
+                        img, com = take_img_calibration(cam1_index, cam_view = 0, threshold = cam1_threshold)
                         # put in list
                         mot2_y_cam1_x[voltage_step] = com[0]
                         mot2_y_cam1_y[voltage_step] = com[1]
                         ui.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False)
                         # get a frame from cam2
-                        img, com = take_img_calibration(cam2_index, cam_view = 1, threshold = cam2_threshold, avg_frames = 2, avg_com = 2)
+                        img, com = take_img_calibration(cam2_index, cam_view = 1, threshold = cam2_threshold)
                         # put in list
                         mot2_y_cam2_x[voltage_step] = com[0]
                         mot2_y_cam2_y[voltage_step] = com[1]
@@ -912,9 +846,16 @@ if __name__ == "__main__":
                     pass
                 print('Calibration done!')
                 print(calib_mat)
-                np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%f')
-                filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat"
-                np.savetxt(filename, calib_mat, fmt='%f')
+                if int(ui.cb_SystemSelection.currentIndex()) == 1:
+                    #Mightex cameras
+                    np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%f')
+                    filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat"
+                    np.savetxt(filename, calib_mat, fmt='%f')
+                elif int(ui.cb_SystemSelection.currentIndex()) == 2:
+                    # Boson cameras
+                    np.savetxt('Most_Recent_Calibration_IR.txt', calib_mat, fmt='%f')
+                    filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat_IR"
+                    np.savetxt(filename, calib_mat, fmt='%f')
                 shut_down()
                 state = STATE_MEASURE
                 ROICam1_Lock.setVisible(False)
@@ -1151,16 +1092,16 @@ if __name__ == "__main__":
             # the home circle green to let the user know. This is the condition when the user should stop trying to
             # align.
             #ToDO: 2 Make this threshold (the 10.0 below) setable in the GUI.
-            if np.any(np.abs(update_voltage - 75.0)) > 10.0:
+            if np.any(np.abs(update_voltage - 75.0) > 10.0):
                 ROICam1_Lock.setVisible(False)
                 ROICam2_Lock.setVisible(False)
                 ROICam1_Unlock.setVisible(True)
                 ROICam2_Unlock.setVisible(True)
             else:
-                ROICam1_Unlock.setVisible(True)
-                ROICam2_Unlock.setVisible(True)
-                ROICam1_Lock.setVisible(False)
-                ROICam2_Lock.setVisible(False)
+                ROICam1_Unlock.setVisible(False)
+                ROICam2_Unlock.setVisible(False)
+                ROICam1_Lock.setVisible(True)
+                ROICam2_Lock.setVisible(True)
 
             # The goal here is to provide the user feedback about which direction to steer the beam.
             # x and y are switched relative to your expectation of L/R up/down,
@@ -1264,11 +1205,9 @@ if __name__ == "__main__":
             cam1_exp_time = float(ui.le_cam1_exp_time.text())
             cam1_gain = float(ui.le_cam1_gain.text())
             cam1_threshold = float(ui.le_cam1_threshold.text())
-            cam1_decimate = ui.cb_cam1_decimate.isChecked()
             cam_list[cam1_index].set_gain(cam1_gain)
             cam_list[cam1_index].set_exposure_time(cam1_exp_time)
             cam_list[cam1_index].update_frame()
-            cam_list[cam1_index].set_decimation(cam1_decimate)
             ui.le_cam1_exp_time.setText('%.2f' % (cam_list[cam1_index].exposure_time))
             ui.le_cam1_gain.setText('%.2f' % (cam_list[cam1_index].gain/8))
             cam1_reset = True
@@ -1289,11 +1228,9 @@ if __name__ == "__main__":
             cam2_exp_time = float(ui.le_cam2_exp_time.text())
             cam2_gain = float(ui.le_cam2_gain.text())
             cam2_threshold = float(ui.le_cam2_threshold.text())
-            cam2_decimate = ui.cb_cam2_decimate.isChecked()
             cam_list[cam2_index].set_gain(cam2_gain)
             cam_list[cam2_index].set_exposure_time(cam2_exp_time)
             cam_list[cam1_index].update_frame()
-            cam_list[cam2_index].set_decimation(cam2_decimate)
             ui.le_cam2_exp_time.setText('%.2f' % (cam_list[cam2_index].exposure_time))
             ui.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain/8))
             cam2_reset = True
@@ -1483,6 +1420,47 @@ if __name__ == "__main__":
                 time.sleep(5)
                 raise AssertionError("Make Piezo voltages 75.0 before aligning.")
 
+    def set_home_marker():
+        global state
+        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = UpdateManager.set_pos
+        pen = pg.mkPen(color=(255, 0, 0), width=2)
+        ROICam1_Unlock = pg.CircleROI(pos=(set_cam1_y - 20, set_cam1_x - 20), radius=20,
+                                      movable=False, rotatable=False, resizable=False, pen=pen)
+
+        ROICam2_Unlock = pg.CircleROI(pos=(set_cam2_y - 20, set_cam2_x - 20), radius=20,
+                                      movable=False, rotatable=False, resizable=False, pen=pen)
+        ui.gv_camera1.addItem(ROICam1_Unlock)
+        ui.gv_camera2.getView().addItem(ROICam2_Unlock)
+        pen = pg.mkPen(color=(0, 255, 0), width=2)
+        ROICam1_Lock = pg.CircleROI(pos=(set_cam1_y - 20, set_cam1_x - 20), radius=20,
+                                    movable=False, rotatable=False, resizable=False, pen=pen)
+
+        ROICam2_Lock = pg.CircleROI(pos=(set_cam2_y - 20, set_cam2_x - 20), radius=20,
+                                    movable=False, rotatable=False, resizable=False, pen=pen)
+        ui.gv_camera1.addItem(ROICam1_Lock)
+        ui.gv_camera2.getView().addItem(ROICam2_Lock)
+        if state == STATE_MEASURE:
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
+        elif state == STATE_CALIBRATE:
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+            ROICam1_Unlock.setVisible(False)
+            ROICam2_Unlock.setVisible(False)
+        elif state == STATE_LOCKED:
+            ROICam1_Unlock.setVisible(False)
+            ROICam2_Unlock.setVisible(False)
+            ROICam1_Lock.setVisible(True)
+            ROICam2_Lock.setVisible(True)
+        elif state == STATE_ALIGN:
+            ROICam1_Unlock.setVisible(True)
+            ROICam2_Unlock.setVisible(True)
+            ROICam1_Lock.setVisible(False)
+            ROICam2_Lock.setVisible(False)
+
     def find_cameras():
         global cam_list
         if int(ui.cb_SystemSelection.currentIndex()) == 1:
@@ -1500,10 +1478,30 @@ if __name__ == "__main__":
             toggle_BOSON_cam_settings_ui_vis(False)
             toggle_mightex_cam_settings_ui_vis(True)
             toggle_general_cam_settings_ui_vis(True)
+
+            # Load Most Recent Calibration Matrix:
+            try:
+                UpdateManager.calibration_matrix = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
+            except OSError:
+                print("Hmm there seems to be no saved calibration, run calibration.")
+
+            # Load the Most Recent Home Position:
+            try:
+                HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
+                UpdateManager.set_pos = np.asarray(HomePosition)
+                set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = HomePosition
+                set_home_marker()
+            except OSError:
+                set_cam1_x = 'dummy'
+                set_cam1_y = 'dummy'
+                set_cam2_x = 'dummy'
+                set_cam2_y = 'dummy'
+                print("Hmm there seems to be no saved Home Position, define one before locking.")
+
         elif int(ui.cb_SystemSelection.currentIndex())==2:
             # Find the Boson Cameras
             #TODO: Figure out how to correctly connect two BOSONs.
-            # device_list = list_ports.comports()
+
             # Boson VID and PID:
             VID = 0x09CB
             PID = 0x4007
@@ -1529,8 +1527,39 @@ if __name__ == "__main__":
             toggle_mightex_cam_settings_ui_vis(False)
             toggle_general_cam_settings_ui_vis(True)
             toggle_BOSON_cam_settings_ui_vis(True)
+
+            # Load Most Recent Calibration Matrix:
+            try:
+                UpdateManager.calibration_matrix = np.loadtxt('Most_Recent_Calibration_IR.txt', dtype=float)
+            except OSError:
+                print("Hmm there seems to be no saved calibration, run calibration.")
+
+            # Load the Most Recent Home Position:
+            try:
+                HomePosition = np.loadtxt('Most_Recent_Home_IR.txt', dtype=float)
+                UpdateManager.set_pos = np.asarray(HomePosition)
+                set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = HomePosition
+                set_home_marker()
+            except OSError:
+                set_cam1_x = 'dummy'
+                set_cam1_y = 'dummy'
+                set_cam2_x = 'dummy'
+                set_cam2_y = 'dummy'
+                print("Hmm there seems to be no saved Home Position, define one before locking.")
         else:
             print("Choose a system!")
+            return
+
+        Cam1_LeftArrow.setPos(set_cam1_y + 40, set_cam1_x - 95)
+        Cam1_RightArrow.setPos(set_cam1_y - 40, set_cam1_x + 92)
+        Cam1_DownArrow.setPos(set_cam1_y - 95, set_cam1_x - 40)
+        Cam1_UpArrow.setPos(set_cam1_y + 95, set_cam1_x + 40)
+
+        Cam2_LeftArrow.setPos(set_cam2_y + 40, set_cam2_x - 95)
+        Cam2_RightArrow.setPos(set_cam2_y - 40, set_cam2_x + 92)
+        Cam2_DownArrow.setPos(set_cam2_y - 95, set_cam2_x - 40)
+        Cam2_UpArrow.setPos(set_cam2_y + 95, set_cam2_x + 40)
+        return
 
     def service_BOSON(cam_index):
         """
@@ -1622,6 +1651,76 @@ if __name__ == "__main__":
         filename = "CameraImages/" + str(np.datetime64('now', 's')) + "_cam2.txt"
         np.savetxt(filename, img, fmt='%f')
 
+    cam1_ROI_visiblity = True
+    def gen_cam1_ROI():
+        global ROICam1_crop, cam1_ROI_visiblity
+        if ROICam1_crop is None:
+            set_cam1_x, set_cam1_y, _, _ = UpdateManager.set_pos
+            pen = pg.mkPen(color=(0, 0, 0), width=2)
+            ROICam1_crop = pg.ROI(pos=(set_cam1_y-100, set_cam1_x-100), size=(200,200),
+                                    movable=True, rotatable=False, resizable=True, pen=pen)
+            ui.gv_camera1.addItem(ROICam1_crop)
+            ROICam1_crop.setVisible(True)
+        else:
+            if cam1_ROI_visiblity == True:
+                ROICam1_crop.setVisible(False)
+                cam1_ROI_visiblity = False
+            else:
+                ROICam1_crop.setVisible(True)
+                cam1_ROI_visiblity = True
+        return
+
+    cam2_ROI_visiblity = True
+    def gen_cam2_ROI():
+        global ROICam2_crop, cam2_ROI_visiblity
+        if ROICam2_crop is None:
+            _, _, set_cam2_x, set_cam2_y = UpdateManager.set_pos
+            pen = pg.mkPen(color=(0, 0, 0), width=2)
+            ROICam2_crop = pg.ROI(pos=(set_cam2_y - 100, set_cam2_x - 100), size=(200, 200),
+                                  movable=True, rotatable=False, resizable=True, pen=pen)
+            ui.gv_camera2.addItem(ROICam2_crop)
+            ROICam2_crop.setVisible(True)
+        else:
+            if cam2_ROI_visiblity == True:
+                ROICam2_crop.setVisible(False)
+                cam2_ROI_visiblity = False
+            else:
+                ROICam2_crop.setVisible(True)
+                cam2_ROI_visiblity = True
+        return
+
+
+    cam1_ROI_set = False
+    def apply_cam1_ROI():
+        global cam1_index, ROICam1_crop, cam1_ROI_set
+        if cam1_ROI_set:
+            cam1_ROI_set = False
+            cam_list[cam1_index].ROI_bounds = [0, 1024, 0, 1280]
+        else:
+            ymin, xmin = ROICam1_crop.pos()
+            height, width = ROICam1_crop.size()
+            ymax = ymin+height
+            xmax = xmin+width
+            cam_list[cam1_index].ROI_bounds = [xmin, xmax, ymin, ymax]
+            cam1_ROI_set = True
+        cam_list[cam1_index].apply_ROI()
+        return
+
+    cam2_ROI_set = False
+    def apply_cam2_ROI():
+        global cam2_index, ROICam2_crop, cam2_ROI_set
+        if cam2_ROI_set:
+            cam2_ROI_set = False
+            cam_list[cam2_index].ROI_bounds = [0, 1024, 0, 1280]
+        else:
+            cam2_ROI_set = True
+            ymin, xmin = ROICam2_crop.pos()
+            height, width = ROICam2_crop.size()
+            ymax = ymin + height
+            xmax = xmin + width
+            cam_list[cam2_index].ROI_bounds = [xmin, xmax, ymin, ymax]
+        cam_list[cam2_index].apply_ROI()
+
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
     ui.btn_motor_connect.clicked.connect(update_motors)
@@ -1634,6 +1733,11 @@ if __name__ == "__main__":
     ui.pb_cam1_img_cap.clicked.connect(capture_cam1_img)
     ui.pb_cam2_img_cap.clicked.connect(capture_cam2_img)
     ui.cb_SystemSelection.currentIndexChanged.connect(find_cameras)
+    ui.btn_cam1_gen_ROI.clicked.connect(gen_cam1_ROI)
+    ui.btn_cam1_apply_ROI.clicked.connect(apply_cam1_ROI)
+    ui.btn_cam2_gen_ROI.clicked.connect(gen_cam2_ROI)
+    ui.btn_cam2_apply_ROI.clicked.connect(apply_cam2_ROI)
+
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
