@@ -113,7 +113,7 @@ class MDT693A_Motor():
 
     @property
     def ch1_v(self):
-        cmd = self.ch1 + 'R?'
+        """cmd = self.ch1 + 'R?'
         TryAgain=True
         count = 0
         while TryAgain == True:
@@ -129,12 +129,12 @@ class MDT693A_Motor():
                 count += 1
             if count==1:
                 print("Shit, never could read the ch1_v, giving up")
-                TryAgain = False
-                return self._ch1_v
+                TryAgain = False"""
+        return self._ch1_v
 
     @property
     def ch2_v(self):
-        cmd = self.ch2 + 'R?'
+        """cmd = self.ch2 + 'R?'
         #Return the last setpoint of the voltage, unless the readout is more than 0.3V away, because I found that the readout can be wrong by 0.2
         TryAgain = True
         count = 0
@@ -151,44 +151,34 @@ class MDT693A_Motor():
                 count += 1
             if count == 1:
                 print("Shit, never could read the ch2_v, giving up")
-                TryAgain = False
-                return self._ch2_v
+                TryAgain = False"""
+        return self._ch2_v
 
     @ch1_v.setter
     def ch1_v(self, v: float):
         self._ch1_v = v
-        #cmd = self.ch1 + 'V ' + '{:.1f}'.format(v)
         cmd = self.ch1 + 'V' + str('{:.1f}'.format(v))
-        TryAgain = True
-        count = 0
-        while TryAgain == True:
-            rep = self.inst.query(cmd)
-            rep = re.findall("\d+\.\d+", self.inst.query(cmd)) # Extract set Voltage from the full returned string
-            if abs(float('{:.1f}'.format(v))-float(rep[0]))>0.5:
-                count += 1
-                if count == 1:
-                    raise NotImplementedError('Shit the Ch1 Voltage was never set correctly.')
-            else:
-                TryAgain = False
-        return rep[0]
+        rep = self.inst.query(cmd)
+        rep = re.findall("\d+\.\d+", rep) # Extract set Voltage from the full returned string
+        if abs(float('{:.1f}'.format(v))-float(rep[-1])) > 1.0:
+            print('Shit the Ch1 Voltage was never set correctly.')
+            cmd = self.ch1 + 'R?'
+            rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        self._ch1_v = float(rep[-1])
+        return
 
     @ch2_v.setter
     def ch2_v(self, v: float):
         self._ch2_v = v
-        #cmd = self.ch2 + 'V ' + '{:.1f}'.format(v)
         cmd = self.ch2 + 'V' + str('{:.1f}'.format(v))
-        TryAgain = True
-        count = 0
-        while TryAgain == True:
-            rep = self.inst.query(cmd)
-            rep = re.findall("\d+\.\d+", self.inst.query(cmd))  # Extract set Voltage from the full returned string
-            if abs(float('{:.1f}'.format(v)) - float(rep[0])) > 0.5:
-                count += 1
-                if count == 1:
-                    raise NotImplementedError('Shit the Ch2 Voltage was never set correctly.')
-            else:
-                TryAgain = False
-        return rep[0]
+        rep = self.inst.query(cmd)
+        rep = re.findall("\d+\.\d+", rep)  # Extract set Voltage from the full returned string
+        if abs(float('{:.1f}'.format(v)) - float(rep[-1])) > 1.0:
+            print('Shit the Ch2 Voltage was never set correctly.')
+            cmd = self.ch2 + 'R?'
+            rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        self._ch2_v = float(rep[-1])
+        return
     
     def get_info(self):
         cmd = 'I'

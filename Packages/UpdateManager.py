@@ -273,7 +273,7 @@ class UpdateManager:
     @t1.setter
     def t1(self, value):
         if len(self.t1 > 0):
-            if value < self.t1[-1]:
+            if value < self.t1[-1]-self._t1_wrapper_count*(65535+1):
                 self._t1_wrapper_count += 1  # Convert to a monotonic timestamp
         self._t1.append(self._t1_wrapper_count*(65535+1)+value)
         return
@@ -286,7 +286,7 @@ class UpdateManager:
     @t2.setter
     def t2(self, value):
         if len(self.t2 > 0):
-            if value < self.t2[-1]:
+            if value < self.t2[-1]-self._t2_wrapper_count * (65535 + 1):
                 self._t2_wrapper_count += 1  # Convert to a monotonic timestamp
         self._t2.append(self._t2_wrapper_count * (65535 + 1) + value)
         return
@@ -302,10 +302,10 @@ class PIDUpdateManager(UpdateManager):
     def __init__(self):
         super().__init__()
         self._dt = None
-        self._integral_ti = None
-        self._P = None
-        self._TI = None
-        self._TD = None
+        self._integral_ti = np.zeros(4)
+        self._P = 0.5
+        self._TI = 0.1
+        self._TD = 0
 
     def get_update(self):
         """
@@ -322,9 +322,11 @@ class PIDUpdateManager(UpdateManager):
             self.calc_dt()
             derivative = self.calc_derivative()
             self.calc_integral()
+            #print(self.integral_ti, derivative)
 
             # Find dX weighted total from PID.
             dx = self.P*(self.dx[-1, :] + self.integral_ti/self.TI + self.TD*derivative)
+            #print(dx, self.dx[-1, :])
         else:
             dx = self.dx[-1, :]
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
@@ -340,7 +342,7 @@ class PIDUpdateManager(UpdateManager):
         return self.update_voltage
 
     def calc_integral(self):
-        increment_cam1 = self.dt[0]*self.dx[-1, 0:2]
+        increment_cam1 = self.dt[0]*self.dx[-1, 0:2]  # units of pixels*s
         increment_cam2 = self.dt[1]*self.dx[-1, 2:4]
         self._integral_ti += np.concatenate([increment_cam1, increment_cam2], axis=0)  # Currently using the most
         # simplistic numerical integral, may want to improve
@@ -352,8 +354,8 @@ class PIDUpdateManager(UpdateManager):
         return np.concatenate([derivative_cam1, derivative_cam2], axis=0)
 
     def calc_dt(self):
-        dt1 = self.t1[-1] - self.t1[-2]
-        dt2 = self.t2[-1] - self.t2[-2]
+        dt1 = (self.t1[-1] - self.t1[-2])/1000  # Put this in s from ms
+        dt2 = (self.t2[-1] - self.t2[-2])/1000
         self.dt = np.array([dt1, dt2])
         return
 
