@@ -1,11 +1,15 @@
 import numpy as np
 import nfft
+import time
+from lmfit import Parameters, minimize
 
+class update_out_of_bounds(Exception):
+
+    pass
 
 class InsufficientInformation(Exception):
 
-    def __init__(self, string):
-        Exception.message(string)
+    pass
 
 
 class UpdateManager:
@@ -47,8 +51,49 @@ class UpdateManager:
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
         # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
         # so we subtract that dV restoring us to the old position.
-        self.update_voltage = self.V0 - self.dV
+        update_voltage = self.V0 - self.dV
+        if np.any(update_voltage > 150) or np.any(update_voltage < 0):
+            exception_message = ''
+            for i in range(4):
+                if update_voltage[i] < 0:
+                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) +' '
+                if update_voltage[i] > 150:
+                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) +' '
+            raise update_out_of_bounds(exception_message)
+        else:
+            self.update_voltage = update_voltage
+            return self.update_voltage
+
+    def fit_update(self):
+        """
+        When the update voltages are out of their allowed range, I want to try to find an update that minimizes
+        my dx in the future step, constrained by the allowed piezo ranges. That is what this function does.
+        """
+        P = Parameters()
+        P.add('dv_0', 0, min = -self.V0[0], max = 150.0 - self.V0[0])
+        P.add('dv_1', 0, min=-self.V0[1], max=150.0 - self.V0[1])
+        P.add('dv_2', 0, min=-self.V0[2], max=150.0 - self.V0[2])
+        P.add('dv_3', 0, min=-self.V0[3], max=150.0 - self.V0[3])
+        res = minimize(self.residual, P, args=(self.dx[-1], self.inv_calibration_matrix))
+        dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
+                            res.params['dv_3'].value])
+        self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        # place.
+
+        # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
+        # hopefully induces a dx to undo the measured dx, up to constraints on voltages.
+        self.update_voltage = self.V0 + self.dV
         return self.update_voltage
+
+    @staticmethod
+    def residual(params, dx, inv_calibration_matrix):
+        """
+        This returns the difference between the current measured dx and the hypothetical dx induced by a voltage
+        change to the piezzos.
+        """
+        dV = np.array([params['dv_0'].value, params['dv_1'].value, params['dv_2'].value, params['dv_3'].value])
+        dx_induced = np.matmul(inv_calibration_matrix, dV)
+        return np.square(dx+dx_induced)
 
     def calc_dx(self):
         self.dx = self.com()-self.set_pos
@@ -218,6 +263,8 @@ class UpdateManager:
         camera 2 row position, camera 2 column position).
         """
         self._dx.append(vector)
+        if len(self._dx) > 100:
+            del self._dx[0]
         return
 
     @property
@@ -276,6 +323,8 @@ class UpdateManager:
             if value < self.t1[-1]-self._t1_wrapper_count*(65535+1):
                 self._t1_wrapper_count += 1  # Convert to a monotonic timestamp
         self._t1.append(self._t1_wrapper_count*(65535+1)+value)
+        if len(self._t1) > 100:
+            del self._t1[0]
         return
 
     @property
@@ -289,6 +338,8 @@ class UpdateManager:
             if value < self.t2[-1]-self._t2_wrapper_count * (65535 + 1):
                 self._t2_wrapper_count += 1  # Convert to a monotonic timestamp
         self._t2.append(self._t2_wrapper_count * (65535 + 1) + value)
+        if len(self._t2) > 100:
+            del self._t2[0]
         return
 
     def load_data(self, dx, t1, t2):
@@ -296,6 +347,10 @@ class UpdateManager:
         self._t1 = t1
         self._t2 = t2
         return
+
+    @property
+    def inv_calibration_matrix(self):
+        return np.linalg.inv(self.calibration_matrix)
 
 class PIDUpdateManager(UpdateManager):
 
@@ -306,6 +361,7 @@ class PIDUpdateManager(UpdateManager):
         self._P = 0.5
         self._TI = 0.1
         self._TD = 0
+        self._use_PID = True
 
     def get_update(self):
         """
@@ -317,7 +373,7 @@ class PIDUpdateManager(UpdateManager):
         # Calculate dX
         # The convention here is how much has the position on the camera changed from the set point.
         self.dx = self.com()-self.set_pos
-        if len(self.t1) > 1:  # PID only makes sense if there are at least 2 data points. If only one, just do P.
+        if len(self.t1) > 1 and self._use_PID:  # PID only makes sense if there are at least 2 data points. If only one, just do P.
             # Calculate dt
             self.calc_dt()
             derivative = self.calc_derivative()
@@ -326,20 +382,106 @@ class PIDUpdateManager(UpdateManager):
 
             # Find dX weighted total from PID.
             dx = self.P*(self.dx[-1, :] + self.integral_ti/self.TI + self.TD*derivative)
+            #print(self.integral_ti)
             #print(dx, self.dx[-1, :])
         else:
-            dx = self.dx[-1, :]
+            dx = self.P*self.dx[-1, :]
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
         # in the change observed in dX
         dV = np.matmul(self.calibration_matrix, dx)
         self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        #print(dV, self.dV)
         # place.
         # voltage to be set on the motors
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
         # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
         # so we subtract that dV restoring us to the old position.
-        self.update_voltage = self.V0 - self.dV
+        update_voltage = self.V0 - self.dV
+        if np.any(update_voltage > 150) or np.any(update_voltage < 0):
+            exception_message = ''
+            self._use_PID = False
+            self.integral_ti = np.zeros(4)
+            for i in range(4):
+                if update_voltage[i] < 0:
+                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) + ' '
+                if update_voltage[i] > 150:
+                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) + ' '
+            raise update_out_of_bounds(exception_message)
+        else:
+            self._use_PID = True
+            self.update_voltage = update_voltage
+            return self.update_voltage
+
+    def fit_update(self):
+        """
+        When the update voltages are out of their allowed range, I want to try to find an update that minimizes
+        my dx in the future step, constrained by the allowed piezo ranges. That is what this function does.
+
+        This method works, but it does not perform well when the voltages are out of range... which is its purpose...
+        SO, maybe in the future, I can try moving the target set point such that the voltages are in range but the
+        set point is as close as possible. Then, maybe the updates can be stable... But not today!
+        """
+        #print(self.dx[-1], np.matmul(self.inv_calibration_matrix, dV_start))
+        P = Parameters()
+        P.add('dv_0', -self.dV[0], min=-self.V0[0], max=150.0 - self.V0[0])
+        P.add('dv_1', -self.dV[1], min=-self.V0[1], max=150.0 - self.V0[1])
+        P.add('dv_2', -self.dV[2], min=-self.V0[2], max=150.0 - self.V0[2])
+        P.add('dv_3', -self.dV[3], min=-self.V0[3], max=150.0 - self.V0[3])
+
+        #print(np.matmul(self.inv_calibration_matrix, np.array([P['dv_0'].value])))
+        # print('Begin FIT')
+        if len(self.t1) > 1:
+            derivative = self.calc_derivative()
+            # Bypass minimizing the PID method, i.e. False below...
+            res = minimize(self.residual, P, args=(self.dx[-1], self.inv_calibration_matrix, False, derivative,
+                                                   self.integral_ti, self.P, self.TI, self.TD, self.dt), max_nfev=500)
+        else:
+            res = minimize(self.residual, P, args=(self.dx[-1], self.inv_calibration_matrix, False), max_nfev=500)
+        dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
+                            res.params['dv_3'].value])
+        # the below line should be removed if miniimizing PID is done. Right now, just minimizing P term; so apply P as
+        # a gain term to the found dV
+        dV *= self.P
+        # print(dV)
+        self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        # place.
+
+        # print(self.dx[-1], np.matmul(self.inv_calibration_matrix, self.dV))
+
+        # print(res.nfev)
+
+        # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
+        # hopefully induces a dx to undo the measured dx, up to constraints on voltages.
+        self.update_voltage = self.V0 + self.dV
         return self.update_voltage
+
+    @staticmethod
+    def residual(params, dx, inv_calibration_matrix, PID_true, derivative=None, integral=None, P=None, TI=None,
+                 TD=None, dt=None):
+        """
+        This returns the difference between the current measured dx and the hypothetical dx induced by a voltage
+        change to the piezzos where the dx in both cases are put through the PID formula.
+        """
+        dV = np.array([params['dv_0'].value, params['dv_1'].value, params['dv_2'].value, params['dv_3'].value])
+        if PID_true:  # PID only makes sense if there are at least 2 data points. If only one, just do P.
+            # Find dX weighted total from PID.
+            dx_pid = P*(dx + integral/TI + TD*derivative)
+            # Get the induced dx unweighted by PID
+            dx_induced = np.matmul(inv_calibration_matrix, dV)
+            # Find induced integral term
+            increment_cam1 = dt[0] * dx_induced[0:2]  # units of pixels*s
+            increment_cam2 = dt[1] * dx_induced[2:4]
+            integral_induced = integral + np.concatenate([increment_cam1, increment_cam2], axis=0)
+            # Find induced derivative term
+            derivative_cam1 = (dx_induced[0:2] - dx[0:2]) / dt[0]
+            derivative_cam2 = (dx_induced[2:4] - dx[2:4]) / dt[1]
+            derivative_induced = np.concatenate([derivative_cam1, derivative_cam2], axis=0)
+            # Finally, find the PID weighted dx that would be induced
+            dx_pid_induced = P*(dx_induced + integral_induced/TI + TD*derivative_induced)
+        else:
+            dx_pid = dx
+            dx_pid_induced = np.matmul(inv_calibration_matrix, dV)
+        return np.square(dx_pid + dx_pid_induced)
 
     def calc_integral(self):
         increment_cam1 = self.dt[0]*self.dx[-1, 0:2]  # units of pixels*s

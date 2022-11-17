@@ -2,6 +2,9 @@ import visa
 from pyvisa.constants import StopBits, Parity, VI_ASRL_FLOW_NONE
 from typing import NewType
 import re
+import time
+from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
+import numpy as np
 
 VisaResourceManager = NewType('VisaResourceManager', visa.ResourceManager)
 
@@ -165,6 +168,7 @@ class MDT693A_Motor():
             cmd = self.ch1 + 'R?'
             rep = re.findall("\d+\.\d+", self.inst.query(cmd))
         self._ch1_v = float(rep[-1])
+        #time.sleep(1/4)
         return
 
     @ch2_v.setter
@@ -178,9 +182,185 @@ class MDT693A_Motor():
             cmd = self.ch2 + 'R?'
             rep = re.findall("\d+\.\d+", self.inst.query(cmd))
         self._ch2_v = float(rep[-1])
+        #time.sleep(1/4)
         return
     
     def get_info(self):
         cmd = 'I'
         rep = self.inst.query(cmd)
         return rep
+
+class MDT693B_Motor():
+    """
+    Code that implements a Motor assuming a connection to the ThorLabs MDT693B
+    using Thorlabs SDK
+    """
+
+    def __init__(self, serial_number, ch1: str = 'X', ch2: str = 'Y'):
+        """This constructor opens the motor, sets the appropriate voltage bounds, and sets the voltage increment."""
+        """Open the motor"""
+        # Baud rate is 115200 bits/s
+        # set 1 second timeout
+        self.handle = mdt.mdtOpen(serial_number, 115200, 1)
+        if self.handle < 0:
+            raise Exception("Motor with serial number,", serial_number, " did not open correctly.")
+        self._serial_number = serial_number
+        self._id = []
+        self.get_info(self._id)
+
+        """Now make sure that the voltage step resolution is as small as possible"""
+        ret = mdt.mdtSetVoltageAdjustmentResolution(self.handle, 1)
+        if ret < 0:
+            raise Exception("The adjustment resolution on Motor with serial number,", serial_number,
+                            " did not set correctly.")
+        self._voltage_step_resolution = np.array([0])
+        ret = mdt.mdtGetVoltageAdjustmentResolution(self.handle, self._voltage_step_resolution)
+        if ret < 0:
+            raise Exception("The adjustment resolution on Motor with serial number,", serial_number,
+                            " did not read correctly.")
+
+        """Disable masterscan mode"""
+        ret = mdt.mdtSetMasterScanEnable(self.handle, 0)
+        if ret < 0:
+            raise Exception("Master Scan could not be disabled")
+        self._master_scan_state = np.array([-2])
+        ret = mdt.mdtGetMasterScanEnable(self.handle, self._master_scan_state)
+        if ret < 0:
+            raise Exception("Could not read the master scan state.")
+        if self._master_scan_state[0] != 0:
+            raise Exception("Master scan state should be disabled, but it is not?")
+
+
+        """Set the correct min and max voltages on X and Y channels of motor"""
+        #x axis
+        self._x_max_voltage = np.array([0])
+        ret = mdt.mdtGetXAxisMaxVoltage(self.handle, self._x_max_voltage)
+        if ret < 0:
+            raise Exception("Failed to read x-axis max voltage")
+        if not self._x_max_voltage[0] == 150:
+            ret = mdt.mdtSetXAxisMaxVoltage(self.handle, 150.0)
+            if ret < 0:
+                raise Exception("Motor with serial number,", serial_number, " did not set Xmax voltage correctly.")
+            ret = mdt.mdtGetXAxisMaxVoltage(self.handle, self._x_max_voltage)
+            if ret < 0:
+                raise Exception("Failed to read x-axis max voltage")
+            print("Motor with serial number,", serial_number, "x axis max voltage set to:", self._x_max_voltage)
+        self._x_min_voltage = np.array([0])
+        ret = mdt.mdtGetXAxisMinVoltage(self.handle, self._x_min_voltage)
+        if ret < 0:
+            raise Exception("Failed to read x-axis min voltage")
+        if not self._x_min_voltage[0] == 0:
+            ret = mdt.mdtSetXAxisMinVoltage(self.handle, 0.0)
+            if ret < 0:
+                raise Exception("Motor with serial number,", serial_number, " did not set Xmin voltage correctly.")
+            ret = mdt.mdtGetXAxisMinVoltage(self.handle, self._x_min_voltage)
+            if ret < 0:
+                raise Exception("Failed to read x-axis min voltage")
+            print("Motor with serial number,", serial_number, "x axis min voltage set to:", self._x_min_voltage)
+        # repeat for y axis
+        self._y_max_voltage = np.array([0])
+        ret = mdt.mdtGetYAxisMaxVoltage(self.handle, self._y_max_voltage)
+        if ret < 0:
+            raise Exception("Failed to read y-axis max voltage")
+        if not self._y_max_voltage[0] == 150:
+            ret = mdt.mdtSetYAxisMaxVoltage(self.handle, 150.0)
+            if ret < 0:
+                raise Exception("Motor with serial number,", serial_number, " did not set Ymax voltage correctly.")
+            ret = mdt.mdtGetYAxisMaxVoltage(self.handle, self._y_max_voltage)
+            if ret < 0:
+                raise Exception("Failed to read y-axis max voltage")
+            print("Motor with serial number,", serial_number, "y axis max voltage set to:", self._y_max_voltage)
+        self._y_min_voltage = np.array([0])
+        ret = mdt.mdtGetYAxisMinVoltage(self.handle, self._y_min_voltage)
+        if ret < 0:
+            raise Exception("Failed to read y-axis min voltage")
+        if not self._y_min_voltage[0] == 0:
+            ret = mdt.mdtSetYAxisMinVoltage(self.handle, 0.0)
+            if ret < 0:
+                raise Exception("Motor with serial number,", serial_number, " did not set Ymin voltage correctly.")
+            ret = mdt.mdtGetYAxisMinVoltage(self.handle, self._y_min_voltage)
+            if ret < 0:
+                raise Exception("Failed to read y-axis min voltage")
+            print("Motor with serial number,", serial_number, "y axis min voltage set to:", self._y_min_voltage)
+
+        self._ch1 = ch1
+        self._ch2 = ch2
+        self._ch1_v = np.array([0])
+        self._ch2_v = np.array([0])
+
+        return
+
+    def terminate(self):
+        # Close connection to port
+        ret = mdt.mdtClose(self.handle)
+        if ret < 0:
+            raise Exception("Motor did not close.")
+        return
+
+    @property
+    def ch1(self):
+        return self._ch1
+
+    @property
+    def ch2(self):
+        return self._ch2
+
+    @ch1.setter
+    def ch1(self, val: str):
+        self._ch1 = val
+
+    @ch2.setter
+    def ch2(self, val: str):
+        self._ch2 = val
+
+    @property
+    def ch1_v(self):
+        if self.ch1 == 'X' or self.ch1 == 'x':
+            ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch1_v)
+        elif self.ch1 == 'Y' or self.ch1 == 'y':
+            ret = mdt.mdtGetYAxisVoltage(self.handle, self._ch1_v)
+        if ret < 0:
+            print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
+                  ", and serial number,", self._serial_number, " was not read correctly.")
+        return self._ch1_v[0]
+
+    @property
+    def ch2_v(self):
+        if self.ch2 == 'X' or self.ch2 == 'x':
+            ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch2_v)
+        elif self.ch2 == 'Y' or self.ch2 == 'y':
+            ret = mdt.mdtGetYAxisVoltage(self.handle, self._ch2_v)
+        if ret < 0:
+            print("Warning: The voltage on ch2,", self.ch2, ", on motor with handle, ", self.handle,
+                  ", and serial number,", self._serial_number, " was not read correctly.")
+        return self._ch2_v[0]
+
+    @ch1_v.setter
+    def ch1_v(self, v: float):
+        v = np.round(v, 3)
+        if self.ch1 == 'X' or self.ch1 == 'x':
+            rep = mdt.mdtSetXAxisVoltage(self.handle, v)
+        elif self.ch1 == 'Y' or self.ch1 == 'y':
+            rep = mdt.mdtSetYAxisVoltage(self.handle, v)
+        if rep < 0:
+            print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
+                  ", and serial number,", self._serial_number, " was not SET correctly.")
+        return
+
+    @ch2_v.setter
+    def ch2_v(self, v: float):
+        v = np.round(v, 3)
+        if self.ch2 == 'X' or self.ch2 == 'x':
+            rep = mdt.mdtSetXAxisVoltage(self.handle, v)
+        elif self.ch2 == 'Y' or self.ch2 == 'y':
+            rep = mdt.mdtSetYAxisVoltage(self.handle, v)
+        if rep < 0:
+            print("Warning: The ch1,", self.ch2, ", voltage on motor with handle, ", self.handle,
+                  ", and serial number,", self._serial_number, " was not SET correctly.")
+        return
+
+    def get_info(self, id):
+        ret = mdt.mdtGetId(self.handle, id)
+        if ret < 0:
+            print("Warning: Could not get the id from the motor with serial number = ", self._serial_number)
+        return

@@ -23,7 +23,8 @@
 # TODO: 3 It would be nice to allow the user to switch between IR and visibile system, which would require disconnecting
 #  devices and reinitializing the cam_list.
 # TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
-#  parallel. 
+#  parallel.
+# TODO: I need to make sure that the older piezzo controllers still work with this code!
 
 if __name__ == "__main__":
     import sys
@@ -35,14 +36,18 @@ if __name__ == "__main__":
     from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
     from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
     from Packages.motors import MDT693A_Motor
+    from Packages.motors import MDT693B_Motor
     import tkinter as tk
     from tkinter import filedialog
     from serial.tools import list_ports
-    #from Packages.UpdateManager import UpdateManager
+    # from Packages.UpdateManager import UpdateManager
     from Packages.UpdateManager import PIDUpdateManager as UpdateManager
-    from Packages.UpdateManager import InsufficientInformation
+    from Packages.UpdateManager import InsufficientInformation, update_out_of_bounds
     import copy
     import pickle as pkl
+    import gc
+    import matplotlib.pyplot as plt
+    from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 
     STATE_MEASURE = 0
     STATE_CALIBRATE = 1
@@ -68,15 +73,25 @@ if __name__ == "__main__":
     UpdateManager = UpdateManager()
     def Update_GUI_PID():
         # Update the GUI with the numbers from the UpdateManager settings
-        ui.le_P.setText('%.2f' % (UpdateManager.P))
-        ui.le_Ti.setText('%.2f' % (UpdateManager.TI))
-        ui.le_Td.setText('%.2f' % (UpdateManager.TD))
+        try:
+            ui.le_P.setText('%.2f' % (UpdateManager.P))
+            ui.le_Ti.setText('%.2f' % (UpdateManager.TI))
+            ui.le_Td.setText('%.2f' % (UpdateManager.TD))
+        except AttributeError:
+            ui.le_P.setText('%.2f' % (1.0))
+            ui.le_Ti.setText('N/A not PID')
+            ui.le_Td.setText('N/A not PID')
         return
     Update_GUI_PID()  # Update the displayed PID settings to their startup values
+    PID = {}
 
     # Find motors using VISA
     resourceManager = visa.ResourceManager()
     for dev in resourceManager.list_resources():
+        motor_model.appendRow(QtGui.QStandardItem(str(dev)))
+    # Find newer mdt693b devices using Thorlabs SDK and add them to the list too
+    mdt693b_dev_list = mdt.mdtListDevices()
+    for dev in mdt693b_dev_list:
         motor_model.appendRow(QtGui.QStandardItem(str(dev)))
     motor_list = []
     """
@@ -291,7 +306,9 @@ if __name__ == "__main__":
 
     # Initialize global variables for Locking
     LockTimeStart = 0
-
+    Unlocked_report = {}
+    Unlock_counter = 0
+    user_selected_unlock_report = False
     saturated_cam1 = False
     under_saturated_cam1 = False
     saturated_cam2 = False
@@ -301,7 +318,7 @@ if __name__ == "__main__":
     calib_index = 0
     reset_piezo = 0
     override = False
-    calibration_voltages = 10 * np.arange(15)+5
+    calibration_voltages = 5 * np.arange(31)
     mot1_x_voltage, mot1_y_voltage, mot2_x_voltage, mot2_y_voltage = np.empty((4, len(calibration_voltages)))
     mot1_x_cam1_x, mot1_x_cam1_y, mot1_x_cam2_x, mot1_x_cam2_y = np.empty((4, len(calibration_voltages)))
     mot1_y_cam1_x, mot1_y_cam1_y, mot1_y_cam2_x, mot1_y_cam2_y = np.empty((4, len(calibration_voltages)))
@@ -416,6 +433,8 @@ if __name__ == "__main__":
         else:
             msg += 'ERROR'
         ui.statusbar.showMessage('{0}\tUpdate time: {1:.3f} (s)'.format(msg, time.time() - start_time)+most_recent_error)
+        gc.collect()
+        return
 
     def take_img_calibration(cam_index, cam_view=0, threshold=0):
         global state
@@ -629,13 +648,15 @@ if __name__ == "__main__":
         else:
             cam2_x = cam_x_data
             cam2_y = cam_y_data
-        cam_x_plot.setData(cam_x_data)
-        cam_y_plot.setData(cam_y_data)
+        if not ui.cb_suppress_pointing_updat.isChecked():
+            cam_x_plot.setData(cam_x_data)
+            cam_y_plot.setData(cam_y_data)
 
-        if resetView:
-            gv_camera.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False, pos=(x0, y0))
-        else:
-            gv_camera.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False, pos=(x0, y0))
+        if not ui.cb_suppress_image_update.isChecked():
+            if resetView:
+                gv_camera.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False, pos=(x0, y0))
+            else:
+                gv_camera.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False, pos=(x0, y0))
         return img, com_x, com_y, under_saturated, saturated
 
     def updateCalibrate():
@@ -716,11 +737,27 @@ if __name__ == "__main__":
                 motor_index = calib_index // num_steps_per_motor
                 voltage_step = calib_index % num_steps_per_motor
                 set_voltage = calibration_voltages[voltage_step]
+                print(motor_index, voltage_step, set_voltage)
+                if voltage_step == 0:
+                    if motor_index == 1:
+                        motor_list[0].ch1_v = starting_v[0]
+                        time.sleep(0.5)
+                    elif motor_index == 2:
+                        motor_list[0].ch2_v = starting_v[1]
+                        time.sleep(0.5)
+                    elif motor_index == 3:
+                        motor_list[1].ch1_v = starting_v[2]
+                        time.sleep(0.5)
                 if motor_index == 0:
                     # first motor, channel 1
+                    motor_list[0].ch1_v = set_voltage
+                    if voltage_step == 0:
+                        time.sleep(5.0)
+                    else:
+                        time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                     voltage = motor_list[0].ch1_v
+                    time.sleep(0.1)
                     if (abs(voltage - set_voltage) < 0.2 or override):
-                        time.sleep(0.2) #Give time between setting the piezo and measuring the COM
                         override = False
                         reset_piezo = 0
                         # update motor voltages
@@ -744,15 +781,20 @@ if __name__ == "__main__":
                     else:
                         #If the voltage is not where it should be, update it.
                         motor_list[0].ch1_v = set_voltage
+                        time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                         if reset_piezo > 0: # Fuck it overide the tolerance, because now the code is improved to store the actual voltage
                             override = True
                         reset_piezo += 1
                 elif motor_index == 1:
-                    motor_list[0].ch1_v = starting_v[0]
                     # first motor, channel 2
+                    motor_list[0].ch2_v = set_voltage
+                    if voltage_step == 0:
+                        time.sleep(5.0)
+                    else:
+                        time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                     voltage = motor_list[0].ch2_v
+                    time.sleep(0.1)
                     if (abs(voltage - set_voltage) < 0.2 or override):
-                        time.sleep(0.2) #Give time between setting the piezo and measuring the COM
                         override = False
                         reset_piezo = 0
                         # update motor voltages
@@ -777,15 +819,20 @@ if __name__ == "__main__":
                     else:
                         # If the voltage is not where it should be, update it.
                         motor_list[0].ch2_v = set_voltage
+                        time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                         if reset_piezo > 0:  # Fuck it overide the tolerance, because now the code is improved to store the actual voltage
                             override = True
                         reset_piezo += 1
                 elif motor_index == 2:
-                    motor_list[0].ch2_v = starting_v[1]
                     # second motor, channel 1
+                    motor_list[1].ch1_v = set_voltage
+                    if voltage_step == 0:
+                        time.sleep(5.0)
+                    else:
+                        time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                     voltage = motor_list[1].ch1_v
+                    time.sleep(0.1)
                     if (abs(voltage - set_voltage) < 0.2 or override):
-                        time.sleep(0.2) #Give time between setting the piezo and measuring the COM
                         reset_piezo = 0
                         override = False
                         # update motor voltages
@@ -809,13 +856,19 @@ if __name__ == "__main__":
                     else:
                         # If the voltage is not where it should be, update it.
                         motor_list[1].ch1_v = set_voltage
+                        time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                         if reset_piezo > 0:  # Fuck it overide the tolerance, because now the code is improved to store the actual voltage
                             override = True
                         reset_piezo += 1
                 elif motor_index == 3:
-                    motor_list[1].ch1_v = starting_v[2]
                     # second motor, channel 2
+                    motor_list[1].ch2_v = set_voltage
+                    if voltage_step == 0:
+                        time.sleep(5.0)
+                    else:
+                        time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                     voltage = motor_list[1].ch2_v
+                    time.sleep(0.1)
                     if (abs(voltage - set_voltage) < 0.2 or override):
                         time.sleep(0.2)  # Give time between setting the piezo and measuring the COM
                         reset_piezo = 0
@@ -847,6 +900,48 @@ if __name__ == "__main__":
             else:
                 # reset only last motor (the others were reset before moving next motor)
                 motor_list[1].ch2_v = starting_v[3]
+                time.sleep(0.2)
+                """if int(ui.cb_SystemSelection.currentIndex()) == 1:
+                    # Put the Mightex cameras into normal mode--No trigger required.
+                    for cam in cam_list:
+                        cam.engine.update_working_mode(0, cam.serial_no)"""
+                """
+                The cameras suck. They are returning frames in an asynchronous fashion. Forcing the cameras to
+                wait for a trigger to capture a frame causes frame grab to take ~2 seconds, rediculous. Unfortunately,
+                I cannot figure out exactly when the frames are coming from in continuous mode, but it is clear that often
+                the frames are coming from before the last piezzo update, which is obviously very bad. We probably will
+                get better cameras, but for now, I want to try to find a work around...
+                So, I will increase the number of calibration points, but I will delete the first 2 and last 2 points in
+                each data series before doing a polynomial fit to avoid very bad fits. At least, this should give me a 
+                good calibration. The above problem is still not good for the locking part of the algorithm, but maybe 
+                it can be good enough to keep my pointing generally locked for alignment purposes. I need new cameras 
+                before data acquisition begins. 
+                """
+                mot1_x_voltage = mot1_x_voltage[2:-2]
+                mot1_y_voltage = mot1_y_voltage[2:-2]
+                mot2_x_voltage = mot2_x_voltage[2:-2]
+                mot2_y_voltage = mot2_y_voltage[2:-2]
+
+                mot1_x_cam1_x = mot1_x_cam1_x[2:-2]
+                mot1_x_cam1_y = mot1_x_cam1_y[2:-2]
+                mot1_x_cam2_x = mot1_x_cam2_x[2:-2]
+                mot1_x_cam2_y = mot1_x_cam2_y[2:-2]
+
+                mot1_y_cam1_x = mot1_y_cam1_x[2:-2]
+                mot1_y_cam1_y = mot1_y_cam1_y[2:-2]
+                mot1_y_cam2_x = mot1_y_cam2_x[2:-2]
+                mot1_y_cam2_y = mot1_y_cam2_y[2:-2]
+
+                mot2_x_cam1_x = mot2_x_cam1_x[2:-2]
+                mot2_x_cam1_y = mot2_x_cam1_y[2:-2]
+                mot2_x_cam2_x = mot2_x_cam2_x[2:-2]
+                mot2_x_cam2_y = mot2_x_cam2_y[2:-2]
+
+                mot2_y_cam1_x = mot2_y_cam1_x[2:-2]
+                mot2_y_cam1_y = mot2_y_cam1_y[2:-2]
+                mot2_y_cam2_x = mot2_y_cam2_x[2:-2]
+                mot2_y_cam2_y = mot2_y_cam2_y[2:-2]
+
                 # calculate slopes
                 p_mot1_x_cam1_x = np.polyfit(mot1_x_voltage, mot1_x_cam1_x, deg=1)
                 p_mot1_x_cam2_x = np.polyfit(mot1_x_voltage, mot1_x_cam2_x, deg=1)
@@ -865,6 +960,84 @@ if __name__ == "__main__":
                 p_mot2_y_cam1_y = np.polyfit(mot2_y_voltage, mot2_y_cam1_y, deg=1)
                 p_mot2_y_cam2_y = np.polyfit(mot2_y_voltage, mot2_y_cam2_y, deg=1)
 
+                def plot_above_polyfit_results():
+                    Voltage_plot = np.linspace(0, 150, 100)
+                    fig, ax = plt.subplots(4, 4, dpi=200, gridspec_kw={"hspace":0.5, "wspace":0.3})
+                    ax[0, 0].plot(Voltage_plot, p_mot1_x_cam1_x[0] * Voltage_plot + p_mot1_x_cam1_x[1])
+                    ax[1, 0].plot(Voltage_plot, p_mot1_y_cam1_x[0] * Voltage_plot + p_mot1_y_cam1_x[1])
+                    ax[2, 0].plot(Voltage_plot, p_mot2_x_cam1_x[0] * Voltage_plot + p_mot2_x_cam1_x[1])
+                    ax[3, 0].plot(Voltage_plot, p_mot2_y_cam1_x[0] * Voltage_plot + p_mot2_y_cam1_x[1])
+                    ax[0, 1].plot(Voltage_plot, p_mot1_x_cam1_y[0] * Voltage_plot + p_mot1_x_cam1_y[1])
+                    ax[1, 1].plot(Voltage_plot, p_mot1_y_cam1_y[0] * Voltage_plot + p_mot1_y_cam1_y[1])
+                    ax[2, 1].plot(Voltage_plot, p_mot2_x_cam1_y[0] * Voltage_plot + p_mot2_x_cam1_y[1])
+                    ax[3, 1].plot(Voltage_plot, p_mot2_y_cam1_y[0] * Voltage_plot + p_mot2_y_cam1_y[1])
+                    ax[0, 2].plot(Voltage_plot, p_mot1_x_cam2_x[0] * Voltage_plot + p_mot1_x_cam2_x[1])
+                    ax[1, 2].plot(Voltage_plot, p_mot1_y_cam2_x[0] * Voltage_plot + p_mot1_y_cam2_x[1])
+                    ax[2, 2].plot(Voltage_plot, p_mot2_x_cam2_x[0] * Voltage_plot + p_mot2_x_cam2_x[1])
+                    ax[3, 2].plot(Voltage_plot, p_mot2_y_cam2_x[0] * Voltage_plot + p_mot2_y_cam2_x[1])
+                    ax[0, 3].plot(Voltage_plot, p_mot1_x_cam2_y[0] * Voltage_plot + p_mot1_x_cam2_y[1])
+                    ax[1, 3].plot(Voltage_plot, p_mot1_y_cam2_y[0] * Voltage_plot + p_mot1_y_cam2_y[1])
+                    ax[2, 3].plot(Voltage_plot, p_mot2_x_cam2_y[0] * Voltage_plot + p_mot2_x_cam2_y[1])
+                    ax[3, 3].plot(Voltage_plot, p_mot2_y_cam2_y[0] * Voltage_plot + p_mot2_y_cam2_y[1])
+
+                    ax[0, 0].plot(mot1_x_voltage, mot1_x_cam1_x, 'r', marker='x')
+                    ax[1, 0].plot(mot1_y_voltage, mot1_y_cam1_x, 'r', marker='x')
+                    ax[2, 0].plot(mot2_x_voltage, mot2_x_cam1_x, 'r', marker='x')
+                    ax[3, 0].plot(mot2_y_voltage, mot2_y_cam1_x, 'r', marker='x')
+                    ax[0, 1].plot(mot1_x_voltage, mot1_x_cam1_y, 'r', marker='x')
+                    ax[1, 1].plot(mot1_y_voltage, mot1_y_cam1_y, 'r', marker='x')
+                    ax[2, 1].plot(mot2_x_voltage, mot2_x_cam1_y, 'r', marker='x')
+                    ax[3, 1].plot(mot2_y_voltage, mot2_y_cam1_y, 'r', marker='x')
+                    ax[0, 2].plot(mot1_x_voltage, mot1_x_cam2_x, 'r', marker='x')
+                    ax[1, 2].plot(mot1_y_voltage, mot1_y_cam2_x, 'r', marker='x')
+                    ax[2, 2].plot(mot2_x_voltage, mot2_x_cam2_x, 'r', marker='x')
+                    ax[3, 2].plot(mot2_y_voltage, mot2_y_cam2_x, 'r', marker='x')
+                    ax[0, 3].plot(mot1_x_voltage, mot1_x_cam2_y, 'r', marker='x')
+                    ax[1, 3].plot(mot1_y_voltage, mot1_y_cam2_y, 'r', marker='x')
+                    ax[2, 3].plot(mot2_x_voltage, mot2_x_cam2_y, 'r', marker='x')
+                    ax[3, 3].plot(mot2_y_voltage, mot2_y_cam2_y, 'r', marker='x')
+
+                    ax[0, 0].set_title("mot 1 x cam 1 x", fontsize=6)
+                    ax[1, 0].set_title("mot 1 y cam 1 x", fontsize=6)
+                    ax[2, 0].set_title("mot 2 x cam 1 x", fontsize=6)
+                    ax[3, 0].set_title("mot 2 y cam 1 x", fontsize=6)
+                    ax[0, 1].set_title("mot 1 x cam 1 y", fontsize=6)
+                    ax[1, 1].set_title("mot 1 y cam 1 y", fontsize=6)
+                    ax[2, 1].set_title("mot 2 x cam 1 y", fontsize=6)
+                    ax[3, 1].set_title("mot 2 y cam 1 y", fontsize=6)
+                    ax[0, 2].set_title("mot 1 x cam 2 x", fontsize=6)
+                    ax[1, 2].set_title("mot 1 y cam 2 x", fontsize=6)
+                    ax[2, 2].set_title("mot 2 x cam 2 x", fontsize=6)
+                    ax[3, 2].set_title("mot 2 y cam 2 x", fontsize=6)
+                    ax[0, 3].set_title("mot 1 x cam 2 y", fontsize=6)
+                    ax[1, 3].set_title("mot 1 y cam 2 y", fontsize=6)
+                    ax[2, 3].set_title("mot 2 x cam 2 y", fontsize=6)
+                    ax[3, 3].set_title("mot 2 y cam 2 y", fontsize=6)
+                    ax[3,0].set_xlabel('Voltages (V)', fontsize=6)
+                    ax[3, 0].set_ylabel('position (pixels)', fontsize=6)
+
+                    ax[0, 0].tick_params(axis='both', which='major', labelsize=6)
+                    ax[1, 0].tick_params(axis='both', which='major', labelsize=6)
+                    ax[2, 0].tick_params(axis='both', which='major', labelsize=6)
+                    ax[3, 0].tick_params(axis='both', which='major', labelsize=6)
+                    ax[0, 1].tick_params(axis='both', which='major', labelsize=6)
+                    ax[1, 1].tick_params(axis='both', which='major', labelsize=6)
+                    ax[2, 1].tick_params(axis='both', which='major', labelsize=6)
+                    ax[3, 1].tick_params(axis='both', which='major', labelsize=6)
+                    ax[0, 2].tick_params(axis='both', which='major', labelsize=6)
+                    ax[1, 2].tick_params(axis='both', which='major', labelsize=6)
+                    ax[2, 2].tick_params(axis='both', which='major', labelsize=6)
+                    ax[3, 2].tick_params(axis='both', which='major', labelsize=6)
+                    ax[0, 3].tick_params(axis='both', which='major', labelsize=6)
+                    ax[1, 3].tick_params(axis='both', which='major', labelsize=6)
+                    ax[2, 3].tick_params(axis='both', which='major', labelsize=6)
+                    ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
+
+                    plt.show()
+                    return
+
+                plot_above_polyfit_results()
+
                 '''
                 construct calibration matrix:
                 Understand that this matrix is dV_i/dx_j where ij indexes like a normal matrix, i.e. row column. 
@@ -872,13 +1045,14 @@ if __name__ == "__main__":
                 where, for example, d_cam1_x is the difference in the desired position of cam1_x and the calculated COM x_coordinate of cam 1.
                 and dV is a column vector, [d_mot1_x, d_mot1_y, d_mot2_x, d_mot2_y,].Transpose, i.e. the change in voltage
                  on each motor to bring the COM coordinates to desired position.
-                Therefore, this matrix can be used to update the motor voltages as New_V = Old_V + calib_mat*dx 
+                Therefore, this matrix can be used to update the motor voltages as New_V = Old_V - calib_mat*dx 
                 '''
                 calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
                                         [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                                         [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
                                         [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])
-                UpdateManager.calibration_matrix = np.linalg.inv(calib_mat)
+                calib_mat = np.linalg.inv(calib_mat)
+                UpdateManager.calibration_matrix = calib_mat
                 try:
                     old_calib_mat = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
                     Change = np.sqrt(np.sum(np.square(calib_mat-old_calib_mat)))
@@ -946,10 +1120,10 @@ if __name__ == "__main__":
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
         global motor1_x, motor1_y, motor2_x, motor2_y
         global motor1_x_plot, motor1_y_plot, motor2_x_plot, motor2_y_plot
-        global LockTimeStart, TimeLastUnlock
+        global LockTimeStart, TimeLastUnlock, time_unlocked
         global num_out_of_voltage_range  # Track the number of times the voltage update goes out of range during lock
         global state
-        global first_unlock
+        global first_unlock, Unlocked_report, Unlock_counter
         global saturated_cam1, under_saturated_cam1, saturated_cam2, under_saturated_cam2
         global cam1_reset, cam2_reset
         global cam1_x_time, cam1_y_time, cam2_x_time, cam2_y_time
@@ -979,34 +1153,69 @@ if __name__ == "__main__":
                 # Try to ping the update manager for the correct update voltage.
                 update_voltage = UpdateManager.get_update()
                 # update voltages
-                if np.any(update_voltage > 150) or np.any(update_voltage < 0):
-                    # This section of code keeps the update voltage in bounds, by setting anything out of bounds to the
-                    # limit of the bounds. Additionally, it tracks the number of times that the voltages went out of
-                    # bounds in less than 1 minute since the last out of bounds (i.e. if it goes out of bounds once but
-                    # then comes back in bounds for more than 1 minute, the counter is reset to 0). If the piezos go out
-                    # of bounds more than 10 times in a row in less than a minute each time, then the code unlocks and
-                    # returns to measuring state.
-                    print("Warning: The update voltages went out of range")
-                    for i in range(4):
-                        if update_voltage[i] < 0:
-                            update_voltage[i] = 0
-                        if update_voltage[i] > 150:
-                            update_voltage[i] = 150.0
+                #print(update_voltage)
+            except update_out_of_bounds:
+                # This section of code keeps the update voltage in bounds, by setting anything out of bounds to the
+                # limit of the bounds. Additionally, it tracks the number of times that the voltages went out of
+                # bounds in less than 1 minute since the last out of bounds (i.e. if it goes out of bounds once but
+                # then comes back in bounds for more than 1 minute, the counter is reset to 0). If the piezos go out
+                # of bounds more than 10 times in a row in less than a minute each time, then the code unlocks and
+                # returns to measuring state.
 
-                    # Track time since last unlock and the number of times unlocked in less than 1 minute since previous
-                    # lock.
-                    if time.monotonic() - TimeLastUnlock < 60.0 or first_unlock:
-                        first_unlock = False
-                        num_out_of_voltage_range += 1
-                        TimeLastUnlock = time.monotonic()
-                    else:
-                        TimeLastUnlock = time.monotonic()
+                # print("Warning: The update voltages went out of range")
+                """for i in range(4):
+                    if update_voltage[i] < 0:
+                        update_voltage[i] = 0
+                    if update_voltage[i] > 150:
+                        update_voltage[i] = 150.0"""
+                update_voltage = UpdateManager.fit_update()
+
+                # Track time since last unlock and the number of times unlocked in less than 1 minute since previous
+                # lock.
+                if time.monotonic() - TimeLastUnlock < 60.0 and not first_unlock:
+                    num_out_of_voltage_range += 1
+                    TimeLastUnlock = time.monotonic()
+                    Unlocked_report["round " + str(Unlock_counter) +
+                                    " of going out of piezzo range."]["number of successive out of bounds"
+                                                                      " updates with less than 60 seconds "
+                                                                      "between updates"] = num_out_of_voltage_range
+                    Unlocked_report["round " + str(Unlock_counter) +
+                                    " of going out of piezzo range."]["Amount of time spent outside voltage "
+                                                                         "range"] = time.monotonic() - time_unlocked
+                    if np.linalg.norm(UpdateManager.dx[-1]) > Unlocked_report["round " + str(Unlock_counter) +
+                                                                              " of going out of piezzo range."][
+                        "Farthest dx during this round of unlock"]:
+                        Unlocked_report["round " + str(Unlock_counter) +
+                                        " of going out of piezzo range."][
+                            "Farthest dx during this round of unlock"] = np.linalg.norm(UpdateManager.dx[-1])
+                else:
+                    first_unlock = False
+                    TimeLastUnlock = time.monotonic()
+                    num_out_of_voltage_range = 1
+                    time_unlocked = time.monotonic()
+                    Unlock_counter += 1
+                    Unlocked_report["round " + str(Unlock_counter) +
+                                    " of going out of piezzo range."] = {"number of successive out of bounds"
+                                                                         " updates with less than 60 seconds "
+                                                                         "between updates": num_out_of_voltage_range,
+                                                                         "Amount of time spent outside voltage "
+                                                                         "range": 0,
+                                                                         "Farthest dx during this round of unlock":
+                                                                             np.linalg.norm(UpdateManager.dx[-1])}
+                    ui.list_unlock_report.addItem("round " + str(Unlock_counter) +
+                                                  " of going out of piezzo range.")
+                if not user_selected_unlock_report:
+                    display_unlock_report("round " + str(Unlock_counter) +
+                                    " of going out of piezzo range.")
+                if ui.cb_force_unlock.isChecked():
+                    if Unlocked_report["round " + str(Unlock_counter) +
+                                    " of going out of piezzo range."]["Amount of time spent outside voltage "
+                                                                         "range"] > float(ui.le_max_unlock_time.text()):
                         num_out_of_voltage_range = 1
-                    if num_out_of_voltage_range > 10:
-                        num_out_of_voltage_range = 0
                         TimeLastUnlock = 0
                         shut_down()
                         state = STATE_MEASURE
+                        UpdateManager.integral_ti = np.zeros(4)
                         ROICam1_Lock.setVisible(False)
                         ROICam2_Lock.setVisible(False)
                         ROICam1_Unlock.setVisible(True)
@@ -1019,38 +1228,6 @@ if __name__ == "__main__":
                         print("Successfully locked pointing for", successful_lock_time)
                         raise NotImplementedError(
                             'The piezo voltages have gone outside of the allowed range! Stop Lock')
-
-                ROICam1_Unlock.setVisible(False)
-                ROICam2_Unlock.setVisible(False)
-                ROICam1_Lock.setVisible(True)
-                ROICam2_Lock.setVisible(True)
-                motor_list[0].ch1_v = update_voltage[0]
-                motor_list[0].ch2_v = update_voltage[1]
-                motor_list[1].ch1_v = update_voltage[2]
-                motor_list[1].ch2_v = update_voltage[3]
-
-                ##############################
-                # Update Piezo voltage Plots #
-                ##############################
-                if (motor1_x.size < int(ui.le_num_points.text())):
-                    motor1_x = np.append(motor1_x, update_voltage[0])
-                    motor1_y = np.append(motor1_y, update_voltage[1])
-                    motor2_x = np.append(motor2_x, update_voltage[2])
-                    motor2_y = np.append(motor2_y, update_voltage[3])
-                else:
-                    motor1_x = np.roll(motor1_x, -1)
-                    motor1_x[-1] = update_voltage[0]
-                    motor1_y = np.roll(motor1_y, -1)
-                    motor1_y[-1] = update_voltage[1]
-                    motor2_x = np.roll(motor2_x, -1)
-                    motor2_x[-1] = update_voltage[2]
-                    motor2_y = np.roll(motor2_y, -1)
-                    motor2_y[-1] = update_voltage[3]
-                motor1_x_plot.setData(motor1_x)
-                motor1_y_plot.setData(motor1_y)
-                motor2_x_plot.setData(motor2_x)
-                motor2_y_plot.setData(motor2_y)
-                GUI_update_std(UpdateManager.standard_deviation)
             except InsufficientInformation:
                 # catch exception and return to measure state.
                 shut_down()
@@ -1060,6 +1237,38 @@ if __name__ == "__main__":
                 ROICam1_Unlock.setVisible(True)
                 ROICam2_Unlock.setVisible(True)
                 return
+            ROICam1_Unlock.setVisible(False)
+            ROICam2_Unlock.setVisible(False)
+            ROICam1_Lock.setVisible(True)
+            ROICam2_Lock.setVisible(True)
+            motor_list[0].ch1_v = update_voltage[0]
+            motor_list[0].ch2_v = update_voltage[1]
+            motor_list[1].ch1_v = update_voltage[2]
+            motor_list[1].ch2_v = update_voltage[3]
+
+            ##############################
+            # Update Piezo voltage Plots #
+            ##############################
+            if (motor1_x.size < int(ui.le_num_points.text())):
+                motor1_x = np.append(motor1_x, update_voltage[0])
+                motor1_y = np.append(motor1_y, update_voltage[1])
+                motor2_x = np.append(motor2_x, update_voltage[2])
+                motor2_y = np.append(motor2_y, update_voltage[3])
+            else:
+                motor1_x = np.roll(motor1_x, -1)
+                motor1_x[-1] = update_voltage[0]
+                motor1_y = np.roll(motor1_y, -1)
+                motor1_y[-1] = update_voltage[1]
+                motor2_x = np.roll(motor2_x, -1)
+                motor2_x[-1] = update_voltage[2]
+                motor2_y = np.roll(motor2_y, -1)
+                motor2_y[-1] = update_voltage[3]
+            if not ui.cb_suppress_piezzo_update.isChecked():
+                motor1_x_plot.setData(motor1_x)
+                motor1_y_plot.setData(motor1_y)
+                motor2_x_plot.setData(motor2_x)
+                motor2_y_plot.setData(motor2_y)
+            GUI_update_std(UpdateManager.standard_deviation)
 
         else:
             if cam1_index < 0:
@@ -1274,8 +1483,14 @@ if __name__ == "__main__":
         if motor1_index != motor2_index:
             motor_list = []
             #Garrison Updated to add "0" inside ui.cb_motors_1.currentData(0)
-            motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_1.currentData(0), ch1='X', ch2='Y'))
-            motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_2.currentData(0), ch1='X', ch2='Y'))
+            if "MDT693B" in ui.cb_motors_1.currentData(0):
+                motor_list.append(MDT693B_Motor(str(ui.cb_motors_1.currentData(0)[2:15])))
+            else:
+                motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_1.currentData(0), ch1='X', ch2='Y'))
+            if "MDT693B" in ui.cb_motors_2.currentData(0):
+                motor_list.append(MDT693B_Motor(str(ui.cb_motors_2.currentData(0)[2:15])))
+            else:
+                motor_list.append(MDT693A_Motor(resourceManager, com_port=ui.cb_motors_2.currentData(0), ch1='X', ch2='Y'))
         #motor_list.append(FakeMotor('X', 'Y'))
         #motor_list.append(FakeMotor('X', 'Y'))
         #print('Connected two fake motors!')
@@ -1283,6 +1498,7 @@ if __name__ == "__main__":
     def begin_calibration():
         global state, starting_v, motor_list, calib_index
         global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
+        global cam_list
         calib_index = 0
         if len(motor_list) == 0:
             update_motors()
@@ -1290,10 +1506,18 @@ if __name__ == "__main__":
         ROICam2_Unlock.setVisible(False)
         ROICam1_Lock.setVisible(False)
         ROICam2_Lock.setVisible(False)
+        """if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            #Put the Mightex cameras into trigger mode.
+            for cam in cam_list:
+                cam.engine.update_working_mode(1, cam.serial_no)"""
         starting_v[0] = motor_list[0].ch1_v
+        time.sleep(0.2)
         starting_v[1] = motor_list[0].ch2_v
+        time.sleep(0.2)
         starting_v[2] = motor_list[1].ch1_v
-        starting_v[3] = motor_list[1].ch1_v
+        time.sleep(0.2)
+        starting_v[3] = motor_list[1].ch2_v
+        time.sleep(0.2)
         shut_down()
         state = STATE_CALIBRATE
     
@@ -1312,6 +1536,7 @@ if __name__ == "__main__":
         global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
         global LockTimeStart, TimeLastUnlock, num_out_of_voltage_range
         global first_unlock
+        global PID
         Cam1_LeftArrow.setVisible(False)
         Cam1_RightArrow.setVisible(False)
         Cam1_DownArrow.setVisible(False)
@@ -1324,15 +1549,25 @@ if __name__ == "__main__":
             if cam1_index >= 0 and cam2_index >= 0:
                 shut_down()
                 state = STATE_LOCKED
+                ui.le_num_points.setText('100')
+                ui.btn_clear.click()
                 UpdateManager._integral_ti = np.zeros(4)
                 TimeLastUnlock = 0
-                num_out_of_voltage_range = 0
+                num_out_of_voltage_range = 1
                 first_unlock = True  # First time since initial lock that piezos went out of bounds?
                 LockTimeStart = time.monotonic()
                 ROICam1_Unlock.setVisible(False)
                 ROICam2_Unlock.setVisible(False)
                 ROICam1_Lock.setVisible(True)
                 ROICam2_Lock.setVisible(True)
+
+                if PID:
+                    if not UpdateManager.P == PID['P']:
+                        UpdateManager.P = PID['P']
+                    if not UpdateManager.TI == PID['Ti']:
+                        UpdateManager.TI = PID['Ti']
+                    if not UpdateManager.TD == PID['Td']:
+                        UpdateManager.TD = PID['Td']
                 if len(motor_list) == 0:
                     update_motors()
             else:
@@ -1341,6 +1576,8 @@ if __name__ == "__main__":
             if state != STATE_MEASURE:
                 shut_down()
             state = STATE_MEASURE
+            ui.le_num_points.setText('100')
+            ui.btn_clear.click()
             ROICam1_Lock.setVisible(False)
             ROICam2_Lock.setVisible(False)
             ROICam1_Unlock.setVisible(True)
@@ -1409,6 +1646,8 @@ if __name__ == "__main__":
         shut_down()
         if state == STATE_ALIGN:
             state = STATE_MEASURE
+            ui.le_num_points.setText('100')
+            ui.btn_clear.click()
             UpdateManager.P = PID['P']
             UpdateManager.TI = PID['Ti']
             UpdateManager.TD = PID['Td']
@@ -1427,6 +1666,8 @@ if __name__ == "__main__":
             Cam2_UpArrow.setVisible(False)
         else:
             state = STATE_ALIGN
+            ui.le_num_points.setText('10')
+            ui.btn_clear.click()
             UpdateManager._integral_ti = np.zeros(4)
             PID = {'P': UpdateManager.P, 'Ti': UpdateManager.TI, 'Td': UpdateManager.TD}
             UpdateManager.TI = 1e20
@@ -1766,6 +2007,7 @@ if __name__ == "__main__":
         UpdateManager.P = float(ui.le_P.text())
         UpdateManager.TI = float(ui.le_Ti.text())
         UpdateManager.TD = float(ui.le_Td.text())
+        PID = {'P': UpdateManager.P, 'Ti': UpdateManager.TI, 'Td': UpdateManager.TD}
 
         #Update the GUI with the numbers from the UpdateManager settings
         Update_GUI_PID()
@@ -1848,6 +2090,24 @@ if __name__ == "__main__":
         load_state(method='Load_IR')
         return
 
+    def display_unlock_report(key: str = None):
+        global Unlocked_report, user_selected_unlock_report
+        if not isinstance(key, str):
+            key = str(ui.list_unlock_report.currentItem().text())
+            user_selected_unlock_report = True
+        ui.label_unlock_report.setText(str(key) + "------------"
+                                       + "number of successive out of bounds"
+                                         " updates with less than 60 seconds "
+                                         "between updates is " + str(
+            Unlocked_report[key]["number of successive out of bounds"
+                                 " updates with less than 60 seconds "
+                                 "between updates"]) + "Amount of time spent outside voltage "
+                                                       "range is " + str(
+            Unlocked_report[key]["Amount of time spent outside voltage "
+                                 "range"]) + "Farthest dx during this round of unlock is " +
+                                       str(Unlocked_report[key]["Farthest dx during this round of unlock"]))
+        return
+
     ui.btn_cam1_update.clicked.connect(update_cam1_settings)
     ui.btn_cam2_update.clicked.connect(update_cam2_settings)
     ui.btn_motor_connect.clicked.connect(update_motors)
@@ -1869,6 +2129,7 @@ if __name__ == "__main__":
     ui.btn_cam1_apply_ROI.clicked.connect(apply_cam1_ROI)
     ui.btn_cam2_gen_ROI.clicked.connect(gen_cam2_ROI)
     ui.btn_cam2_apply_ROI.clicked.connect(apply_cam2_ROI)
+    ui.list_unlock_report.clicked.connect(display_unlock_report)
 
 
     timer = QtCore.QTimer()

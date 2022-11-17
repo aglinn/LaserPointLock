@@ -1,3 +1,6 @@
+# TODO: Should I set minnimum frame delay true?
+# TODO: Should I give the camera a window handle??
+# TODO: Should there be separate engines for each camera?
 import ctypes
 import platform
 import numpy as np
@@ -36,16 +39,23 @@ class MightexEngine:
     _getModuleNoSerialNo.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
     _setExposureTime = lib['NewClassicUSB_SetExposureTime']
     _setStartXY = lib['NewClassicUSB_SetXYStart']
+    _setCameraWorkMode = lib['NewClassicUSB_SetCameraWorkMode']
 
 
     _getFrame = lib['NewClassicUSB_GetCurrentFrame']
     _getFrame.argtypes = [ctypes.c_int, ctypes.c_int, c_ubyte_p]
     _getFrame.restype = c_ubyte_p
+    _SoftTrigger = lib['NewClassicUSB_SoftTrigger']
 
     ctypes.pythonapi.PyMemoryView_FromMemory.restype = ctypes.py_object
 
-    def __init__(self):
-
+    def __init__(self, CameraWorkMode: list = [0,0,0,0,0,0]):
+        """
+        This finds and adds Mightex cameras to the engine for use in the camera code.
+        CameraWorkMode is a list of integers to assign the work mode to each camera found.
+        1 = capture images on trigger
+        0 = capture images continuously.
+        """
         # Initialize the API
         ret = self._initDevice()
         if ret <= 0:
@@ -55,6 +65,7 @@ class MightexEngine:
         self.module_no: List[str] = []
         self.serial_no: List[str] = []
         self.dev_num: Dict[str, int] = {}
+        self.dev_work_mode: Dict[str, int] = {}
         self.BufferPoint: Dict = {}  # This maps from serial number, string, to the pointer,
                                     # which is a pyvisa.ctwrapper.types.LP_c_ubyte object @ location
         self.buffer: Dict = {}  # This maps from serial number, string, to the buffer
@@ -74,6 +85,7 @@ class MightexEngine:
             self.module_no.append(module_no)
             self.serial_no.append(serial_no)
             self.dev_num[serial_no] = i + 1
+
         print('Connected Cameras:')
         for ser, mod in zip(self.serial_no, self.module_no):
             print(ser, mod)
@@ -85,11 +97,35 @@ class MightexEngine:
             if len(self.serial_no) > 1:
                 self.activate_cam(self.serial_no[1])
         # Start the camera engine
-        self._startEngine(None, 8)
+        ret = self._startEngine(None, 8)
+        if not ret == 1:
+            raise Exception("Could not start the Mightex Engine.")
+
+        for i in range(len(self.dev_num)):
+            # Allow user to put camera into mode where frames are captured on trigger!
+            self.dev_work_mode[self.serial_no[i]] = CameraWorkMode[i]
+            if CameraWorkMode[i] == 1:
+                ret = self._setCameraWorkMode(ctypes.c_int(self.dev_num[serial_no]),
+                                              ctypes.c_int(self.dev_work_mode[self.serial_no[i]]))
+                if not ret == 1:
+                    raise Exception("Camera with serial number, ", serial_no, ", did not correctly set working mode"
+                                                                              "to trigger mode.")
+
         # Set the default resolution to 1280x1024
         for i in range(self.num_devices):
-            self._setResolution(ctypes.c_int(i + 1), ctypes.c_int(1280), ctypes.c_int(1024), ctypes.c_int(0))
-        self._startFrameGrab(self.GRAB_FRAME_FOREVER)
+            ret = self._setResolution(ctypes.c_int(i + 1), ctypes.c_int(1280), ctypes.c_int(1024), ctypes.c_int(0))
+            if not ret == 1:
+                raise Exception("Resolution not set for device with id, ", i+1)
+        for i in range(len(self.dev_work_mode)):
+            if self.dev_work_mode[self.serial_no[i]] == 0:
+                # This seems to apply for both devices... not sure what to say about that?
+                ret = self._startFrameGrab(self.GRAB_FRAME_FOREVER)
+                if not ret == 1:
+                    raise Exception("Did not start the Frame grab.")
+        for i in range(len(self.dev_num)):
+            img, time_stamp = self.get_frame(self.serial_no[i], getTimeStamp=1)
+            print(time_stamp)
+        return
 
     def activate_cam(self, serial_no):
         if serial_no not in self.serial_no:
@@ -99,6 +135,12 @@ class MightexEngine:
                 ret = self._addCameraToWorkingSet(self.dev_num[serial_no])
                 if ret == 1:
                     self.active_devs.add(serial_no)
+
+    def update_working_mode(self, working_mode, serial_no):
+        ret = self._setCameraWorkMode(ctypes.c_int(self.dev_num[serial_no]), ctypes.c_int(working_mode))
+        if not ret == 1:
+            raise Exception("Camera with serial number, ", serial_no, ", did not correctly set working mode"
+                                                                      "to trigger mode.")
 
     def deactivate_cam(self, serial_no):
         if serial_no not in self.serial_no:
@@ -114,6 +156,11 @@ class MightexEngine:
         if serial_no not in self.active_devs:
             return None
         else:
+            if self.dev_work_mode[serial_no] == 1:
+                ret = self._SoftTrigger(ctypes.c_int(self.dev_num[serial_no]))
+                if not ret == 1:
+                    raise Exception("The frame capturing could not be triggered correctly for serial number, ",
+                                    serial_no)
             res = self.resolution[serial_no]
             size = reduce(operator.mul, res, 1) + 56
             frame_type = ctypes.c_ubyte*size
@@ -122,6 +169,8 @@ class MightexEngine:
             # print("serial number:",serial_no,"dev number:", self.dev_num[serial_no])
             # print("dev num, just prior to get frame:",self.dev_num[serial_no])
             self.BufferPoint[serial_no] = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
+            if self.BufferPoint[serial_no] is None:
+                raise Exception("Camera Frame Grab failed for serial number, ", serial_no)
             """
             # print("Device Number:",self.dev_num[serial_no], "SerialNumber:", serial_no,"Pointer:", self.BufferPoint[serial_no])
             # if self.BufferPoint[self.serial_no[0]] == self.BufferPoint[self.serial_no[1]]:
@@ -132,9 +181,12 @@ class MightexEngine:
             """
             self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], int(size))
             # print("dev num, just prior to copying from buffer:", self.dev_num[serial_no])
-            self.z[serial_no] = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
-            if (getTimeStamp+getExposureTime)>0:
-                FrameInfo = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[24:44].copy()
+            #self.z[serial_no] = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+            self.z[serial_no] = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[56:].reshape(
+                res[::-1])
+            if (getTimeStamp+getExposureTime) > 0:
+                #FrameInfo = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[24:44].copy()
+                FrameInfo = np.frombuffer(self.buffer[serial_no], dtype=np.uint8, count=size)[24:44]
                 if getExposureTime:
                     self.exposureTime[serial_no] = int.from_bytes(FrameInfo[0:4], byteorder='little')*50.0/1000.0
                 TimeStamp = int.from_bytes(FrameInfo[16:20], byteorder='little')
@@ -143,7 +195,9 @@ class MightexEngine:
                 #lock.lockForRead()
                 self.BufferPoint[serial_no] = self._getFrame(ctypes.c_int(0), ctypes.c_int(self.dev_num[serial_no]), frame)
                 self.buffer[serial_no] = ctypes.pythonapi.PyMemoryView_FromMemory(self.BufferPoint[serial_no], size)
-                self.z[serial_no] += np.frombuffer(self.buffer, dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+                #self.z[serial_no] += np.frombuffer(self.buffer, dtype=np.uint8, count=size)[56:].copy().reshape(res[::-1])
+                self.z[serial_no] += np.frombuffer(self.buffer, dtype=np.uint8, count=size)[56:].reshape(
+                    res[::-1])
                 #lock.unlock()
             if n > 1:
                 self.z[serial_no] = self.z[serial_no].astype(np.float) / n
@@ -159,7 +213,7 @@ class MightexEngine:
         exposureTimeInt = int(exposureTime*1000/50)
         self._setExposureTime(ctypes.c_int(self.dev_num[serial_no]), ctypes.c_int(exposureTimeInt))
 
-    def GetExposure(self,serial_no):
+    def GetExposure(self, serial_no):
         return self.exposureTime[serial_no]
 
     def update_resolution(self, serial_no, res):
