@@ -1743,7 +1743,7 @@ if __name__ == "__main__":
             ROICam2_Lock.setVisible(False)
 
     def find_cameras():
-        global cam_list
+        global cam_list, pyspin_system
         if int(ui.cb_SystemSelection.currentIndex()) == 1:
             num_cameras = 0
             # Find the Mightex cameras
@@ -1788,28 +1788,8 @@ if __name__ == "__main__":
                     c = BlackflyS(cam)
                     cam_list.append(c)
                     cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
-
-                # Clear camera list before releasing system
-                pyspin_cam_list.Clear()
-
-                # Release system instance
-                pyspin_system.ReleaseInstance
-
             if num_cameras == 0:
                 raise DeviceNotFoundError("No visible cameras found.")
-            # Run example on each camera
-            for i, cam in enumerate(pyspin_cam_list):
-                print('Running example for camera %d...' % i)
-
-                result &= run_single_camera(cam)
-                print('Camera %d example complete... \n' % i)
-
-            # Release reference to camera
-            # NOTE: Unlike the C++ examples, we cannot rely on pointer objects being automatically
-            # cleaned up when going out of scope.
-            # The usage of del is preferred to assigning the variable to None.
-            del cam
-
 
             # Make appropriate Camera Settings available in GUI:
             toggle_BOSON_cam_settings_ui_vis(False)
@@ -1972,7 +1952,21 @@ if __name__ == "__main__":
         return
 
     def close():
+        global pyspin_system, pyspin_cam_list
         release_hardware()
+
+        for i, cam in enumerate(pyspin_cam_list)
+            # Release reference to camera
+            # NOTE: Unlike the C++ examples, we cannot rely on pointer objects being automatically
+            # cleaned up when going out of scope.
+            # The usage of del is preferred to assigning the variable to None.
+            del cam
+
+        # Clear camera list before releasing system
+        pyspin_cam_list.Clear()
+
+        # Release system instance
+        pyspin_system.ReleaseInstance()
         return
 
     def shut_down():

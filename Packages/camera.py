@@ -550,10 +550,11 @@ class TriggerType:
 class BlackflyS(Camera):
 
     def __init__(self, cam):
-        self.nodemap = cam.GetNodeMap()
-        self.nodemap_tldevice = cam.GetTLDeviceNodeMap()
-        self.sNodemap = cam.GetTLStreamNodeMap()
         self.cam = cam
+        self.nodemap_tldevice = self.cam.GetTLDeviceNodeMap()
+        self.cam.init()
+        self.nodemap = self.cam.GetNodeMap()
+        self.sNodemap = self.cam.GetTLStreamNodeMap()
         #  Retrieve device serial number for device id
         #
         #  *** NOTES ***
@@ -565,7 +566,6 @@ class BlackflyS(Camera):
         if PySpin.IsAvailable(node_device_serial_number) and PySpin.IsReadable(node_device_serial_number):
             self.serial_no = node_device_serial_number.GetValue()
             print('Device serial number retrieved as %s...' % self.device_serial_number)
-        self.cam.init()
         """"
         if not self.configure_trig(cam=self.cam, CHOSEN_TRIGGER = TriggerType.SOFTWARE):
             raise Exception('Trigger mode unable to be set')
