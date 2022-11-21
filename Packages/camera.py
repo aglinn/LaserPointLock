@@ -543,14 +543,24 @@ class TriggerType:
     SOFTWARE = 1
     HARDWARE = 2
 
-class blackfly_s(Camera):
+class BlackflyS(Camera):
 
     def __init__(self, cam):
         self.nodemap = cam.GetNodeMap()
         self.nodemap_tldevice = cam.GetTLDeviceNodeMap()
         self.sNodemap = cam.GetTLStreamNodeMap()
-
         self.cam = cam
+        #  Retrieve device serial number for device id
+        #
+        #  *** NOTES ***
+        #  The device serial number is retrieved in order to keep cameras from
+        #  overwriting one another. Grabbing image IDs could also accomplish
+        #  this.
+        self.serial_no = ''
+        node_device_serial_number = PySpin.CStringPtr(self.nodemap_tldevice.GetNode('DeviceSerialNumber'))
+        if PySpin.IsAvailable(node_device_serial_number) and PySpin.IsReadable(node_device_serial_number):
+            self.serial_no = node_device_serial_number.GetValue()
+            print('Device serial number retrieved as %s...' % self.device_serial_number)
         self.cam.init()
         """"
         if not self.configure_trig(cam=self.cam, CHOSEN_TRIGGER = TriggerType.SOFTWARE):
@@ -792,4 +802,5 @@ class blackfly_s(Camera):
     def close(self):
         self.cam.EndAcquisition()
         self.cam.DeInit()
+
         return

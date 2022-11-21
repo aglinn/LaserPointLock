@@ -5,17 +5,78 @@ import re
 import time
 from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 import numpy as np
+from abc import ABC,abstractmethod
 
 VisaResourceManager = NewType('VisaResourceManager', visa.ResourceManager)
 
-class FakeMotor():
+class Motor(ABC):
+
+    @abstractmethod
+    def close(self):
+        pass
+        return
+
+    @property
+    @abstractmethod
+    def ch1(self):
+        pass
+        return
+
+    @property
+    @abstractmethod
+    def ch2(self):
+        pass
+        return
+
+    @ch1.setter
+    @abstractmethod
+    def ch1(self, val: str):
+        pass
+        return
+
+    @ch2.setter
+    @abstractmethod
+    def ch2(self, val: str):
+        pass
+        return
+
+    @property
+    @abstractmethod
+    def ch1_v(self):
+        pass
+        return
+
+    @property
+    @abstractmethod
+    def ch2_v(self):
+        pass
+        return
+
+    @ch1_v.setter
+    @abstractmethod
+    def ch1_v(self, v: float):
+        pass
+        return
+
+    @ch2_v.setter
+    @abstractmethod
+    def ch2_v(self, v: float):
+        pass
+        return
+
+    @abstractmethod
+    def get_info(self, id):
+        pass
+        return
+
+class FakeMotor(Motor):
     def __init__(self, ch1: str, ch2: str):
         self._ch1 = ch1
         self._ch2 = ch2
         self._count = 2  # the motor will require multiple sets to reach its target
         self._ch1_v = 0
         self._ch2_v = 0
-    
+
     @property
     def ch1(self):
         return self._ch1
@@ -64,7 +125,7 @@ class FakeMotor():
         # print('Setting ch 2 voltage to', v)
         self._ch2_v = v
 
-class MDT693A_Motor():
+class MDT693A_Motor(Motor):
     """
     Code that implements a Motor assuming a connection to the ThorLabs MDT693A
     """
@@ -89,7 +150,7 @@ class MDT693A_Motor():
         self._ch1_v = 75.0
         self._ch2_v = 75.0
 
-    def terminate(self):
+    def close(self):
         # Close connection to port
         pass
 
@@ -190,7 +251,7 @@ class MDT693A_Motor():
         rep = self.inst.query(cmd)
         return rep
 
-class MDT693B_Motor():
+class MDT693B_Motor(Motor):
     """
     Code that implements a Motor assuming a connection to the ThorLabs MDT693B
     using Thorlabs SDK
@@ -290,7 +351,7 @@ class MDT693B_Motor():
 
         return
 
-    def terminate(self):
+    def close(self):
         # Close connection to port
         ret = mdt.mdtClose(self.handle)
         if ret < 0:
