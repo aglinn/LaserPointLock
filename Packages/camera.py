@@ -323,6 +323,10 @@ class MightexCamera(Camera):
     def gain(self):
         return 1
 
+    def close(self):
+        self.engine.deactivate_cam(self.serial_no)
+        return
+
     @property
     def dev_num(self):
         return self.engine.dev_num[self.serial_no]
@@ -802,5 +806,4 @@ class BlackflyS(Camera):
     def close(self):
         self.cam.EndAcquisition()
         self.cam.DeInit()
-
         return
