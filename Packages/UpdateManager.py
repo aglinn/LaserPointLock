@@ -319,11 +319,6 @@ class UpdateManager:
 
     @t1.setter
     def t1(self, value):
-        #TODO: Move commented code to mightex camera code.
-        """if len(self.t1 > 0):
-            if value < self.t1[-1]-self._t1_wrapper_count*(65535+1):
-                self._t1_wrapper_count += 1  # Convert to a monotonic timestamp
-        self._t1.append(self._t1_wrapper_count*(65535+1)+value)"""
         self._t1.append(value)
         if len(self._t1) > 100:
             del self._t1[0]
@@ -336,12 +331,6 @@ class UpdateManager:
 
     @t2.setter
     def t2(self, value):
-        """
-        if len(self.t2 > 0):
-            if value < self.t2[-1]-self._t2_wrapper_count * (65535 + 1):
-                self._t2_wrapper_count += 1  # Convert to a monotonic timestamp
-        self._t2.append(self._t2_wrapper_count * (65535 + 1) + value)
-        """
         self._t2.append(value)
         if len(self._t2) > 100:
             del self._t2[0]

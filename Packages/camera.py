@@ -264,6 +264,22 @@ class Camera(ABC):
     def close(self):
         pass
 
+    @abstractmethod
+    def apply_ROI(self):
+        pass
+
+    @abstractmethod
+    @property
+    def time(self):
+        """
+        time that the image was acquired at in ms.
+        """
+        pass
+
+    @abstractmethod
+    def setup_camera_for_image_acquisition(self):
+        pass
+
 
 class MightexCamera(Camera):
     def __init__(self, engine: MightexEngine, serial_no: str):
@@ -276,6 +292,7 @@ class MightexCamera(Camera):
         self._time = None
         self._ROI_bounds = None
         self._xy = (0, 0)
+        self._time_wrapper_count = 0
         # self.run_thread = CameraThread(self)
         # self.signals = CameraSignals()
 
@@ -337,7 +354,12 @@ class MightexCamera(Camera):
 
     @time.setter
     def time(self, value):
+        if len(self.time > 0):
+            if value < self.time[-1] - self._time_wrapper_count * (65535 + 1):
+                self._time_wrapper_count += 1  # Convert to a monotonic timestamp
+        self._time.append(self._time_wrapper_count * (65535 + 1) + value)
         self._time = value
+        return
 
     def apply_ROI(self):
         width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
@@ -358,6 +380,9 @@ class MightexCamera(Camera):
     @ROI_bounds.setter
     def ROI_bounds(self, roi: list):
         self._ROI_bounds = roi
+
+    def setup_camera_for_image_acquisition(self):
+        pass
 
 """
 # TODO: multithread the frame grabbing
@@ -486,6 +511,9 @@ class FakeCamera(Camera):
     def apply_ROI(self):
         pass
 
+    def time(self):
+        return 0
+
 class BosonCamera(Boson):
     def __init__(self, port=None, device_id=None):
         self.port = port
@@ -543,6 +571,9 @@ class BosonCamera(Boson):
     def service(self):
         pass
 
+    def setup_camera_for_image_acquisition(self):
+        pass
+
 class TriggerType:
     SOFTWARE = 1
     HARDWARE = 2
@@ -570,12 +601,17 @@ class BlackflyS(Camera):
         if not self.configure_trig(cam=self.cam, CHOSEN_TRIGGER = TriggerType.SOFTWARE):
             raise Exception('Trigger mode unable to be set')
         """
-        #self.setup_camera_for_image_acquisition()
 
         #TODO: Enable setting ROI correctly. for now, just set startXY to 0,0
-        self.startXY = [0,0]
+        self._startXY = [0, 0]
         # Init properties
+        self.startXY = [self.roi_x_offset, self.roi_y_offset]
         self.frame = None
+        self._ready_to_acquire = False
+        # TODO: Get the offset in time from the cameras time to a synchronized python timer correctly.
+        self._time_offset = 0
+        self._time = 0
+        self._ROI_bounds = None
         return
 
     def update_frame(self):
@@ -602,6 +638,7 @@ class BlackflyS(Camera):
             else:
                 # Getting the image data as a numpy array
                 self.frame = image_result.GetNDArray()
+                self.time = image_result.GetTimeStamp()/1e6 #time in ms
 
             #  Release image
             #
@@ -618,8 +655,10 @@ class BlackflyS(Camera):
         return self.frame
 
     def set_exposure_time(self, time):
-        #TODO: Setup camera for acquisition correctly, but for testing do it here.
-        self.setup_camera_for_image_acquisition()
+        """
+        Not implemented because auto exposure loop on camera is probably better than manually setting.
+        """
+        pass
         return
 
     def set_resolution(self, res):
@@ -628,8 +667,8 @@ class BlackflyS(Camera):
     def set_gain(self, gain):
         pass
 
-    def set_decimation(self, gain):
-        return 0
+    def set_decimation(self, decimation):
+        return
 
     @property
     def exposure_time(self):
@@ -637,7 +676,7 @@ class BlackflyS(Camera):
 
     @property
     def gain(self):
-        return 0
+        return 1
 
     @staticmethod
     def configure_trig(cam, CHOSEN_TRIGGER):
@@ -746,63 +785,67 @@ class BlackflyS(Camera):
         return result
 
     def setup_camera_for_image_acquisition(self):
-        # Change bufferhandling mode to NewestOnly
-        node_bufferhandling_mode = PySpin.CEnumerationPtr(self.sNodemap.GetNode('StreamBufferHandlingMode'))
-        if not PySpin.IsAvailable(node_bufferhandling_mode) or not PySpin.IsWritable(node_bufferhandling_mode):
-            print('Unable to set stream buffer handling mode.. Aborting...')
-            return False
 
-        # Retrieve entry node from enumeration node
-        node_newestonly = node_bufferhandling_mode.GetEntryByName('NewestOnly')
-        if not PySpin.IsAvailable(node_newestonly) or not PySpin.IsReadable(node_newestonly):
-            print('Unable to set stream buffer handling mode.. Aborting...')
-            return False
-
-        # Retrieve integer value from entry node
-        node_newestonly_mode = node_newestonly.GetValue()
-
-        # Set integer value from entry node as new value of enumeration node
-        node_bufferhandling_mode.SetIntValue(node_newestonly_mode)
-
-        print('*** IMAGE ACQUISITION ***\n')
-        try:
-            node_acquisition_mode = PySpin.CEnumerationPtr(self.nodemap.GetNode('AcquisitionMode'))
-            if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
-                print('Unable to set acquisition mode to continuous (enum retrieval). Aborting...')
+        if not self._ready_to_acquire:
+            # Change bufferhandling mode to NewestOnly
+            node_bufferhandling_mode = PySpin.CEnumerationPtr(self.sNodemap.GetNode('StreamBufferHandlingMode'))
+            if not PySpin.IsAvailable(node_bufferhandling_mode) or not PySpin.IsWritable(node_bufferhandling_mode):
+                print('Unable to set stream buffer handling mode.. Aborting...')
                 return False
 
             # Retrieve entry node from enumeration node
-            node_acquisition_mode_continuous = node_acquisition_mode.GetEntryByName('Continuous')
-            if not PySpin.IsAvailable(node_acquisition_mode_continuous) or not PySpin.IsReadable(
-                    node_acquisition_mode_continuous):
-                print('Unable to set acquisition mode to continuous (entry retrieval). Aborting...')
+            node_newestonly = node_bufferhandling_mode.GetEntryByName('NewestOnly')
+            if not PySpin.IsAvailable(node_newestonly) or not PySpin.IsReadable(node_newestonly):
+                print('Unable to set stream buffer handling mode.. Aborting...')
                 return False
 
             # Retrieve integer value from entry node
-            acquisition_mode_continuous = node_acquisition_mode_continuous.GetValue()
+            node_newestonly_mode = node_newestonly.GetValue()
 
             # Set integer value from entry node as new value of enumeration node
-            node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
+            node_bufferhandling_mode.SetIntValue(node_newestonly_mode)
 
-            print('Acquisition mode set to continuous...')
+            print('*** IMAGE ACQUISITION ***\n')
+            try:
+                node_acquisition_mode = PySpin.CEnumerationPtr(self.nodemap.GetNode('AcquisitionMode'))
+                if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
+                    print('Unable to set acquisition mode to continuous (enum retrieval). Aborting...')
+                    return False
 
-            #  Begin acquiring images
-            #
-            #  *** NOTES ***
-            #  What happens when the camera begins acquiring images depends on the
-            #  acquisition mode. Single frame captures only a single image, multi
-            #  frame catures a set number of images, and continuous captures a
-            #  continuous stream of images.
-            #
-            #  *** LATER ***
-            #  Image acquisition must be ended when no more images are needed.
-            self.cam.BeginAcquisition()
+                # Retrieve entry node from enumeration node
+                node_acquisition_mode_continuous = node_acquisition_mode.GetEntryByName('Continuous')
+                if not PySpin.IsAvailable(node_acquisition_mode_continuous) or not PySpin.IsReadable(
+                        node_acquisition_mode_continuous):
+                    print('Unable to set acquisition mode to continuous (entry retrieval). Aborting...')
+                    return False
 
-            print('Acquiring images...')
-            return
-        except PySpin.SpinnakerException as ex:
-            print('Error: %s' % ex)
-            return
+                # Retrieve integer value from entry node
+                acquisition_mode_continuous = node_acquisition_mode_continuous.GetValue()
+
+                # Set integer value from entry node as new value of enumeration node
+                node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
+
+                print('Acquisition mode set to continuous...')
+
+                #  Begin acquiring images
+                #
+                #  *** NOTES ***
+                #  What happens when the camera begins acquiring images depends on the
+                #  acquisition mode. Single frame captures only a single image, multi
+                #  frame catures a set number of images, and continuous captures a
+                #  continuous stream of images.
+                #
+                #  *** LATER ***
+                #  Image acquisition must be ended when no more images are needed.
+                self.cam.BeginAcquisition()
+
+                self._ready_to_acquire = True
+
+                print('Acquiring images...')
+                return
+            except PySpin.SpinnakerException as ex:
+                print('Error: %s' % ex)
+                return
 
     def update_settings(self):
         pass
@@ -813,5 +856,45 @@ class BlackflyS(Camera):
         del self.cam
         return
 
+    @property
     def time(self):
-        return 0
+        """
+        time that the image was acquired at in ms.
+        """
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        self._time = self._time_offset + value
+        return
+
+    def apply_ROI(self):
+        if self.ROI_bounds is not None:
+            width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
+            height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
+            self.cam.Width(ctypes.c_int(width))
+            self.cam.Height(ctypes.c_int(height))
+            x = int(np.round(self.ROI_bounds[2]))
+            y = int(np.round(self.ROI_bounds[0]))
+            self.startXY = [x, y]
+            return
+
+    @property
+    def ROI_bounds(self):
+        # xmin, xmax, ymin, ymax
+        return self._ROI_bounds
+
+    @ROI_bounds.setter
+    def ROI_bounds(self, roi: list):
+        self._ROI_bounds = roi
+
+    @property
+    def startXY(self):
+        return self._startXY
+
+    @startXY.setter
+    def startXY(self, XY):
+        self.cam.OffsetX(ctypes.c_int(XY[0]))
+        self.cam.OffsetY(ctypes.c_int(XY[1]))
+        self._startXY = [self.cam.OffsetX, self.cam.OffsetY]
+        return
