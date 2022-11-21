@@ -268,8 +268,8 @@ class Camera(ABC):
     def apply_ROI(self):
         pass
 
-    @abstractmethod
     @property
+    @abstractmethod
     def time(self):
         """
         time that the image was acquired at in ms.
@@ -787,6 +787,42 @@ class BlackflyS(Camera):
     def setup_camera_for_image_acquisition(self):
 
         if not self._ready_to_acquire:
+
+            # Apply mono 8 pixel format
+            #
+            # *** NOTES ***
+            # Enumeration nodes are slightly more complicated to set than other
+            # nodes. This is because setting an enumeration node requires working
+            # with two nodes instead of the usual one.
+            #
+            # As such, there are a number of steps to setting an enumeration node:
+            # retrieve the enumeration node from the nodemap, retrieve the desired
+            # entry node from the enumeration node, retrieve the integer value from
+            # the entry node, and set the new value of the enumeration node with
+            # the integer value from the entry node.
+            #
+            # Retrieve the enumeration node from the nodemap
+            node_pixel_format = PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat'))
+            if PySpin.IsAvailable(node_pixel_format) and PySpin.IsWritable(node_pixel_format):
+
+                # Retrieve the desired entry node from the enumeration node
+                node_pixel_format_mono8 = PySpin.CEnumEntryPtr(node_pixel_format.GetEntryByName('Mono8'))
+                if PySpin.IsAvailable(node_pixel_format_mono8) and PySpin.IsReadable(node_pixel_format_mono8):
+
+                    # Retrieve the integer value from the entry node
+                    pixel_format_mono8 = node_pixel_format_mono8.GetValue()
+
+                    # Set integer as new value for enumeration node
+                    node_pixel_format.SetIntValue(pixel_format_mono8)
+
+                    print('Pixel format set to %s...' % node_pixel_format.GetCurrentEntry().GetSymbolic())
+
+                else:
+                    print('Pixel format mono 8 not available...')
+
+            else:
+                print('Pixel format not available...')
+
             # Change bufferhandling mode to NewestOnly
             node_bufferhandling_mode = PySpin.CEnumerationPtr(self.sNodemap.GetNode('StreamBufferHandlingMode'))
             if not PySpin.IsAvailable(node_bufferhandling_mode) or not PySpin.IsWritable(node_bufferhandling_mode):
@@ -870,13 +906,87 @@ class BlackflyS(Camera):
 
     def apply_ROI(self):
         if self.ROI_bounds is not None:
+
+            # Get parameters to apply to the ROI settings of Camera
             width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
             height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
-            self.cam.Width(ctypes.c_int(width))
-            self.cam.Height(ctypes.c_int(height))
             x = int(np.round(self.ROI_bounds[2]))
             y = int(np.round(self.ROI_bounds[0]))
-            self.startXY = [x, y]
+
+            # Must make changes while not acquiring images. So, end acquisition, apply changes, begin acquisition
+            self.cam.EndAcquisition()
+            self._ready_to_acquire = False
+
+            # Apply offset X
+            #
+            # *** NOTES ***
+            # Numeric nodes have both a minimum and maximum. A minimum is retrieved
+            # with the method GetMin(). Sometimes it can be important to check
+            # minimums to ensure that your desired value is within range.
+            node_offset_x = PySpin.CIntegerPtr(self.nodemap.GetNode('OffsetX'))
+            if PySpin.IsAvailable(node_offset_x) and PySpin.IsWritable(node_offset_x):
+
+                min_x = node_offset_x.GetMin()
+                max_x = node_offset_x.GetMax()
+                if x < min_x:
+                    node_offset_x.SetValue(min_x)
+                elif x > max_x:
+                    node_offset_x.SetValue(max_x)
+                else:
+                    node_offset_x.SetValue(ctypes.c_int(x))
+            else:
+                print('Offset X not available...')
+
+            # Apply offset Y
+            #
+            # *** NOTES ***
+            # Numeric nodes have both a minimum and maximum. A minimum is retrieved
+            # with the method GetMin(). Sometimes it can be important to check
+            # minimums to ensure that your desired value is within range.
+            node_offset_y = PySpin.CIntegerPtr(self.nodemap.GetNode('OffsetY'))
+            if PySpin.IsAvailable(node_offset_y) and PySpin.IsWritable(node_offset_y):
+
+                min_y = node_offset_y.GetMin()
+                max_y = node_offset_y.GetMax()
+                if x < min_y:
+                    node_offset_y.SetValue(min_y)
+                elif x > max_y:
+                    node_offset_x.SetValue(max_y)
+                else:
+                    node_offset_y.SetValue(ctypes.c_int(y))
+            else:
+                print('Offset Y not available...')
+
+            # Set the width of the image
+            node_width = PySpin.CIntegerPtr(self.nodemap.GetNode('Width'))
+            if PySpin.IsAvailable(node_width) and PySpin.IsWritable(node_width):
+                min_width = node_width.GetMin()
+                max_width = node_width.GetMax()
+                if width < min_width:
+                    node_width.SetValue(min_width)
+                elif width > max_width:
+                    node_width.SetValue(max_width)
+                else:
+                    node_width.SetValue(ctypes.c_int(width))
+            else:
+                print("Width not available...")
+
+            #Set the Height of the image
+            node_height = PySpin.CIntegerPtr(self.nodemap.GetNode('Height'))
+            if PySpin.IsAvailable(node_height) and PySpin.IsWritable(node_height):
+                min_height = node_height.GetMin()
+                max_height = node_height.GetMax()
+                if height < min_height:
+                    node_height.SetValue(min_height)
+                elif height > max_height:
+                    node_height.SetValue(max_height)
+                else:
+                    node_height.SetValue(ctypes.c_int(height))
+
+
+            self.startXY = [self.cam.OffsetX, self.cam.offsetY]
+            # Restart Acquisition/resetup camera to acquire images:
+            self.setup_camera_for_image_acquisition()
             return
 
     @property
