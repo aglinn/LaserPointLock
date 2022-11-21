@@ -1,6 +1,4 @@
-# TODO: Should I set minnimum frame delay true?
 # TODO: Should I give the camera a window handle??
-# TODO: Should there be separate engines for each camera?
 import ctypes
 import platform
 import numpy as np
@@ -10,6 +8,7 @@ import random
 from functools import reduce
 from typing import List, Dict, Set, Tuple
 from abc import ABC, abstractmethod
+import PySpin
 
 class DeviceNotFoundError(Exception):
     pass
@@ -261,6 +260,10 @@ class Camera(ABC):
     def gain(self):
         pass
 
+    @abstractmethod
+    def close(self):
+        pass
+
 
 class MightexCamera(Camera):
     def __init__(self, engine: MightexEngine, serial_no: str):
@@ -495,6 +498,7 @@ class BosonCamera(Boson):
         self.device_id = self.find_video_device(device_id=device_id)
         self._time = 0
         self._ROI_bounds = (0, 1024, 0, 1280)
+        self.is_boson = True
 
     def get_frame(self):
         return self.frame[int(self.ROI_bounds[0]):int(self.ROI_bounds[1]+1),
@@ -531,3 +535,261 @@ class BosonCamera(Boson):
     @ROI_bounds.setter
     def ROI_bounds(self, roi: list):
         self._ROI_bounds = np.round(roi)
+
+    def service(self):
+        pass
+
+class TriggerType:
+    SOFTWARE = 1
+    HARDWARE = 2
+
+class blackfly_s(Camera):
+
+    def __init__(self, cam):
+        self.nodemap = cam.GetNodeMap()
+        self.nodemap_tldevice = cam.GetTLDeviceNodeMap()
+        self.sNodemap = cam.GetTLStreamNodeMap()
+
+        self.cam = cam
+        self.cam.init()
+        """"
+        if not self.configure_trig(cam=self.cam, CHOSEN_TRIGGER = TriggerType.SOFTWARE):
+            raise Exception('Trigger mode unable to be set')
+        """
+        self.setup_camera_for_image_acquisition()
+
+        # Init properties
+        self.frame = None
+        return
+
+    def update_frame(self):
+        """
+        Retrieve the next image, format appropriately, set frame property, and release the image.
+        """
+        try:
+            #  Retrieve next received image
+            #
+            #  *** NOTES ***
+            #  Capturing an image houses images on the camera buffer. Trying
+            #  to capture an image that does not exist will hang the camera.
+            #
+            #  *** LATER ***
+            #  Once an image from the buffer is saved and/or no longer
+            #  needed, the image must be released in order to keep the
+            #  buffer from filling up.
+
+            image_result = self.cam.GetNextImage(1000)
+
+            #  Ensure image completion
+            if image_result.IsIncomplete():
+                print('Image incomplete with image status %d ...' % image_result.GetImageStatus())
+            else:
+                # Getting the image data as a numpy array
+                self.frame = image_result.GetNDArray()
+
+            #  Release image
+            #
+            #  *** NOTES ***
+            #  Images retrieved directly from the camera (i.e. non-converted
+            #  images) need to be released in order to keep from filling the
+            #  buffer.
+            image_result.Release()
+            return
+        except PySpin.SpinnakerException as ex:
+            print('Error: %s' % ex)
+
+    def get_frame(self):
+        return self.frame
+
+    def set_exposure_time(self, time):
+        pass
+
+    def set_resolution(self, res):
+        pass
+
+    def set_gain(self, gain):
+        pass
+
+    def set_decimation(self, gain):
+        pass
+
+    @property
+    def exposure_time(self):
+        pass
+
+    @property
+    def gain(self):
+        pass
+
+    @staticmethod
+    def configure_trig(cam, CHOSEN_TRIGGER):
+        """
+            This function configures the camera to use a trigger. First, trigger mode is
+            set to off in order to select the trigger source. Once the trigger source
+            has been selected, trigger mode is then enabled, which has the camera
+            capture only a single image upon the execution of the chosen trigger.
+
+             :param cam: Camera to configure trigger for.
+             :type cam: CameraPtr
+             :return: True if successful, False otherwise.
+             :rtype: bool
+            """
+        result = True
+
+        print('*** CONFIGURING TRIGGER ***\n')
+
+        print(
+            'Note that if the application / user software triggers faster than frame time, the trigger may be dropped / skipped by the camera.\n')
+        print(
+            'If several frames are needed per trigger, a more reliable alternative for such case, is to use the multi-frame mode.\n\n')
+
+        if CHOSEN_TRIGGER == TriggerType.SOFTWARE:
+            print('Software trigger chosen ...')
+        elif CHOSEN_TRIGGER == TriggerType.HARDWARE:
+            print('Hardware trigger chose ...')
+
+        try:
+            # Ensure trigger mode off
+            # The trigger must be disabled in order to configure whether the source
+            # is software or hardware.
+            nodemap = cam.GetNodeMap()
+            node_trigger_mode = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerMode'))
+            if not PySpin.IsAvailable(node_trigger_mode) or not PySpin.IsReadable(node_trigger_mode):
+                print('Unable to disable trigger mode (node retrieval). Aborting...')
+                return False
+
+            node_trigger_mode_off = node_trigger_mode.GetEntryByName('Off')
+            if not PySpin.IsAvailable(node_trigger_mode_off) or not PySpin.IsReadable(node_trigger_mode_off):
+                print('Unable to disable trigger mode (enum entry retrieval). Aborting...')
+                return False
+
+            node_trigger_mode.SetIntValue(node_trigger_mode_off.GetValue())
+
+            print('Trigger mode disabled...')
+
+            # Set TriggerSelector to FrameStart
+            # For this example, the trigger selector should be set to frame start.
+            # This is the default for most cameras.
+            node_trigger_selector = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerSelector'))
+            if not PySpin.IsAvailable(node_trigger_selector) or not PySpin.IsWritable(node_trigger_selector):
+                print('Unable to get trigger selector (node retrieval). Aborting...')
+                return False
+
+            node_trigger_selector_framestart = node_trigger_selector.GetEntryByName('FrameStart')
+            if not PySpin.IsAvailable(node_trigger_selector_framestart) or not PySpin.IsReadable(
+                    node_trigger_selector_framestart):
+                print('Unable to set trigger selector (enum entry retrieval). Aborting...')
+                return False
+            node_trigger_selector.SetIntValue(node_trigger_selector_framestart.GetValue())
+
+            print('Trigger selector set to frame start...')
+
+            # Select trigger source
+            # The trigger source must be set to hardware or software while trigger
+            # mode is off.
+            node_trigger_source = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerSource'))
+            if not PySpin.IsAvailable(node_trigger_source) or not PySpin.IsWritable(node_trigger_source):
+                print('Unable to get trigger source (node retrieval). Aborting...')
+                return False
+
+            if CHOSEN_TRIGGER == TriggerType.SOFTWARE:
+                node_trigger_source_software = node_trigger_source.GetEntryByName('Software')
+                if not PySpin.IsAvailable(node_trigger_source_software) or not PySpin.IsReadable(
+                        node_trigger_source_software):
+                    print('Unable to set trigger source (enum entry retrieval). Aborting...')
+                    return False
+                node_trigger_source.SetIntValue(node_trigger_source_software.GetValue())
+                print('Trigger source set to software...')
+
+            elif CHOSEN_TRIGGER == TriggerType.HARDWARE:
+                node_trigger_source_hardware = node_trigger_source.GetEntryByName('Line0')
+                if not PySpin.IsAvailable(node_trigger_source_hardware) or not PySpin.IsReadable(
+                        node_trigger_source_hardware):
+                    print('Unable to set trigger source (enum entry retrieval). Aborting...')
+                    return False
+                node_trigger_source.SetIntValue(node_trigger_source_hardware.GetValue())
+                print('Trigger source set to hardware...')
+
+            # Turn trigger mode on
+            # Once the appropriate trigger source has been set, turn trigger mode
+            # on in order to retrieve images using the trigger.
+            node_trigger_mode_on = node_trigger_mode.GetEntryByName('On')
+            if not PySpin.IsAvailable(node_trigger_mode_on) or not PySpin.IsReadable(node_trigger_mode_on):
+                print('Unable to enable trigger mode (enum entry retrieval). Aborting...')
+                return False
+
+            node_trigger_mode.SetIntValue(node_trigger_mode_on.GetValue())
+            print('Trigger mode turned back on...')
+
+        except PySpin.SpinnakerException as ex:
+            print('Error: %s' % ex)
+            return False
+
+        return result
+
+    def setup_camera_for_image_acquisition(self):
+        # Change bufferhandling mode to NewestOnly
+        node_bufferhandling_mode = PySpin.CEnumerationPtr(self.sNodemap.GetNode('StreamBufferHandlingMode'))
+        if not PySpin.IsAvailable(node_bufferhandling_mode) or not PySpin.IsWritable(node_bufferhandling_mode):
+            print('Unable to set stream buffer handling mode.. Aborting...')
+            return False
+
+        # Retrieve entry node from enumeration node
+        node_newestonly = node_bufferhandling_mode.GetEntryByName('NewestOnly')
+        if not PySpin.IsAvailable(node_newestonly) or not PySpin.IsReadable(node_newestonly):
+            print('Unable to set stream buffer handling mode.. Aborting...')
+            return False
+
+        # Retrieve integer value from entry node
+        node_newestonly_mode = node_newestonly.GetValue()
+
+        # Set integer value from entry node as new value of enumeration node
+        node_bufferhandling_mode.SetIntValue(node_newestonly_mode)
+
+        print('*** IMAGE ACQUISITION ***\n')
+        try:
+            node_acquisition_mode = PySpin.CEnumerationPtr(self.nodemap.GetNode('AcquisitionMode'))
+            if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
+                print('Unable to set acquisition mode to continuous (enum retrieval). Aborting...')
+                return False
+
+            # Retrieve entry node from enumeration node
+            node_acquisition_mode_continuous = node_acquisition_mode.GetEntryByName('Continuous')
+            if not PySpin.IsAvailable(node_acquisition_mode_continuous) or not PySpin.IsReadable(
+                    node_acquisition_mode_continuous):
+                print('Unable to set acquisition mode to continuous (entry retrieval). Aborting...')
+                return False
+
+            # Retrieve integer value from entry node
+            acquisition_mode_continuous = node_acquisition_mode_continuous.GetValue()
+
+            # Set integer value from entry node as new value of enumeration node
+            node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
+
+            print('Acquisition mode set to continuous...')
+
+            #  Begin acquiring images
+            #
+            #  *** NOTES ***
+            #  What happens when the camera begins acquiring images depends on the
+            #  acquisition mode. Single frame captures only a single image, multi
+            #  frame catures a set number of images, and continuous captures a
+            #  continuous stream of images.
+            #
+            #  *** LATER ***
+            #  Image acquisition must be ended when no more images are needed.
+            self.cam.BeginAcquisition()
+
+            print('Acquiring images...')
+            return
+        except PySpin.SpinnakerException as ex:
+            print('Error: %s' % ex)
+            return
+
+    def update_settings(self):
+        pass
+
+    def close(self):
+        self.cam.EndAcquisition()
+        self.cam.DeInit()
+        return
