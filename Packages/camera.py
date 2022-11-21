@@ -552,7 +552,7 @@ class BlackflyS(Camera):
     def __init__(self, cam):
         self.cam = cam
         self.nodemap_tldevice = self.cam.GetTLDeviceNodeMap()
-        self.cam.init()
+        self.cam.Init()
         self.nodemap = self.cam.GetNodeMap()
         self.sNodemap = self.cam.GetTLStreamNodeMap()
         #  Retrieve device serial number for device id
@@ -565,13 +565,15 @@ class BlackflyS(Camera):
         node_device_serial_number = PySpin.CStringPtr(self.nodemap_tldevice.GetNode('DeviceSerialNumber'))
         if PySpin.IsAvailable(node_device_serial_number) and PySpin.IsReadable(node_device_serial_number):
             self.serial_no = node_device_serial_number.GetValue()
-            print('Device serial number retrieved as %s...' % self.device_serial_number)
+            print('Device serial number retrieved as %s...' % self.serial_no)
         """"
         if not self.configure_trig(cam=self.cam, CHOSEN_TRIGGER = TriggerType.SOFTWARE):
             raise Exception('Trigger mode unable to be set')
         """
-        self.setup_camera_for_image_acquisition()
+        #self.setup_camera_for_image_acquisition()
 
+        #TODO: Enable setting ROI correctly. for now, just set startXY to 0,0
+        self.startXY = [0,0]
         # Init properties
         self.frame = None
         return
@@ -616,7 +618,9 @@ class BlackflyS(Camera):
         return self.frame
 
     def set_exposure_time(self, time):
-        pass
+        #TODO: Setup camera for acquisition correctly, but for testing do it here.
+        self.setup_camera_for_image_acquisition()
+        return
 
     def set_resolution(self, res):
         pass
@@ -625,15 +629,15 @@ class BlackflyS(Camera):
         pass
 
     def set_decimation(self, gain):
-        pass
+        return 0
 
     @property
     def exposure_time(self):
-        pass
+        return 0
 
     @property
     def gain(self):
-        pass
+        return 0
 
     @staticmethod
     def configure_trig(cam, CHOSEN_TRIGGER):
@@ -806,4 +810,8 @@ class BlackflyS(Camera):
     def close(self):
         self.cam.EndAcquisition()
         self.cam.DeInit()
+        del self.cam
         return
+
+    def time(self):
+        return 0

@@ -1746,9 +1746,11 @@ if __name__ == "__main__":
         global cam_list, pyspin_system
         if int(ui.cb_SystemSelection.currentIndex()) == 1:
             num_cameras = 0
+            cam_list = []
+            """
+            Commented out for testing blackfly cameras.
             # Find the Mightex cameras
             mightex_engine = MightexEngine()
-            cam_list = []
             if len(mightex_engine.serial_no) == 0:
                 del mightex_engine
             else:
@@ -1757,7 +1759,7 @@ if __name__ == "__main__":
                     c = MightexCamera(mightex_engine, serial_no)
                     cam_list.append(c)
                     cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
-
+            """
             # Find blackfly s cameras:
             # Retrieve singleton reference to system object
             pyspin_system = PySpin.System.GetInstance()
@@ -1945,28 +1947,42 @@ if __name__ == "__main__":
 
     def release_hardware():
         global cam_list, motor_list
-        for cam in cam_list:
-            cam.close()
-        for motor in motor_list:
-            motor.close()
+        try:
+            for cam in cam_list:
+                cam.close()
+        except NameError:
+            pass
+
+        try:
+            for motor in motor_list:
+                motor.close()
+        except NameError:
+            pass
         return
 
     def close():
         global pyspin_system, pyspin_cam_list
         release_hardware()
 
-        for i, cam in enumerate(pyspin_cam_list)
-            # Release reference to camera
-            # NOTE: Unlike the C++ examples, we cannot rely on pointer objects being automatically
-            # cleaned up when going out of scope.
-            # The usage of del is preferred to assigning the variable to None.
-            del cam
+        try:
+            for i, cam in enumerate(pyspin_cam_list):
+                # Release reference to camera
+                # NOTE: Unlike the C++ examples, we cannot rely on pointer objects being automatically
+                # cleaned up when going out of scope.
+                # The usage of del is preferred to assigning the variable to None.
+                del cam
 
-        # Clear camera list before releasing system
-        pyspin_cam_list.Clear()
+            # Clear camera list before releasing system
+            pyspin_cam_list.Clear()
+        except NameError:
+            pass
 
-        # Release system instance
-        pyspin_system.ReleaseInstance()
+        try:
+            #Must kill anything with a reference to the camera before releasing PySping System
+            # Release system instance
+            pyspin_system.ReleaseInstance()
+        except NameError:
+            pass
         return
 
     def shut_down():
