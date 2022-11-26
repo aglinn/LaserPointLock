@@ -34,7 +34,8 @@ if __name__ == "__main__":
     import pyqtgraph as pg
     from Packages.pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
-    from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera, BlackflyS
+    from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
+    from Packages.camera import BlackflyS_EasyPySpin as BlackflyS
     from Packages.motors import MDT693A_Motor
     from Packages.motors import MDT693B_Motor
     import tkinter as tk
@@ -1761,7 +1762,7 @@ if __name__ == "__main__":
                     c = MightexCamera(mightex_engine, serial_no)
                     cam_list.append(c)
                     cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
-            """
+            
             # Find blackfly s cameras:
             # Retrieve singleton reference to system object
             pyspin_system = PySpin.System.GetInstance()
@@ -1794,7 +1795,13 @@ if __name__ == "__main__":
                     cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
             if num_cameras == 0:
                 raise DeviceNotFoundError("No visible cameras found.")
-
+            """
+            c = BlackflyS(0)
+            cam_list.append(c)
+            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            c = BlackflyS(1)
+            cam_list.append(c)
+            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
             # Make appropriate Camera Settings available in GUI:
             toggle_BOSON_cam_settings_ui_vis(False)
             toggle_mightex_cam_settings_ui_vis(True)

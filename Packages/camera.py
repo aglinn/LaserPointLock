@@ -5,10 +5,12 @@ import numpy as np
 import re
 import operator
 import random
+import cv2
 from functools import reduce
 from typing import List, Dict, Set, Tuple
 from abc import ABC, abstractmethod
 import PySpin
+import EasyPySpin
 
 class DeviceNotFoundError(Exception):
     pass
@@ -605,7 +607,6 @@ class BlackflyS(Camera):
         #TODO: Enable setting ROI correctly. for now, just set startXY to 0,0
         self._startXY = [0, 0]
         # Init properties
-        self.startXY = [self.roi_x_offset, self.roi_y_offset]
         self.frame = None
         self._ready_to_acquire = False
         # TODO: Get the offset in time from the cameras time to a synchronized python timer correctly.
@@ -802,7 +803,7 @@ class BlackflyS(Camera):
             # the integer value from the entry node.
             #
             # Retrieve the enumeration node from the nodemap
-            node_pixel_format = PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat'))
+            node_pixel_format = PySpin.CEnumerationPtr(self.nodemap.GetNode('PixelFormat'))
             if PySpin.IsAvailable(node_pixel_format) and PySpin.IsWritable(node_pixel_format):
 
                 # Retrieve the desired entry node from the enumeration node
@@ -929,10 +930,13 @@ class BlackflyS(Camera):
                 min_x = node_offset_x.GetMin()
                 max_x = node_offset_x.GetMax()
                 if x < min_x:
+                    print("applied min x offset")
                     node_offset_x.SetValue(min_x)
                 elif x > max_x:
+                    print("applied max x offset")
                     node_offset_x.SetValue(max_x)
                 else:
+                    print("applied my own offset")
                     node_offset_x.SetValue(ctypes.c_int(x))
             else:
                 print('Offset X not available...')
@@ -962,12 +966,14 @@ class BlackflyS(Camera):
             if PySpin.IsAvailable(node_width) and PySpin.IsWritable(node_width):
                 min_width = node_width.GetMin()
                 max_width = node_width.GetMax()
+                print(min_width)
                 if width < min_width:
                     node_width.SetValue(min_width)
                 elif width > max_width:
                     node_width.SetValue(max_width)
                 else:
-                    node_width.SetValue(ctypes.c_int(width))
+                    width = ctypes.c_int64(width)
+                    node_width.SetValue(width, True)
             else:
                 print("Width not available...")
 
@@ -981,7 +987,7 @@ class BlackflyS(Camera):
                 elif height > max_height:
                     node_height.SetValue(max_height)
                 else:
-                    node_height.SetValue(ctypes.c_int(height))
+                    node_height.SetValue(ctypes.c_uint64(height))
 
 
             self.startXY = [self.cam.OffsetX, self.cam.offsetY]
@@ -1007,4 +1013,344 @@ class BlackflyS(Camera):
         self.cam.OffsetX(ctypes.c_int(XY[0]))
         self.cam.OffsetY(ctypes.c_int(XY[1]))
         self._startXY = [self.cam.OffsetX, self.cam.OffsetY]
+        return
+
+class BlackflyS_EasyPySpin(Camera,EasyPySpin.VideoCapture):
+
+    def __init__(self, dev_id:int):
+        self.cap = EasyPySpin.VideoCapture(dev_id)
+
+        if not self.cap.isOpened():
+            print("Camera can't open\nexit")
+            return -1
+        self.ensure_full_view()
+        self.cap.set(cv2.CAP_PROP_EXPOSURE, -1)  # -1 sets exposure_time to auto
+        self.cap.set(cv2.CAP_PROP_GAIN, -1)  # -1 sets gain to auto
+        self._ready_to_acquire = True
+        self.serial_no = str(dev_id)
+        self._startXY = [0,0]
+        self.cap.set_pyspin_value("GammaEnable", False)
+        print("Gamma is ", self.cap.get(cv2.CAP_PROP_GAMMA))
+        self._exposure_time = 'Auto'
+        self._gain = 1
+        return
+
+    def update_frame(self):
+        pass
+        return
+
+    def get_frame(self):
+        ret, frame = self.cap.read()
+        if ret:
+            return frame
+        return
+
+    def set_exposure_time(self, time):
+        """
+        Not implemented because auto exposure loop on camera is probably better than manually setting.
+        """
+        time *= 1000 #Convert from ms to us
+        self.cap.set(cv2.CAP_PROP_EXPOSURE, time)
+        self._exposure_time = self.cap.get(cv2.CAP_PROP_EXPOSURE)/1000.0 # Convert back to ms
+        return
+
+    def set_resolution(self, res):
+        pass
+
+    def set_gain(self, gain):
+        self.cap.set(cv2.CAP_PROP_GAIN, gain)
+        self._gain = self.cap.get(cv2.CAP_PROP_GAIN)
+        return
+
+    def set_decimation(self, decimation):
+        return
+
+    @property
+    def exposure_time(self):
+        return self._exposure_time
+
+    @property
+    def gain(self):
+        return self._gain
+
+    @staticmethod
+    def configure_trig(cam, CHOSEN_TRIGGER):
+        """
+            This function configures the camera to use a trigger. First, trigger mode is
+            set to off in order to select the trigger source. Once the trigger source
+            has been selected, trigger mode is then enabled, which has the camera
+            capture only a single image upon the execution of the chosen trigger.
+
+             :param cam: Camera to configure trigger for.
+             :type cam: CameraPtr
+             :return: True if successful, False otherwise.
+             :rtype: bool
+            """
+        result = True
+
+        print('*** CONFIGURING TRIGGER ***\n')
+
+        print(
+            'Note that if the application / user software triggers faster than frame time, the trigger may be dropped / skipped by the camera.\n')
+        print(
+            'If several frames are needed per trigger, a more reliable alternative for such case, is to use the multi-frame mode.\n\n')
+
+        if CHOSEN_TRIGGER == TriggerType.SOFTWARE:
+            print('Software trigger chosen ...')
+        elif CHOSEN_TRIGGER == TriggerType.HARDWARE:
+            print('Hardware trigger chose ...')
+
+        try:
+            # Ensure trigger mode off
+            # The trigger must be disabled in order to configure whether the source
+            # is software or hardware.
+            nodemap = cam.GetNodeMap()
+            node_trigger_mode = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerMode'))
+            if not PySpin.IsAvailable(node_trigger_mode) or not PySpin.IsReadable(node_trigger_mode):
+                print('Unable to disable trigger mode (node retrieval). Aborting...')
+                return False
+
+            node_trigger_mode_off = node_trigger_mode.GetEntryByName('Off')
+            if not PySpin.IsAvailable(node_trigger_mode_off) or not PySpin.IsReadable(node_trigger_mode_off):
+                print('Unable to disable trigger mode (enum entry retrieval). Aborting...')
+                return False
+
+            node_trigger_mode.SetIntValue(node_trigger_mode_off.GetValue())
+
+            print('Trigger mode disabled...')
+
+            # Set TriggerSelector to FrameStart
+            # For this example, the trigger selector should be set to frame start.
+            # This is the default for most cameras.
+            node_trigger_selector = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerSelector'))
+            if not PySpin.IsAvailable(node_trigger_selector) or not PySpin.IsWritable(node_trigger_selector):
+                print('Unable to get trigger selector (node retrieval). Aborting...')
+                return False
+
+            node_trigger_selector_framestart = node_trigger_selector.GetEntryByName('FrameStart')
+            if not PySpin.IsAvailable(node_trigger_selector_framestart) or not PySpin.IsReadable(
+                    node_trigger_selector_framestart):
+                print('Unable to set trigger selector (enum entry retrieval). Aborting...')
+                return False
+            node_trigger_selector.SetIntValue(node_trigger_selector_framestart.GetValue())
+
+            print('Trigger selector set to frame start...')
+
+            # Select trigger source
+            # The trigger source must be set to hardware or software while trigger
+            # mode is off.
+            node_trigger_source = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerSource'))
+            if not PySpin.IsAvailable(node_trigger_source) or not PySpin.IsWritable(node_trigger_source):
+                print('Unable to get trigger source (node retrieval). Aborting...')
+                return False
+
+            if CHOSEN_TRIGGER == TriggerType.SOFTWARE:
+                node_trigger_source_software = node_trigger_source.GetEntryByName('Software')
+                if not PySpin.IsAvailable(node_trigger_source_software) or not PySpin.IsReadable(
+                        node_trigger_source_software):
+                    print('Unable to set trigger source (enum entry retrieval). Aborting...')
+                    return False
+                node_trigger_source.SetIntValue(node_trigger_source_software.GetValue())
+                print('Trigger source set to software...')
+
+            elif CHOSEN_TRIGGER == TriggerType.HARDWARE:
+                node_trigger_source_hardware = node_trigger_source.GetEntryByName('Line0')
+                if not PySpin.IsAvailable(node_trigger_source_hardware) or not PySpin.IsReadable(
+                        node_trigger_source_hardware):
+                    print('Unable to set trigger source (enum entry retrieval). Aborting...')
+                    return False
+                node_trigger_source.SetIntValue(node_trigger_source_hardware.GetValue())
+                print('Trigger source set to hardware...')
+
+            # Turn trigger mode on
+            # Once the appropriate trigger source has been set, turn trigger mode
+            # on in order to retrieve images using the trigger.
+            node_trigger_mode_on = node_trigger_mode.GetEntryByName('On')
+            if not PySpin.IsAvailable(node_trigger_mode_on) or not PySpin.IsReadable(node_trigger_mode_on):
+                print('Unable to enable trigger mode (enum entry retrieval). Aborting...')
+                return False
+
+            node_trigger_mode.SetIntValue(node_trigger_mode_on.GetValue())
+            print('Trigger mode turned back on...')
+
+        except PySpin.SpinnakerException as ex:
+            print('Error: %s' % ex)
+            return False
+
+        return result
+
+    def setup_camera_for_image_acquisition(self):
+
+        if not self._ready_to_acquire:
+
+            # Apply mono 8 pixel format
+            #
+            # *** NOTES ***
+            # Enumeration nodes are slightly more complicated to set than other
+            # nodes. This is because setting an enumeration node requires working
+            # with two nodes instead of the usual one.
+            #
+            # As such, there are a number of steps to setting an enumeration node:
+            # retrieve the enumeration node from the nodemap, retrieve the desired
+            # entry node from the enumeration node, retrieve the integer value from
+            # the entry node, and set the new value of the enumeration node with
+            # the integer value from the entry node.
+            #
+            # Retrieve the enumeration node from the nodemap
+            node_pixel_format = PySpin.CEnumerationPtr(self.nodemap.GetNode('PixelFormat'))
+            if PySpin.IsAvailable(node_pixel_format) and PySpin.IsWritable(node_pixel_format):
+
+                # Retrieve the desired entry node from the enumeration node
+                node_pixel_format_mono8 = PySpin.CEnumEntryPtr(node_pixel_format.GetEntryByName('Mono8'))
+                if PySpin.IsAvailable(node_pixel_format_mono8) and PySpin.IsReadable(node_pixel_format_mono8):
+
+                    # Retrieve the integer value from the entry node
+                    pixel_format_mono8 = node_pixel_format_mono8.GetValue()
+
+                    # Set integer as new value for enumeration node
+                    node_pixel_format.SetIntValue(pixel_format_mono8)
+
+                    print('Pixel format set to %s...' % node_pixel_format.GetCurrentEntry().GetSymbolic())
+
+                else:
+                    print('Pixel format mono 8 not available...')
+
+            else:
+                print('Pixel format not available...')
+
+            # Change bufferhandling mode to NewestOnly
+            node_bufferhandling_mode = PySpin.CEnumerationPtr(self.sNodemap.GetNode('StreamBufferHandlingMode'))
+            if not PySpin.IsAvailable(node_bufferhandling_mode) or not PySpin.IsWritable(node_bufferhandling_mode):
+                print('Unable to set stream buffer handling mode.. Aborting...')
+                return False
+
+            # Retrieve entry node from enumeration node
+            node_newestonly = node_bufferhandling_mode.GetEntryByName('NewestOnly')
+            if not PySpin.IsAvailable(node_newestonly) or not PySpin.IsReadable(node_newestonly):
+                print('Unable to set stream buffer handling mode.. Aborting...')
+                return False
+
+            # Retrieve integer value from entry node
+            node_newestonly_mode = node_newestonly.GetValue()
+
+            # Set integer value from entry node as new value of enumeration node
+            node_bufferhandling_mode.SetIntValue(node_newestonly_mode)
+
+            print('*** IMAGE ACQUISITION ***\n')
+            try:
+                node_acquisition_mode = PySpin.CEnumerationPtr(self.nodemap.GetNode('AcquisitionMode'))
+                if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
+                    print('Unable to set acquisition mode to continuous (enum retrieval). Aborting...')
+                    return False
+
+                # Retrieve entry node from enumeration node
+                node_acquisition_mode_continuous = node_acquisition_mode.GetEntryByName('Continuous')
+                if not PySpin.IsAvailable(node_acquisition_mode_continuous) or not PySpin.IsReadable(
+                        node_acquisition_mode_continuous):
+                    print('Unable to set acquisition mode to continuous (entry retrieval). Aborting...')
+                    return False
+
+                # Retrieve integer value from entry node
+                acquisition_mode_continuous = node_acquisition_mode_continuous.GetValue()
+
+                # Set integer value from entry node as new value of enumeration node
+                node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
+
+                print('Acquisition mode set to continuous...')
+
+                #  Begin acquiring images
+                #
+                #  *** NOTES ***
+                #  What happens when the camera begins acquiring images depends on the
+                #  acquisition mode. Single frame captures only a single image, multi
+                #  frame catures a set number of images, and continuous captures a
+                #  continuous stream of images.
+                #
+                #  *** LATER ***
+                #  Image acquisition must be ended when no more images are needed.
+                self.cam.BeginAcquisition()
+
+                self._ready_to_acquire = True
+
+                print('Acquiring images...')
+                return
+            except PySpin.SpinnakerException as ex:
+                print('Error: %s' % ex)
+                return
+
+    def update_settings(self):
+        pass
+
+    def close(self):
+        self.cap.release()
+        return
+
+    @property
+    def time(self):
+        """
+        time that the image was acquired at in ms.
+        """
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        self._time = self._time_offset + value
+        return
+
+    def apply_ROI(self):
+        if self.ROI_bounds is not None:
+
+            # Get parameters to apply to the ROI settings of Camera
+            width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
+            height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
+            x = int(np.round(self.ROI_bounds[2]))
+            y = int(np.round(self.ROI_bounds[0]))
+
+            # Must make changes while not acquiring images. So, end acquisition, apply changes, begin acquisition
+            self.cap.cam.EndAcquisition()
+            self._ready_to_acquire = False
+
+            print(x,y,width,height)
+            self.cap.set_pyspin_value('OffsetX', x)
+            self.cap.set_pyspin_value('OffsetY', y)
+            self.cap.set_pyspin_value('Width', width)
+            self.cap.set_pyspin_value('Height', height)
+
+            self.startXY = [self.cap.get_pyspin_value('OffsetX'), self.cap.get_pyspin_value('OffsetY')]
+            # Restart Acquisition/resetup camera to acquire images:
+            self.cap.cam.BeginAcquisition()
+            self._ready_to_acquire = True
+            return
+
+    @property
+    def ROI_bounds(self):
+        # xmin, xmax, ymin, ymax
+        return self._ROI_bounds
+
+    @ROI_bounds.setter
+    def ROI_bounds(self, roi: list):
+        self._ROI_bounds = roi
+
+    @property
+    def startXY(self):
+        return self._startXY
+
+    @startXY.setter
+    def startXY(self, XY):
+        self._startXY = [XY[0], XY[1]]
+        return
+
+    def ensure_full_view(self):
+        try:
+            self.cap.cam.EndAcquisition()
+            self.cap.set_pyspin_value('OffsetX', 0)
+            self.cap.set_pyspin_value('OffsetY', 0)
+            self.cap.set_pyspin_value('Width', 100000)
+            self.cap.set_pyspin_value('Height', 100000)
+            self.cap.cam.BeginAcquisition()
+        except:
+            self.cap.set_pyspin_value('OffsetX', 0)
+            self.cap.set_pyspin_value('OffsetY', 0)
+            self.cap.set_pyspin_value('Width', 100000)
+            self.cap.set_pyspin_value('Height', 100000)
         return
