@@ -93,7 +93,7 @@ class Window(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
         #Call the setupUI function
-        self.setupUi()
+        self.setupUi(self)
         ######################################
         # Initialize all instance attirbutes #
         ######################################
@@ -238,7 +238,8 @@ class Window(QMainWindow, Ui_MainWindow):
         # Find the motors
         self.find_motors()
         # Find the cameras:
-        self.find_cameras()
+        # Actually, don't because they are found once a system is chosen.
+        # self.find_cameras()
         # Setup the camera graphics view items:
         self.init_camera_views()
 
@@ -283,9 +284,9 @@ class Window(QMainWindow, Ui_MainWindow):
     def Update_GUI_PID(self):
         # Update the GUI with the numbers from the UpdateManager settings
         try:
-           self.le_P.setText('%.2f' % (UpdateManager.P))
-           self.le_Ti.setText('%.2f' % (UpdateManager.TI))
-           self.le_Td.setText('%.2f' % (UpdateManager.TD))
+           self.le_P.setText('%.2f' % (self.UpdateManager.P))
+           self.le_Ti.setText('%.2f' % (self.UpdateManager.TI))
+           self.le_Td.setText('%.2f' % (self.UpdateManager.TD))
         except AttributeError:
            self.le_P.setText('%.2f' % (1.0))
            self.le_Ti.setText('N/A not PID')
@@ -467,9 +468,14 @@ class Window(QMainWindow, Ui_MainWindow):
             #Apply all updates:
             if self.cam1_thread is None:
                 # Istantiate cam1_thread
-                self.cam1_thread = CameraThread(self.cam_init_dict[str(self.cb_cam_1.currentData())])
+
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                print(key)
+                self.cam1_thread = CameraThread(self.cam_init_dict[key], cam_type='blackfly_S')
+                if not self.cam1_thread.cam.serial_no in str(self.cam_init_dict[key]):
+                    print("Somehow the camera initialized does not have the anticipated serial number.")
                 #Connect signals
-                self.cam1_thread.update_display_signal.connect(self.update_cam1_display)
+                self.cam1_thread.signals.update_display_signal.connect(self.update_cam1_display)
                 # update camera settings
                 self.cam1_thread.cam.setup_camera_for_image_acquisition()
                 self.cam1_thread.cam.set_gain(cam1_gain)
@@ -503,27 +509,28 @@ class Window(QMainWindow, Ui_MainWindow):
         update the image displayed for cam 1.
         """
         # Update max value of camera image:
-        self.le_cam_max.setText(str(np.max(img)))
+        self.le_cam1_max.setText(str(np.max(img)))
 
         # Update COM crosshairs on the image:
-        self.x_line.setPos(com[0])
-        self.y_line.setPos(com[1])
-        self.x_line.setVisible(True)
-        self.y_line.setVisible(True)
+        self.cam1_x_line.setPos(com[0])
+        self.cam1_y_line.setPos(com[1])
+        self.cam1_x_line.setVisible(True)
+        self.cam1_y_line.setVisible(True)
 
         # Update the pointing position plots:
         if not self.suppress_pointing_display:
             #Redo this part.
-            self.cam_x_plot.setData(com[0])
-            self.cam_y_plot.setData(com[1])
+            # self.cam1_x_plot.setData(com[0])
+            # self.cam1_y_plot.setData(com[1])
+            pass
 
         # Update the image:
         if not self.suppress_image_display:
-            if self.resetView:
-                self.gv_camera.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False, pos=r_0)
-                self.resetView = False
+            if self.cam1_reset:
+                self.gv_camera1.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False, pos=r_0)
+                self.cam1_reset = False
             else:
-                self.gv_camera.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False, pos=r_0)
+                self.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False, pos=r_0)
         return
 
     def convert_img(self, img):
@@ -802,8 +809,8 @@ class Window(QMainWindow, Ui_MainWindow):
 
         self.ROICam2_Unlock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
                                       movable=False, rotatable=False, resizable=False, pen=pen)
-        self.gv_camera1.addItem(ROICam1_Unlock)
-        self.gv_camera2.getView().addItem(ROICam2_Unlock)
+        self.gv_camera1.addItem(self.ROICam1_Unlock)
+        self.gv_camera2.getView().addItem(self.ROICam2_Unlock)
         pen = pg.mkPen(color=(0, 255, 0), width=2)
         self.ROICam1_Lock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
                                     movable=False, rotatable=False, resizable=False, pen=pen)
@@ -983,7 +990,6 @@ class Window(QMainWindow, Ui_MainWindow):
             print("Choose a system!")
         self.btn_load_visible.setVisible(False)
         self.btn_load_IR.setVisible(False)
-        return
 
         self.Cam1_LeftArrow.setPos(self.set_cam1_y + 40, self.set_cam1_x - 95)
         self.Cam1_RightArrow.setPos(self.set_cam1_y - 40, self.set_cam1_x + 92)
@@ -994,6 +1000,10 @@ class Window(QMainWindow, Ui_MainWindow):
         self.Cam2_RightArrow.setPos(self.set_cam2_y - 40, self.set_cam2_x + 92)
         self.Cam2_DownArrow.setPos(self.set_cam2_y - 95, self.set_cam2_x - 40)
         self.Cam2_UpArrow.setPos(self.set_cam2_y + 95, self.set_cam2_x + 40)
+
+        # Update GUI List with available cameras
+        self.cb_cam1.setModel(self.cam_model)
+        self.cb_cam2.setModel(self.cam_model)
         return
 
     def service_BOSON(self, cam_index):
@@ -1233,8 +1243,8 @@ class Window(QMainWindow, Ui_MainWindow):
             pass
         return
 
-    @pyqtSlot(str)
-    def load_state(self, method):
+    @pyqtSlot(bool)
+    def load_state(self, triggered, method = 'User_selected_file'):
         """
         Load the GUI settings saved by save_state.
         """

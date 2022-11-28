@@ -1,8 +1,7 @@
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QRunnable, pyqtSignal, QObject
 import numpy as np
 
-class CameraThread(QThread):
-    update_display_signal = pyqtSignal(np.ndarray)
+class CameraThread(QRunnable):
 
     def __init__(self, camera_init: dict, cam_type:str):
         super().__init__()
@@ -10,8 +9,10 @@ class CameraThread(QThread):
             from Packages.camera import BlackflyS_EasyPySpin
             self.cam = BlackflyS_EasyPySpin(camera_init)
         self._keep_capturing = True
-        self._r0 = self.cam.startXY
+        #Set the below two attributes upon update and everything else
+        self._r0 = np.asarray(self.cam.startXY)
         self._set_pos = np.asarray([0, 0])
+        self.signals = CameraThreadSignals()
 
     def run(self):
         """
@@ -21,7 +22,7 @@ class CameraThread(QThread):
             img = self.cam.get_frame()
             if img is not None:
                 com = self.calc_com(img)
-                self.update_display_signal.emit(img, com, self._r0)
+                self.signals.update_display_signal.emit(img, com, self._r0)
         return
 
     def calc_com(self, img):
@@ -39,6 +40,9 @@ class CameraThread(QThread):
             w = img / np.sum(img)
             com_x = np.sum(X * w)
             com_y = np.sum(Y * w)
-            return np.asarray(com_x, com_y)
+            return np.asarray([com_x, com_y])
         else:
             return self._set_pos
+
+class CameraThreadSignals(QObject):
+    update_display_signal = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)

@@ -1017,7 +1017,7 @@ class BlackflyS(Camera):
 
 class BlackflyS_EasyPySpin(Camera,EasyPySpin.VideoCapture):
 
-    def __init__(self, dev_id:int):
+    def __init__(self, dev_id: int):
         self.cap = EasyPySpin.VideoCapture(dev_id)
 
         if not self.cap.isOpened():
