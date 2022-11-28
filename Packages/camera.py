@@ -1397,6 +1397,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.connect_signals()
         self._keep_capturing = True
         self._app_closing = False
+        self._display_every_n_frames = 10
+        self._frame_number = self._display_every_n_frames
         return
 
     def connect_signals(self):
@@ -1417,8 +1419,12 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     def get_frame(self):
         ret, frame = self.cap.read()
         if ret:
-            # This is happening so fast that the GUI is hanging just updating frames. I don't need to see them all.
-            self.img_captured_signal.emit(frame)
+            if self._frame_number == self._display_every_n_frames:
+                # This is happening so fast that the GUI is hanging just updating frames. I don't need to see them all.
+                self.img_captured_signal.emit(frame)
+                self._frame_number = 1
+            else:
+                self._frame_number += 1
         return
 
     @pyqtSlot()

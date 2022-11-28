@@ -540,6 +540,7 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Update the img displayed in cam1 image viewer object.
         """
+        #TODO: Do this faster?
         if not self.suppress_image_display:
             if self.cam1_reset:
                 self.gv_camera1.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False,
