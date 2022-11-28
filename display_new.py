@@ -495,7 +495,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1.set_exposure_time(cam1_exp_time)
                 # Start the threads event loop
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
-                self.cam1_thread.start(priority=5)
+                self.cam1_thread.start(priority=4)
                 # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
@@ -507,8 +507,8 @@ class Window(QMainWindow, Ui_MainWindow):
                     # User wants to change the camera on cam1_thread. So, do that.
                     # Still need to implement this change, but eitherway, we can update the settings with signals.
                     raise NotImplemented("I have not given you the ability to change camera 1 once you selected it")
-                self.cam1.exposure_set_signal(cam1_exp_time)
-                self.cam1.gain_set_signal(cam1_gain)
+                self.cam1.exposure_set_signal.emit(cam1_exp_time)
+                self.cam1.gain_set_signal.emit(cam1_gain)
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             #TODO: Update this correctly for the Boson
             """cam1_index = int(self.cb_cam1.currentIndex())
@@ -1129,7 +1129,7 @@ class Window(QMainWindow, Ui_MainWindow):
         What to do when app is closing? Release hardware, delete objects, and close threads. Anything else?
         """
         # Tell cam 1 to release capture instance and then close the thread
-        self.cam1.close_signal.emit()
+        self.cam1.close_signal.emit(True)
         # release any hardware
         self.release_hardware()
         return

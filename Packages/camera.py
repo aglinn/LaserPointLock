@@ -1359,7 +1359,7 @@ class BlackflyS_EasyPySpin(Camera,EasyPySpin.VideoCapture):
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
 from PyQt5.QtCore import Qt
 
-class BlackflyS_EasyPySpin_QObject(QObject, Camera):
+class BlackflyS_EasyPySpin_QObject(QObject):
     #signals needed to run Blackfly S camera object on its own thread.
     img_captured_signal = pyqtSignal(np.ndarray)
     capture_img_signal = pyqtSignal()
@@ -1367,7 +1367,7 @@ class BlackflyS_EasyPySpin_QObject(QObject, Camera):
     exposure_set_signal = pyqtSignal(float)
     gain_set_signal = pyqtSignal(float)
     gain_updated_signal = pyqtSignal(float)
-    close_signal = pyqtSignal() #TODO
+    close_signal = pyqtSignal(bool) #TODO
     apply_ROI_signal = pyqtSignal()
     ROI_bounds_set_signal = pyqtSignal(list)
     ROI_bounds_updated_signal = pyqtSignal()
@@ -1396,6 +1396,7 @@ class BlackflyS_EasyPySpin_QObject(QObject, Camera):
         self._gain = 1
         self.connect_signals()
         self._keep_capturing = True
+        self._app_closing = False
         return
 
     def connect_signals(self):
@@ -1416,6 +1417,7 @@ class BlackflyS_EasyPySpin_QObject(QObject, Camera):
     def get_frame(self):
         ret, frame = self.cap.read()
         if ret:
+            # This is happening so fast that the GUI is hanging just updating frames. I don't need to see them all.
             self.img_captured_signal.emit(frame)
         return
 
@@ -1425,7 +1427,7 @@ class BlackflyS_EasyPySpin_QObject(QObject, Camera):
         if self._keep_capturing:
             self.capture_img_signal.emit()
         else:
-            self.
+            self.release_cap_signal.emit()
         return
 
     @pyqtSlot(float)
@@ -1668,18 +1670,20 @@ class BlackflyS_EasyPySpin_QObject(QObject, Camera):
     def update_settings(self):
         pass
 
-    @pyqtSlot()
-    def stop_capturing(self):
+    @pyqtSlot(bool)
+    def stop_capturing(self, app_closing = False):
         # end the infinite capture loop by telling camera to not keep capturing
         self._keep_capturing = False
         # return to event loop, and upon next grab_frame emit signal to release cap.
+        self._app_closing = app_closing
         return
 
     @pyqtSlot()
     def close(self):
         self.cap.release()
-        self.cap_released.emit()
-        self.deleteLater()
+        if self._app_closing:
+            self.cap_released.emit()
+            self.deleteLater()
         return
 
     @property
@@ -1725,7 +1729,6 @@ class BlackflyS_EasyPySpin_QObject(QObject, Camera):
         # xmin, xmax, ymin, ymax
         return self._ROI_bounds
 
-    @pyqtSlot(list)
     @ROI_bounds.setter
     def ROI_bounds(self, roi: list):
         self._ROI_bounds = roi
