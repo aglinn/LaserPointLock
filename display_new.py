@@ -35,9 +35,9 @@ import time
 import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread
 from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
-from Packages.camera import BlackflyS_EasyPySpin as BlackflyS
+from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
 from Packages.motors import MDT693A_Motor
 from Packages.motors import MDT693B_Motor
 from Packages.CameraThread import CameraThread
@@ -102,9 +102,13 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager = UpdateManager()
 
         # params for Handle threading of cameras:
-        self.cam1_thread = None
+        self.cam1_thread = QThread()
         self.cam2_thread = None
         self.updatemanager_thread = None
+        #self.cam2_thread = QThread()
+        #self.updatemanager_thread = QThread()
+        self.cam1 = None
+        self.cam2 = None
         # Grab the app's threadpool object to manage threads
         self.threadpool = QThreadPool.globalInstance()
         # assign item models
@@ -166,6 +170,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.Cam2_UpArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
 
         # Initialize global variables for tracking pointing
+        self.cam1_r0 = [0, 0]
         self.cam1_x = np.zeros(1)
         self.cam1_y = np.zeros(1)
         self.cam2_x = np.zeros(1)
@@ -273,7 +278,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.pb_cam2_img_cap.clicked.connect(self.capture_cam2_img)
         self.cb_SystemSelection.currentIndexChanged.connect(self.find_cameras)
         self.btn_cam1_gen_ROI.clicked.connect(self.gen_cam1_ROI)
-        self.btn_cam1_apply_ROI.clicked.connect(self.apply_cam1_ROI)
+        self.btn_cam1_apply_ROI.clicked.connect(self.update_cam1_ROI_bounds)
         self.btn_cam2_gen_ROI.clicked.connect(self.gen_cam2_ROI)
         self.btn_cam2_apply_ROI.clicked.connect(self.apply_cam2_ROI)
         self.list_unlock_report.clicked.connect(self.display_unlock_report)
@@ -466,32 +471,44 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1_threshold = float(self.le_cam1_threshold.text())
 
             #Apply all updates:
-            if self.cam1_thread is None:
-                # Istantiate cam1_thread
-
+            if self.cam1 is None: # first time this function is called only.
+                # Instantiate a camera object as cam1.
                 key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
-                print(key)
-                self.cam1_thread = CameraThread(self.cam_init_dict[key], cam_type='blackfly_S')
-                if not self.cam1_thread.cam.serial_no in str(self.cam_init_dict[key]):
-                    print("Somehow the camera initialized does not have the anticipated serial number.")
-                #Connect signals
-                self.cam1_thread.signals.update_display_signal.connect(self.update_cam1_display)
-                # update camera settings
-                self.cam1_thread.cam.setup_camera_for_image_acquisition()
-                self.cam1_thread.cam.set_gain(cam1_gain)
-                self.cam1_thread.cam.set_exposure_time(cam1_exp_time)
-                self.cam1_thread.cam.update_frame()
-                # update GUI with response
-                self.le_cam1_exp_time.setText('%.2f' % (self.cam1_thread.cam.exposure_time))
-                self.le_cam1_gain.setText('%.2f' % (self.cam1_thread.cam.gain / 8))
+                if 'fly' in key:
+                    self.cam1 = BlackflyS(self.cam_init_dict[key])
+                    if not self.cam1.serial_no in str(self.cam_init_dict[key]):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                else:
+                    raise NotImplemented('Can only connect blackfly s cameras for now.')
+                # move camera 1 object to camera 1 thread
+                self.cam1.moveToThread(self.cam1_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.cam1.img_captured_signal.connect(self.update_cam1_img) #I might want this to come from UM instead?
+                self.cam1.exposure_updated_signal.connect(self.update_cam1_exposure)
+                self.cam1.gain_updated_signal.connect(self.update_cam1_gain)
+                self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
+                self.cam1.r0_updated_signal.connect(self.set_cam1_r0)
+                self.cam1.cap_released_signal.connect(self.cam1_thread.quit)
+                # Apply the settings directly before starting thread and thread event loop
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam1.set_gain(cam1_gain)
+                self.cam1.set_exposure_time(cam1_exp_time)
+                # Start the threads event loop
+                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
+                self.cam1_thread.start(priority=5)
+                # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
-                #Finally start the thread
-                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
-                self.threadpool.start(self.cam1_thread, priority=5)
-            else:
-                #TODO: Allow updating settings once the camera thread is running:
-                pass
+                # start the infinite event loop around acquiring images:
+                self.cam1.capture_img_signal.emit()
+            else: # Update settings once cam1 exists and cam1_thread is running
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                if not self.cam1.serial_no in str(self.cam_init_dict[key]):
+                    # User wants to change the camera on cam1_thread. So, do that.
+                    # Still need to implement this change, but eitherway, we can update the settings with signals.
+                    raise NotImplemented("I have not given you the ability to change camera 1 once you selected it")
+                self.cam1.exposure_set_signal(cam1_exp_time)
+                self.cam1.gain_set_signal(cam1_gain)
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             #TODO: Update this correctly for the Boson
             """cam1_index = int(self.cb_cam1.currentIndex())
@@ -502,6 +519,35 @@ class Window(QMainWindow, Ui_MainWindow):
             pass
         else:
             print("Choose a Point Lock system first!")
+
+    @pyqtSlot(float)
+    def update_cam1_exposure(self, exposure_time):
+        self.le_cam1_exp_time.setText('%.2f' % (exposure_time))
+        return
+
+    @pyqtSlot(float)
+    def update_cam1_gain(self, gain):
+        self.le_cam1_gain.setText('%.2f' % (gain))
+        return
+
+    @pyqtSlot(np.ndarray)
+    def set_cam1_r0(self, r0):
+        self.cam1_r0 = r0
+        return
+
+    @pyqtSlot(np.ndarray)
+    def update_cam1_img(self, img):
+        """
+        Update the img displayed in cam1 image viewer object.
+        """
+        if not self.suppress_image_display:
+            if self.cam1_reset:
+                self.gv_camera1.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False,
+                                         pos=self.cam1_r0)
+                self.cam1_reset = False
+            else:
+                self.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False,
+                                         pos=self.cam1_r0)
 
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
     def update_cam1_display(self, img, com, r_0):
@@ -523,14 +569,6 @@ class Window(QMainWindow, Ui_MainWindow):
             # self.cam1_x_plot.setData(com[0])
             # self.cam1_y_plot.setData(com[1])
             pass
-
-        # Update the image:
-        if not self.suppress_image_display:
-            if self.cam1_reset:
-                self.gv_camera1.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False, pos=r_0)
-                self.cam1_reset = False
-            else:
-                self.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False, pos=r_0)
         return
 
     def convert_img(self, img):
@@ -1088,8 +1126,11 @@ class Window(QMainWindow, Ui_MainWindow):
     @pyqtSlot()
     def manual_close(self):
         """
-        What to do when app is closing? Release hardware, plus...?
+        What to do when app is closing? Release hardware, delete objects, and close threads. Anything else?
         """
+        # Tell cam 1 to release capture instance and then close the thread
+        self.cam1.close_signal.emit()
+        # release any hardware
         self.release_hardware()
         return
 
@@ -1165,22 +1206,28 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     @pyqtSlot()
-    def apply_cam1_ROI(self):
+    def update_cam1_ROI_bounds(self):
         """
-        Apply the chosen ROI in GUI to the camera.
+        Update the ROI Bounds on the camera. Once ROI Bounds updated signal received, the new bounds are applied.
         """
-        # TODO: Make this thread safe! And reset to a non camera specific value
         if self.cam1_ROI_set:
             self.cam1_ROI_set = False
-            self.cam1_thread.cam.ROI_bounds = [0, 1024, 0, 1280]
+            bounds = self.cam1.ROI_full_bounds
         else:
             ymin, xmin = self.ROICam1_crop.pos()
             height, width = self.ROICam1_crop.size()
             ymax = ymin + height
             xmax = xmin + width
-            self.cam1_thread.cam.ROI_bounds = [xmin, xmax, ymin, ymax]
-            self.cam1_ROI_set = True
-        self.cam1_thread.cam.apply_ROI()
+            bounds = [xmin, xmax, ymin, ymax]
+        self.cam1.ROI_bounds_set_signal.emit(bounds)
+        return
+
+    @pyqtSlot()
+    def apply_cam1_ROI(self):
+        """
+        Apply the chosen ROI in GUI to the camera.
+        """
+        self.cam1.apply_ROI_signal.emit()
         return
 
     @pyqtSlot()
