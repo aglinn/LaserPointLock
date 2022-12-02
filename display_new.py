@@ -752,10 +752,10 @@ class Window(QMainWindow, Ui_MainWindow):
         if cam_number == 1:
             self.cam1.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(1, r0))
             self.cam1.img_captured_signal.connect(lambda img: setattr(self.UpdateManager, 'cam_1_img', img))
-            self.cam1.exposure_updated_signal.connect(self.update_cam1_exposure)
-            self.cam1.gain_updated_signal.connect(self.update_cam1_gain)
+            self.cam1.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(1, exp))
+            self.cam1.gain_updated_signal.connect(lambda gain: self.update_cam_gain(1, gain))
             self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
-            self.cam1.r0_updated_signal.connect(self.set_cam1_r0)
+            self.cam1.r0_updated_signal.connect(lambda r0: self.set_cam_r0(1, r0))
             self.cam1.cap_released_signal.connect(self.cam1_thread.quit)
             self.cam1.destroyed.connect(lambda args: self.reconnect_cameras)
             self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
@@ -763,10 +763,10 @@ class Window(QMainWindow, Ui_MainWindow):
         elif cam_number == 2:
             self.cam2.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(2, r0))
             self.cam2.img_captured_signal.connect(lambda img: setattr(self.UpdateManager, 'cam_2_img', img))
-            self.cam2.exposure_updated_signal.connect(self.update_cam2_exposure)
-            self.cam2.gain_updated_signal.connect(self.update_cam2_gain)
+            self.cam2.exposure_updated_signal.connect(lambda exp: self.update_cam2_exposure(2, exp))
+            self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam2_gain(2, gain))
             self.cam2.ROI_bounds_updated_signal.connect(self.apply_cam2_ROI)
-            self.cam2.r0_updated_signal.connect(self.set_cam2_r0)
+            self.cam2.r0_updated_signal.connect(lambda r0: self.set_cam2_r0(2, r0))
             self.cam2.cap_released_signal.connect(self.cam2_thread.quit)
             self.cam2.destroyed.connect(lambda args: self.reconnect_cameras)
             self.cam2.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
@@ -836,18 +836,27 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     @pyqtSlot(float)
-    def update_cam1_exposure(self, exposure_time):
-        self.le_cam1_exp_time.setText('%.2f' % (exposure_time))
+    def update_cam_exposure(self, cam_num: int, exposure_time: float):
+        if cam_num == 1:
+            self.le_cam1_exp_time.setText('%.2f' % (exposure_time))
+        elif cam_num == 2:
+            self.le_cam2_exp_time.setText('%.2f' % (exposure_time))
         return
 
     @pyqtSlot(float)
-    def update_cam1_gain(self, gain):
-        self.le_cam1_gain.setText('%.2f' % (gain))
+    def update_cam_gain(self, cam_num: int, gain: float):
+        if cam_num == 1:
+            self.le_cam1_gain.setText('%.2f' % (gain))
+        elif cam_num == 2:
+            self.le_cam2_gain.setText('%.2f' % (gain))
         return
 
     @pyqtSlot(np.ndarray)
-    def set_cam1_r0(self, r0):
-        self.cam1_r0 = r0
+    def set_cam_r0(self, cam_num: int, r0: np.ndarray):
+        if cam_num == 1:
+            self.cam1_r0 = r0
+        elif cam_num == 2:
+            self.cam2_r0 = r0
         return
 
     @pyqtSlot(int, np.ndarray)
