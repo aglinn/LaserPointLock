@@ -6,6 +6,7 @@ import time
 from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 import numpy as np
 from abc import ABC,abstractmethod
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 
 VisaResourceManager = NewType('VisaResourceManager', visa.ResourceManager)
 
@@ -129,13 +130,15 @@ class MDT693A_Motor(Motor):
     """
     Code that implements a Motor assuming a connection to the ThorLabs MDT693A
     """
-    def __init__(self, rm: VisaResourceManager, com_port: str, ch1: str, ch2: str):
+    def __init__(self, rm: VisaResourceManager, motor_number, com_port: str, ch1: str, ch2: str):
         """
         rm is a pyvisa ResourceManager
         com_port is the RS232 com port for the motor
         ch1 should be a string that helps direct the motor to control the software X
         ch2 should be a string that helps direct the motor to control the software Y
         """
+        #Assign what motor number this motor is.
+        self.motor_number = motor_number
         # Baud Rate: 115200
         # Date bits: 8
         # Parity: none
@@ -152,7 +155,8 @@ class MDT693A_Motor(Motor):
 
     def close(self):
         # Close connection to port
-        pass
+        self.inst.close()
+        return
 
     def change_port(self, val):
         # Close connection to port
@@ -251,15 +255,40 @@ class MDT693A_Motor(Motor):
         rep = self.inst.query(cmd)
         return rep
 
-class MDT693B_Motor(Motor):
+class MDT693B_Motor(QObject):
     """
     Code that implements a Motor assuming a connection to the ThorLabs MDT693B
-    using Thorlabs SDK
-    """
+    using Thorlabs SDK. Please reimplement all methods in Motor class, eventhough it is not explicitly a parent of this
+    class.
 
-    def __init__(self, serial_number, ch1: str = 'X', ch2: str = 'Y'):
+    Subclass QObject. Create signals and connect them to slots.
+    """
+    # first int on any emitted signals should be motor number.
+    # If there is a second int, it indicates the channel number.
+    # Motor Signals
+    request_close_signal = pyqtSignal()
+    close_complete_signal = pyqtSignal(int)
+    close_fail_signal = pyqtSignal(int)
+    #Ch1 signals
+    request_set_ch1V_signal = pyqtSignal(float)
+    set_ch1V_complete_signal = pyqtSignal(int, int, float)
+    set_ch1V_failed_signal = pyqtSignal(int, int)
+    request_get_ch1V_signal = pyqtSignal()
+    get_ch1V_failed_signal = pyqtSignal(int, int)
+    returning_ch1V_signal = pyqtSignal(int, int, float)
+    #Ch2 signals
+    request_set_ch2V_signal = pyqtSignal(float)
+    set_ch2V_complete_signal = pyqtSignal(int, int, float)
+    set_ch2V_failed_signal = pyqtSignal(int, int)
+    request_get_ch2V_signal = pyqtSignal()
+    get_ch2V_failed_signal =pyqtSignal(int, int)
+    returning_ch2V_signal = pyqtSignal(int, int, float)
+
+    def __init__(self, serial_number, motor_number, ch1: str = 'X', ch2: str = 'Y'):
         """This constructor opens the motor, sets the appropriate voltage bounds, and sets the voltage increment."""
         """Open the motor"""
+        # Assign which motor number this motor is:
+        self.motor_number = motor_number
         # Baud rate is 115200 bits/s
         # set 1 second timeout
         self.handle = mdt.mdtOpen(serial_number, 115200, 1)
@@ -348,14 +377,34 @@ class MDT693B_Motor(Motor):
         self._ch2 = ch2
         self._ch1_v = np.array([0])
         self._ch2_v = np.array([0])
-
+        self._ch1_v = self.ch1_v
+        self._ch2_v = self.ch2_v
+        self.connect_signals()
         return
 
+    def connect_signals(self):
+        self.request_close_signal.connect(self.close)
+        self.request_set_ch1V_signal.connect(lambda v: setattr(MDT693B_Motor, 'ch1_v', v))
+        self.request_get_ch1V_signal.connect(self.ch1_v)
+        self.request_set_ch2V_signal.connect(lambda v: setattr(MDT693B_Motor, 'ch2_v', v))
+        self.request_get_ch2V_signal.connect(self.ch2_v)
+        return
+
+    @pyqtSlot()
     def close(self):
         # Close connection to port
         ret = mdt.mdtClose(self.handle)
         if ret < 0:
+            self.close_fail_signal.emit(self.motor_number)
             raise Exception("Motor did not close.")
+        else:
+            print("closed a mdt motor number ", self.motor_number)
+            self.close_complete_signal.emit(self.motor_number)
+            self.deleteLater()
+            return
+
+    def __del__(self):
+        print('destructor called for motor number, ', self.motor_number)
         return
 
     @property
@@ -383,6 +432,9 @@ class MDT693B_Motor(Motor):
         if ret < 0:
             print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not read correctly.")
+            self.get_ch1V_failed_signal.emit(self.motor_number, 1)
+        else:
+            self.returning_ch1V_signal.emit(self.motor_number, 1, self._ch1_v)
         return self._ch1_v[0]
 
     @property
@@ -394,6 +446,9 @@ class MDT693B_Motor(Motor):
         if ret < 0:
             print("Warning: The voltage on ch2,", self.ch2, ", on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not read correctly.")
+            self.get_ch2V_failed_signal.emit(self.motor_number, 2)
+        else:
+            self.returning_ch2V_signal.emit(self.motor_number, 2, self._ch2_v)
         return self._ch2_v[0]
 
     @ch1_v.setter
@@ -406,6 +461,9 @@ class MDT693B_Motor(Motor):
         if rep < 0:
             print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not SET correctly.")
+            self.set_ch1V_failed_signal.emit(self.motor_number, 1)
+        else:
+            self.set_ch1V_complete_signal.emit(self.motor_number, 1, v)
         return
 
     @ch2_v.setter
@@ -418,6 +476,9 @@ class MDT693B_Motor(Motor):
         if rep < 0:
             print("Warning: The ch1,", self.ch2, ", voltage on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not SET correctly.")
+            self.set_ch2V_failed_signal.emit(self.motor_number, 2)
+        else:
+            self.set_ch2V_complete_signal.emit(self.motor_number, 2, v)
         return
 
     def get_info(self, id):

@@ -1,4 +1,3 @@
-# TODO: Should I give the camera a window handle??
 import ctypes
 import platform
 import numpy as np
@@ -605,7 +604,7 @@ class BlackflyS(Camera):
             raise Exception('Trigger mode unable to be set')
         """
 
-        #TODO: Enable setting ROI correctly. for now, just set startXY to 0,0
+        # TODO: Enable setting ROI correctly. for now, just set startXY to 0,0
         self._startXY = [0, 0]
         # Init properties
         self.frame = None
@@ -1359,21 +1358,24 @@ class BlackflyS_EasyPySpin(Camera,EasyPySpin.VideoCapture):
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
 from PyQt5.QtCore import Qt
 
+
 class BlackflyS_EasyPySpin_QObject(QObject):
-    #signals needed to run Blackfly S camera object on its own thread.
+    # signals needed to run Blackfly S camera object on its own thread.
     img_captured_signal = pyqtSignal(np.ndarray)
     capture_img_signal = pyqtSignal()
     exposure_updated_signal = pyqtSignal(float)
     exposure_set_signal = pyqtSignal(float)
     gain_set_signal = pyqtSignal(float)
     gain_updated_signal = pyqtSignal(float)
-    close_signal = pyqtSignal(bool) #TODO
+    close_signal = pyqtSignal(bool)
     apply_ROI_signal = pyqtSignal()
+    ROI_applied = pyqtSignal(bool)
     ROI_bounds_set_signal = pyqtSignal(list)
     ROI_bounds_updated_signal = pyqtSignal()
     release_cap_signal = pyqtSignal()
-    cap_released_signal = pyqtSignal() #TODO
+    cap_released_signal = pyqtSignal()
     r0_updated_signal = pyqtSignal(np.ndarray)
+    ROI_bounds_set_full_view_signal = pyqtSignal()
 
 
     def __init__(self, dev_id: int):
@@ -1397,8 +1399,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.connect_signals()
         self._keep_capturing = True
         self._app_closing = False
-        self._display_every_n_frames = 10
-        self._frame_number = self._display_every_n_frames
         return
 
     def connect_signals(self):
@@ -1406,9 +1406,10 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.exposure_set_signal.connect(self.set_exposure_time)
         self.gain_set_signal.connect(self.set_gain)
         self.close_signal.connect(self.stop_capturing)
-        self.apply_ROI_signal.connect(self.apply_ROI)
-        self.ROI_bounds_set_signal.connect(lambda v: setattr(BlackflyS_EasyPySpin_QObject, 'ROI_bounds', v))
+        self.ROI_bounds_updated_signal.connect(self.apply_ROI_signal) # If new ROI region set, apply it immediately.
+        self.ROI_bounds_set_signal.connect(lambda v: setattr(self, 'ROI_bounds', v))
         self.release_cap_signal.connect(self.close)
+        self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view())
         return
 
     def update_frame(self):
@@ -1419,12 +1420,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     def get_frame(self):
         ret, frame = self.cap.read()
         if ret:
-            if self._frame_number == self._display_every_n_frames:
-                # This is happening so fast that the GUI is hanging just updating frames. I don't need to see them all.
-                self.img_captured_signal.emit(frame)
-                self._frame_number = 1
-            else:
-                self._frame_number += 1
+            self.img_captured_signal.emit(frame)
         return
 
     @pyqtSlot()
@@ -1677,7 +1673,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         pass
 
     @pyqtSlot(bool)
-    def stop_capturing(self, app_closing = False):
+    def stop_capturing(self, app_closing=False):
         # end the infinite capture loop by telling camera to not keep capturing
         self._keep_capturing = False
         # return to event loop, and upon next grab_frame emit signal to release cap.
@@ -1689,6 +1685,10 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.cap.release()
         if self._app_closing:
             self.cap_released.emit()
+            self.deleteLater()
+        else:
+            # So far only calling like this to disconnect the camera in an effort to reconnect another. So, delete this
+            # object, but do not delete the thread, which is what emitting cap_released signal does.
             self.deleteLater()
         return
 
@@ -1718,7 +1718,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
             self.cap.cam.EndAcquisition()
             self._ready_to_acquire = False
 
-            print(x,y,width,height)
+            print(x, y, width, height)
             self.cap.set_pyspin_value('OffsetX', x)
             self.cap.set_pyspin_value('OffsetY', y)
             self.cap.set_pyspin_value('Width', width)
@@ -1728,6 +1728,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
             # Restart Acquisition/resetup camera to acquire images:
             self.cap.cam.BeginAcquisition()
             self._ready_to_acquire = True
+            self.ROI_applied.emit(True)
             return
 
     @property
@@ -1758,10 +1759,14 @@ class BlackflyS_EasyPySpin_QObject(QObject):
             self.cap.set_pyspin_value('OffsetY', 0)
             self.cap.set_pyspin_value('Width', 100000)
             self.cap.set_pyspin_value('Height', 100000)
+            self.startXY = [self.cap.get_pyspin_value('OffsetX'), self.cap.get_pyspin_value('OffsetY')]
             self.cap.cam.BeginAcquisition()
+            self.ROI_applied.emit(False)
         except:
             self.cap.set_pyspin_value('OffsetX', 0)
             self.cap.set_pyspin_value('OffsetY', 0)
             self.cap.set_pyspin_value('Width', 100000)
             self.cap.set_pyspin_value('Height', 100000)
+            self.startXY = [self.cap.get_pyspin_value('OffsetX'), self.cap.get_pyspin_value('OffsetY')]
+            self.ROI_applied.emit(False)
         return

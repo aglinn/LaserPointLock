@@ -1,30 +1,18 @@
-# TODO: 2 stop using global vars and put this code into a fucking window
-# TODO: 1 Add statistics logging.
-# TODO: 1 Let me FFT the camera COM coordinates to find out which frequencies are generating the noise.
-# TODO: 1 For the above two, it may be useful to have a new state or even a seperate program to run diagnostics in a super
-#  lean fashion; so we can be sensitive to the highest possible frequencies.
+# TODO: When reporting locked/unlocked update the lock ROI symbols
+# TODO: 1 Implement PID
 # TODO: 1 Finish overhauling code to allow for operation with IR Cameras.
-# TODO: 3 Try using OpenCV with the Mightex cameras for faster operation
 # TODO: 2 Try to shutter the TOPAS if the BOSON FPAs get too hot. Can I even control the TOPAS shutter?
-# TODO: 2 Stupid bug fix: When I reduce the number of points to be plotted for COM and piezzo values, I need to make the
-#  number of points plotted actually smaller.
 # TODO: 2 try the other algorithm from the paper I found.
-# TODO: 2 Implement PID, instead of just D.
 # TODO: 2 Make the GUI compatible with multiple screen formats.
-# TODO: 3 multithread the program.
-# TODO: 2 Generally improve the coding.
-# TODO: 3 Make it possible to set a ROI on the camera; so that the cameras only read the pixels in the ROI. This will
-#  likely give us quite a bit of speed up on the program update time, and it is way simpler than multithreading.
-# TODO: 3 Improve communication with the piezo motors.
 # TODO: 2 Log the information on Grafana.
 # TODO: 3 Move all print statements to the GUI.
-# TODO: 2 Could we cash the current program settings to load automatically on next open?
 # TODO: 2 Add GUI ability to set the averager state of the BOSON camera, and power on defaults.
 # TODO: 3 It would be nice to allow the user to switch between IR and visibile system, which would require disconnecting
 #  devices and reinitializing the cam_list.
 # TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
 #  parallel.
 # TODO: I need to make sure that the older piezzo controllers still work with this code!
+# TODO: Delete the align toggle button! 
 from PyQt5.QtWidgets import QMainWindow
 from Packages.pointing_ui import Ui_MainWindow
 
@@ -44,15 +32,14 @@ from Packages.CameraThread import CameraThread
 import tkinter as tk
 from tkinter import filedialog
 from serial.tools import list_ports
-# from Packages.UpdateManager import UpdateManager
-from Packages.UpdateManager import PIDUpdateManager as UpdateManager
+from Packages.UpdateManager import UpdateManager
+# from Packages.UpdateManager import PIDUpdateManager as UpdateManager
 from Packages.UpdateManager import InsufficientInformation, update_out_of_bounds
 import copy
 import pickle as pkl
 import gc
 import matplotlib.pyplot as plt
 from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
-import PySpin
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 pg.setConfigOption('background', 'w')
@@ -66,12 +53,8 @@ for i in range(3):
    cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
 """
 
+
 class Window(QMainWindow, Ui_MainWindow):
-    STATE_MEASURE = 0
-    STATE_CALIBRATE = 1
-    STATE_LOCKED = 2
-    STATE_ALIGN = 3
-    UPDATE_TIME = 500  # ms
 
     ## Set a custom color map
     colors = [
@@ -97,29 +80,33 @@ class Window(QMainWindow, Ui_MainWindow):
         ######################################
         # Initialize all instance attirbutes #
         ######################################
-        self.state = self.STATE_MEASURE
+        # Start update manager's thread:
+        self.UpdateManager_thread = QThread()
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
-
+        # Connect signals related to update manager.
+        self.connect_UpdateManager_signals()
+        # move update manager to its own thread.
+        self.UpdateManager.moveToThread(self.UpdateManager_thread)
+        # Start the thread
+        # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
+        # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
+        self.UpdateManager_thread.start(priority=4)
         # params for Handle threading of cameras:
-        self.cam1_thread = QThread()
+        self.cam1_thread = None
         self.cam2_thread = None
-        self.updatemanager_thread = None
-        #self.cam2_thread = QThread()
-        #self.updatemanager_thread = QThread()
         self.cam1 = None
         self.cam2 = None
+        # Camera Parameters
+        self.cam_init_dict = {}
+        self.mightex_engine = None
         # Grab the app's threadpool object to manage threads
-        self.threadpool = QThreadPool.globalInstance()
+        # self.threadpool = QThreadPool.globalInstance() Not needed yet.
         # assign item models
         self.cam_model = QtGui.QStandardItemModel()
         self.motor_model = QtGui.QStandardItemModel()
-        # error dialog
-        self.error_dialog = QtWidgets.QErrorMessage()
-        # Camera Parameters
-        self.cam_init_dict = {}
-        self.cam1_threshold = 0
-        self.cam2_threshold = 0
+        # error dialog, unused so far.
+        # self.error_dialog = QtWidgets.QErrorMessage()
         # Motors parameters
         self.motor1_index = None
         self.motor2_index = None
@@ -127,27 +114,17 @@ class Window(QMainWindow, Ui_MainWindow):
         # Holds PID Dict
         self.PID = {}
         # Initialize global variables
-        # cam1_index = -1
-        # cam2_index = -1
-        self.cam1_threshold = 0
-        self.cam2_threshold = 0
         self.cam1_reset = True
         self.cam2_reset = True
+        self.cam1_to_connect = None
+        self.cam1_settings_to_set = None
+        self.cam2_to_connect = None
+        self.cam2_settings_to_set = None
         self.most_recent_error = ''
 
         # Initialize global variables for Locking
-        self.LockTimeStart = 0
         self.Unlocked_report = {}
-        self.Unlock_counter = 0
         self.user_selected_unlock_report = False
-        self.saturated_cam1 = False
-        self.under_saturated_cam1 = False
-        self.saturated_cam2 = False
-        self.under_saturated_cam2 = False
-        self.motor_list = []
-        self.TimeLastUnlock = 0
-        self.num_out_of_voltage_range = 1
-        self.first_unlock = True  # First time since initial lock that piezos went out of bounds?
         self.set_cam1_x = None
         self.set_cam1_y = None
         self.set_cam2_x = None
@@ -159,18 +136,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.ROICam1_Lock = None
         self.ROICam2_Lock = None
 
-        # Initialize Global Variables for arrows for Alignment Mode:
-        self.Cam1_LeftArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-        self.Cam1_RightArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-        self.Cam1_DownArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-        self.Cam1_UpArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-        self.Cam2_LeftArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-        self.Cam2_RightArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-        self.Cam2_DownArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-        self.Cam2_UpArrow = QtSvg.QGraphicsSvgItem("RedArrow.svg")
-
         # Initialize global variables for tracking pointing
-        self.cam1_r0 = [0, 0]
+        self.cam1_r0 = np.array([0, 0])
+        self.cam2_r0 = np.array([0, 0])
         self.cam1_x = np.zeros(1)
         self.cam1_y = np.zeros(1)
         self.cam2_x = np.zeros(1)
@@ -203,23 +171,20 @@ class Window(QMainWindow, Ui_MainWindow):
         self.suppress_pointing_display = False
         self.suppress_image_display = False
 
-        # Set the com guide lines
+        # Set the com guide lines on image view
         self.cam1_x_line = pg.InfiniteLine(movable=False, angle=0)
         self.cam1_y_line = pg.InfiniteLine(movable=False, angle=90)
         self.cam2_x_line = pg.InfiniteLine(movable=False, angle=0)
         self.cam2_y_line = pg.InfiniteLine(movable=False, angle=90)
+        # Init COM set position lines on COM line plots
+        self.cam1_x_set_line = None
+        self.cam1_y_set_line = None
+        self.cam2_x_set_line = None
+        self.cam2_y_set_line = None
 
         # Initialize global variables for calibration
         self.calib_index = 0
-        self.reset_piezo = 0
         self.override = False
-        self.calibration_voltages = 5 * np.arange(31)
-        self.mot1_x_voltage, self.mot1_y_voltage, self.mot2_x_voltage, self.mot2_y_voltage = np.empty((4, len(self.calibration_voltages)))
-        self.mot1_x_cam1_x, self.mot1_x_cam1_y, self.mot1_x_cam2_x, self.mot1_x_cam2_y = np.empty((4, len(self.calibration_voltages)))
-        self.mot1_y_cam1_x, self.mot1_y_cam1_y, self.mot1_y_cam2_x, self.mot1_y_cam2_y = np.empty((4, len(self.calibration_voltages)))
-        self.mot2_x_cam1_x, self.mot2_x_cam1_y, self.mot2_x_cam2_x, self.mot2_x_cam2_y = np.empty((4, len(self.calibration_voltages)))
-        self.mot2_y_cam1_x, self.mot2_y_cam1_y, self.mot2_y_cam2_x, self.mot2_y_cam2_y = np.empty((4, len(self.calibration_voltages)))
-        self.starting_v = 75.0 * np.ones(4)
 
         #Init variables for applying and ROI to the camera:
         self.cam1_ROI_visiblity = True
@@ -238,8 +203,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.connectSignalsSlots()
         # Update the displayed PID settings to their startup values
         self.Update_GUI_PID()
-        #init alignment arrows
-        self.init_alignment_arrows()
         # Find the motors
         self.find_motors()
         # Find the cameras:
@@ -273,12 +236,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.btn_clear.clicked.connect(self.clear_pointing_plots)
         self.btn_lock.clicked.connect(self.lock_pointing)
         self.btn_Home.clicked.connect(self.define_home)
-        self.btn_Align.clicked.connect(self.begin_align)
         self.pb_cam1_img_cap.clicked.connect(self.capture_cam1_img)
         self.pb_cam2_img_cap.clicked.connect(self.capture_cam2_img)
-        self.cb_SystemSelection.currentIndexChanged.connect(self.find_cameras)
+        self.cb_SystemSelection.currentIndexChanged.connect(self.load_system)
         self.btn_cam1_gen_ROI.clicked.connect(self.gen_cam1_ROI)
-        self.btn_cam1_apply_ROI.clicked.connect(self.update_cam1_ROI_bounds)
+        self.btn_cam1_apply_ROI.clicked.connect(self.apply_cam1_ROI)
         self.btn_cam2_gen_ROI.clicked.connect(self.gen_cam2_ROI)
         self.btn_cam2_apply_ROI.clicked.connect(self.apply_cam2_ROI)
         self.list_unlock_report.clicked.connect(self.display_unlock_report)
@@ -286,22 +248,136 @@ class Window(QMainWindow, Ui_MainWindow):
         self.cb_suppress_pointing_updat.clicked.connect(self.toggle_img_display)
         return
 
+    def connect_UpdateManager_signals(self):
+        self.UpdateManager.update_gui_img_signal.connect(self.update_cam_img)
+        self.UpdateManager.update_gui_cam_com_signal.connect(self.update_cam_com_display)
+        self.UpdateManager.update_gui_new_calibration_matrix_signal.connect(self.handle_calibration_matrix_update)
+        self.UpdateManager.update_gui_piezo_voltage_signal.connect(self.update_gui_with_piezo_voltages)
+        self.UpdateManager.update_gui_locked_state.connect(self.confirm_lock_state)
+        self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
+        return
+
+    @pyqtSlot(dict)
+    def log_unlocks(self, unlock_report: dict):
+        """
+        Update the GUI with updated unlock reports.
+        input: updated unlock report for the most recent unlock series only
+        """
+        key = list(unlock_report.keys())[0]
+        if key not in self.Unlocked_report:
+            # This is a new unlock round, so add the key to the list of reports user can select.
+            self.list_unlock_report.addItem(key)
+        # Eitherway, update the Unlocked_report with new info.
+        self.Unlocked_report[key] = unlock_report[key]
+        if not self.user_selected_unlock_report:
+            # User has not selected a particular report, so display the most recent, i.e. this report.
+            self.display_unlock_report(key)
+        # Set the lock/unlock ROI visibility.
+        self.ROICam1_Unlock.setVisible(True)
+        self.ROICam2_Unlock.setVisible(True)
+        self.ROICam1_Lock.setVisible(False)
+        self.ROICam2_Lock.setVisible(False)
+        return
+
+    @pyqtSlot(bool)
+    def confirm_lock_state(self, UpdateManager_locked_state: bool):
+        """
+        Make sure that the GUI agrees with the Update Manager about whether it is locked. So, that toggling
+        the lock button always transistions into/out of lock as user would expect.
+        UpdateManager_locked_state: True means that UpdateManager is locking
+                                    False, UpdateManager is not locking.
+        """
+        if UpdateManager_locked_state and not self.btn_lock.isChecked():
+            # Update manager is locked. So, btn should be checked. If not, toggle
+            self.btn_lock.toggle()
+        elif not UpdateManager_locked_state and self.btn_lock.isChecked():
+            # Update manager is not locked. So, btn should not be checked. If it is checked toggle
+            self.btn_lock.toggle()
+        return
+
+    @pyqtSlot(int, int, float)
+    def update_gui_with_piezo_voltages(self, motor_num: int, channel_num: int, voltage: float):
+        """
+        Update the gui with newly set voltages. update based on motor_num and motor_channel.
+        """
+        if not self.cb_suppress_piezzo_update.isChecked():
+            if motor_num == 1:
+                if channel_num == 1:
+                    self.motor1_x = self.addToPlot(self.motor1_x, self.motor1_x_plot, voltage, maxSize=int(self.le_num_points.text()))
+                elif channel_num == 2:
+                    self.motor1_y = self.addToPlot(self.motor1_y, self.motor1_y_plot, voltage, maxSize=int(self.le_num_points.text()))
+            elif motor_num == 2:
+                if channel_num == 1:
+                    self.motor2_x = self.addToPlot(self.motor2_x, self.motor2_x_plot, voltage, maxSize=int(self.le_num_points.text()))
+                elif channel_num == 2:
+                    self.motor2_y = self.addToPlot(self.motor2_y, self.motor2_y_plot, voltage, maxSize=int(self.le_num_points.text()))
+        return
+
+    @pyqtSlot(np.ndarray)
+    def handle_calibration_matrix_update(self, calib_mat: np.ndarray):
+        """
+        Save the calibration matrix, compare to old one, etc.
+        """
+        print('Calibration done!')
+        print('New calibration matrix: ', calib_mat)
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            # Visible system.
+            try:
+                old_calib_mat = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
+                Change = np.sqrt(np.sum(np.square(calib_mat - old_calib_mat)))
+                RelativeChange = Change / np.sqrt(np.sum(np.square(old_calib_mat)))
+                print('Relative change of calib matrix: ', RelativeChange)
+            except OSError:
+                pass
+            np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%f')
+            filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat"
+            np.savetxt(filename, calib_mat, fmt='%f')
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            try:
+                old_calib_mat = np.loadtxt('Most_Recent_Calibration_IR.txt', dtype=float)
+                Change = np.sqrt(np.sum(np.square(calib_mat - old_calib_mat)))
+                RelativeChange = Change / np.sqrt(np.sum(np.square(old_calib_mat)))
+                print('Relative change of calib matrix: ', RelativeChange)
+            except OSError:
+                pass
+            # Boson cameras
+            np.savetxt('Most_Recent_Calibration_IR.txt', calib_mat, fmt='%f')
+            filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat_IR"
+            np.savetxt(filename, calib_mat, fmt='%f')
+
+        # Update Lock circles accordingly.
+        self.ROICam1_Lock.setVisible(False)
+        self.ROICam2_Lock.setVisible(False)
+        self.ROICam1_Unlock.setVisible(True)
+        self.ROICam2_Unlock.setVisible(True)
+        return
+
     def Update_GUI_PID(self):
         # Update the GUI with the numbers from the UpdateManager settings
-        try:
+        # TODO: NEED TO IMPLEMENT PID
+        """try:
            self.le_P.setText('%.2f' % (self.UpdateManager.P))
            self.le_Ti.setText('%.2f' % (self.UpdateManager.TI))
            self.le_Td.setText('%.2f' % (self.UpdateManager.TD))
         except AttributeError:
            self.le_P.setText('%.2f' % (1.0))
            self.le_Ti.setText('N/A not PID')
-           self.le_Td.setText('N/A not PID')
+           self.le_Td.setText('N/A not PID')"""
         return
 
     def find_motors(self):
+        """
+        Find available motors and populate the GUI list with them.
+        """
+        if self.ResourceManager is None:
+            self.ResourceManager = visa.ResourceManager()
         # Find motors using VISA
         for dev in self.ResourceManager.list_resources():
-            self.motor_model.appendRow(QtGui.QStandardItem(str(dev)))
+            self.motor_model.appendRow(QtGui.QStandardItem(str("MDT693A?" + dev)))
+        self.ResourceManager.close()
+        del self.ResourceManager
+        self.ResourceManager = None
+
         # Find newer mdt693b devices using Thorlabs SDK and add them to the list too
         mdt693b_dev_list = mdt.mdtListDevices()
         for dev in mdt693b_dev_list:
@@ -314,40 +390,6 @@ class Window(QMainWindow, Ui_MainWindow):
         else:
             self.cb_motors_1.setCurrentIndex(-1)
             self.cb_motors_1.setCurrentIndex(-1)
-        return
-
-    def init_alignment_arrows(self):
-        self.Cam1_UpArrow.setRotation(90)
-        self.Cam1_RightArrow.setRotation(180)
-        self.Cam1_DownArrow.setRotation(-90)
-        self.Cam2_RightArrow.setRotation(180)
-        self.Cam2_DownArrow.setRotation(-90)
-        self.Cam2_UpArrow.setRotation(90)
-        self.Cam1_LeftArrow.setScale(3)
-        self.Cam1_RightArrow.setScale(3)
-        self.Cam1_DownArrow.setScale(3)
-        self.Cam1_UpArrow.setScale(3)
-        self.Cam2_LeftArrow.setScale(3)
-        self.Cam2_RightArrow.setScale(3)
-        self.Cam2_DownArrow.setScale(3)
-        self.Cam2_UpArrow.setScale(3)
-        self.gv_camera1.addItem(self.Cam1_LeftArrow)
-        self.gv_camera1.addItem(self.Cam1_RightArrow)
-        self.gv_camera1.addItem(self.Cam1_DownArrow)
-        self.gv_camera1.addItem(self.Cam1_UpArrow)
-        self.gv_camera2.getView().addItem(self.Cam2_LeftArrow)
-        self.gv_camera2.getView().addItem(self.Cam2_RightArrow)
-        self.gv_camera2.getView().addItem(self.Cam2_DownArrow)
-        self.gv_camera2.getView().addItem(self.Cam2_UpArrow)
-
-        self.Cam1_LeftArrow.setVisible(False)
-        self.Cam1_RightArrow.setVisible(False)
-        self.Cam1_DownArrow.setVisible(False)
-        self.Cam1_UpArrow.setVisible(False)
-        self.Cam2_LeftArrow.setVisible(False)
-        self.Cam2_RightArrow.setVisible(False)
-        self.Cam2_DownArrow.setVisible(False)
-        self.Cam2_UpArrow.setVisible(False)
         return
 
     def init_camera_views(self):
@@ -430,11 +472,18 @@ class Window(QMainWindow, Ui_MainWindow):
         self.label_19.setVisible(Logic)
         return
 
-    def GUI_update_std(self, std):
-       self.le_cam1_dx_std.setText("{:.5f}".format(std[0]))
-       self.le_cam1_dy_std.setText("{:.5f}".format(std[1]))
-       self.le_cam2_dx_std.setText("{:.5f}".format(std[2]))
-       self.le_cam2_dy_std.setText("{:.5f}".format(std[3]))
+    def update_gui_std(self, cam_num: int):
+        """
+        Update the GUI to display a new std. This is of the com data that is displaying on the plots.
+        updates particular values based on cam_num
+        """
+        if cam_num == 1:
+            self.le_cam1_dx_std.setText("{:.5f}".format(self.cam1_x.std()))
+            self.le_cam1_dy_std.setText("{:.5f}".format(self.cam1_y.std()))
+        elif cam_num == 2:
+            self.le_cam2_dx_std.setText("{:.5f}".format(self.cam2_x.std()))
+            self.le_cam2_dy_std.setText("{:.5f}".format(self.cam2_y.std()))
+        return
 
     @staticmethod
     def resetHist(ref, min=0, max=255):
@@ -444,538 +493,69 @@ class Window(QMainWindow, Ui_MainWindow):
         assert isinstance(ref, pg.ImageView)
         ref.getHistogramWidget().setHistogramRange(min, max)
         ref.getHistogramWidget().setLevels(min, max)
+        return
 
+    @staticmethod
     def addToPlot(data, plot, point, maxSize=100):
         """
         Scrolling plot with a maximum size
         """
-        if (data.size < maxSize):
+        if data.size == maxSize:
+            data = np.roll(data, -1)
+            data[-1] = point
+        elif data.size < maxSize:
             data = np.append(data, point)
-        else:
-            data = np.roll(data, -1)
-            data[-1] = point
-            data = np.roll(data, -1)
-            data[-1] = point
+        elif data.size > maxSize:
+            start_ind = data.size - maxSize + 1
+            data = data[start_ind:]
+            data = data.np.append(data, point)
         plot.setData(data)
         return data
 
-    @pyqtSlot()
-    def update_cam1_settings(self):
-        """
-        This function updates the camera settings on camera thread 1. Inclduing selecting the camera on thread 1.
-        """
-        if int(self.cb_SystemSelection.currentIndex()) == 1:
-            # Grab inputs from the GUI
-            cam1_exp_time = float(self.le_cam1_exp_time.text())
-            cam1_gain = float(self.le_cam1_gain.text())
-            self.cam1_threshold = float(self.le_cam1_threshold.text())
-
-            #Apply all updates:
-            if self.cam1 is None: # first time this function is called only.
-                # Instantiate a camera object as cam1.
-                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
-                if 'fly' in key:
-                    self.cam1 = BlackflyS(self.cam_init_dict[key])
-                    if not self.cam1.serial_no in str(self.cam_init_dict[key]):
-                        print("Somehow the camera initialized does not have the anticipated serial number.")
-                else:
-                    raise NotImplemented('Can only connect blackfly s cameras for now.')
-                # move camera 1 object to camera 1 thread
-                self.cam1.moveToThread(self.cam1_thread)
-                # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.cam1.img_captured_signal.connect(self.update_cam1_img) #I might want this to come from UM instead?
-                self.cam1.exposure_updated_signal.connect(self.update_cam1_exposure)
-                self.cam1.gain_updated_signal.connect(self.update_cam1_gain)
-                self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
-                self.cam1.r0_updated_signal.connect(self.set_cam1_r0)
-                self.cam1.cap_released_signal.connect(self.cam1_thread.quit)
-                # Apply the settings directly before starting thread and thread event loop
-                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam1.set_gain(cam1_gain)
-                self.cam1.set_exposure_time(cam1_exp_time)
-                # Start the threads event loop
-                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
-                self.cam1_thread.start(priority=4)
-                # Setup camera view.
-                self.cam1_reset = True
-                self.resetHist(self.gv_camera1)
-                # start the infinite event loop around acquiring images:
-                self.cam1.capture_img_signal.emit()
-            else: # Update settings once cam1 exists and cam1_thread is running
-                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
-                if not self.cam1.serial_no in str(self.cam_init_dict[key]):
-                    # User wants to change the camera on cam1_thread. So, do that.
-                    # Still need to implement this change, but eitherway, we can update the settings with signals.
-                    raise NotImplemented("I have not given you the ability to change camera 1 once you selected it")
-                self.cam1.exposure_set_signal.emit(cam1_exp_time)
-                self.cam1.gain_set_signal.emit(cam1_gain)
-        elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            #TODO: Update this correctly for the Boson
-            """cam1_index = int(self.cb_cam1.currentIndex())
-            self.cam1_threshold = float(self.le_cam1_threshold.text())
-            self.cam_list[cam1_index].update_frame()
-            self.cam1_reset = True
-            self.resetHist(self.gv_camera1, max=65536)"""
-            pass
-        else:
-            print("Choose a Point Lock system first!")
-
-    @pyqtSlot(float)
-    def update_cam1_exposure(self, exposure_time):
-        self.le_cam1_exp_time.setText('%.2f' % (exposure_time))
-        return
-
-    @pyqtSlot(float)
-    def update_cam1_gain(self, gain):
-        self.le_cam1_gain.setText('%.2f' % (gain))
-        return
-
-    @pyqtSlot(np.ndarray)
-    def set_cam1_r0(self, r0):
-        self.cam1_r0 = r0
-        return
-
-    @pyqtSlot(np.ndarray)
-    def update_cam1_img(self, img):
-        """
-        Update the img displayed in cam1 image viewer object.
-        """
-        #TODO: Do this faster?
-        if not self.suppress_image_display:
-            if self.cam1_reset:
-                self.gv_camera1.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False,
-                                         pos=self.cam1_r0)
-                self.cam1_reset = False
-            else:
-                self.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False,
-                                         pos=self.cam1_r0)
-
-    @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
-    def update_cam1_display(self, img, com, r_0):
-        """
-        update the image displayed for cam 1.
-        """
-        # Update max value of camera image:
-        self.le_cam1_max.setText(str(np.max(img)))
-
-        # Update COM crosshairs on the image:
-        self.cam1_x_line.setPos(com[0])
-        self.cam1_y_line.setPos(com[1])
-        self.cam1_x_line.setVisible(True)
-        self.cam1_y_line.setVisible(True)
-
-        # Update the pointing position plots:
-        if not self.suppress_pointing_display:
-            #Redo this part.
-            # self.cam1_x_plot.setData(com[0])
-            # self.cam1_y_plot.setData(com[1])
-            pass
-        return
-
-    def convert_img(self, img):
-        pass
-        return
-
-    @pyqtSlot()
-    def update_cam2_settings(self):
-        """
-        This function updates the camera settings on camera thread 1. Inclduing selecting the camera on thread 1.
-        """
-        #Use the cam1 settings above to do this once debugged:
-        pass
-        """if int(self.cb_SystemSelection.currentIndex()) == 1:
-            cam2_index = int(self.cb_cam2.currentIndex())
-            cam2_exp_time = float(self.le_cam2_exp_time.text())
-            cam2_gain = float(self.le_cam2_gain.text())
-            cam2_threshold = float(self.le_cam2_threshold.text())
-            cam_list[cam1_index].setup_camera_for_image_acquisition()
-            cam_list[cam2_index].set_gain(cam2_gain)
-            cam_list[cam2_index].set_exposure_time(cam2_exp_time)
-            cam_list[cam1_index].update_frame()
-           self.le_cam2_exp_time.setText('%.2f' % (cam_list[cam2_index].exposure_time))
-           self.le_cam2_gain.setText('%.2f' % (cam_list[cam2_index].gain / 8))
-            cam2_reset = True
-            resetHist(self.gv_camera2)
-        elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            cam2_index = int(self.cb_cam2.currentIndex())
-            cam2_threshold = float(self.le_cam2_threshold.text())
-            cam_list[cam1_index].update_frame()
-            cam2_reset = True
-            resetHist(self.gv_camera2, max=65536)
-        else:
-            print("Choose a Point Lock system first!")"""
-        return
-
-    @pyqtSlot()
-    def update_motors(self):
-        """
-        Instantiate motors objects and put them into motor list.
-        """
-        motor1_index =self.cb_motors_1.currentIndex()
-        motor2_index =self.cb_motors_2.currentIndex()
-        if motor1_index != motor2_index:
-            self.motor_list = []
-            # Garrison Updated to add "0" insideself.cb_motors_1.currentData(0)
-            if "MDT693B" in self.cb_motors_1.currentData(0):
-                self.motor_list.append(MDT693B_Motor(str(self.cb_motors_1.currentData(0)[2:15])))
-            else:
-                self.motor_list.append(
-                    MDT693A_Motor(self.ResourceManager, com_port=self.cb_motors_1.currentData(0), ch1='X', ch2='Y'))
-            if "MDT693B" in self.cb_motors_2.currentData(0):
-                self.motor_list.append(MDT693B_Motor(str(self.cb_motors_2.currentData(0)[2:15])))
-            else:
-                self.motor_list.append(
-                    MDT693A_Motor(self.ResourceManager, com_port=self.cb_motors_2.currentData(0), ch1='X', ch2='Y'))
-        return
-
-    @pyqtSlot()
-    def clear_pointing_plots(self):
-        """
-        Empty the pointing plots data.
-        """
-        self.cam1_x = np.array([])
-        self.cam1_y = np.array([])
-        self.cam2_x = np.array([])
-        self.cam2_y = np.array([])
-        return
-
-    @pyqtSlot()
-    def begin_calibration(self):
-        """
-        Begin calibration. Needs updated.
-        """
-        self.calib_index = 0
-        if len(self.motor_list) == 0:
-            self.update_motors()
-        self.ROICam1_Unlock.setVisible(False)
-        self.ROICam2_Unlock.setVisible(False)
-        self.ROICam1_Lock.setVisible(False)
-        self.ROICam2_Lock.setVisible(False)
-        """if int(self.cb_SystemSelection.currentIndex()) == 1:
-            #Put the Mightex cameras into trigger mode.
-            for cam in cam_list:
-                cam.engine.update_working_mode(1, cam.serial_no)"""
-        self.starting_v[0] = self.motor_list[0].ch1_v
-        time.sleep(0.2)
-        self.starting_v[1] = self.motor_list[0].ch2_v
-        time.sleep(0.2)
-        self.starting_v[2] = self.motor_list[1].ch1_v
-        time.sleep(0.2)
-        self.starting_v[3] = self.motor_list[1].ch2_v
-        time.sleep(0.2)
-        self.state = self.STATE_CALIBRATE
-        return
-
-    @pyqtSlot()
-    def lock_pointing(self):
-        """
-        Begin to lock the pointing. Needs updated.
-        """
-        self.Cam1_LeftArrow.setVisible(False)
-        self.Cam1_RightArrow.setVisible(False)
-        self.Cam1_DownArrow.setVisible(False)
-        self.Cam1_UpArrow.setVisible(False)
-        self.Cam2_LeftArrow.setVisible(False)
-        self.Cam2_RightArrow.setVisible(False)
-        self.Cam2_DownArrow.setVisible(False)
-        self.Cam2_UpArrow.setVisible(False)
-        if self.btn_lock.isChecked():
-            if self.cam1_thread is not None and self.cam2_thread is not None:
-                self.state = self.STATE_LOCKED
-                self.le_num_points.setText('100')
-                self.btn_clear.click()
-                self.UpdateManager._integral_ti = np.zeros(4)
-                self.TimeLastUnlock = 0
-                self.num_out_of_voltage_range = 1
-                self.first_unlock = True  # First time since initial lock that piezos went out of bounds?
-                self.LockTimeStart = time.monotonic()
-                self.ROICam1_Unlock.setVisible(False)
-                self.ROICam2_Unlock.setVisible(False)
-                self.ROICam1_Lock.setVisible(True)
-                self.ROICam2_Lock.setVisible(True)
-
-                if self.PID:
-                    if not UpdateManager.P == self.PID['P']:
-                        UpdateManager.P = self.PID['P']
-                    if not UpdateManager.TI == self.PID['Ti']:
-                        UpdateManager.TI = self.PID['Ti']
-                    if not UpdateManager.TD == self.PID['Td']:
-                        UpdateManager.TD = self.PID['Td']
-                if len(self.motor_list) == 0:
-                    self.update_motors()
-            else:
-               self.btn_lock.toggle()
-        else:
-            self.state = self.STATE_MEASURE
-            self.le_num_points.setText('100')
-            self.btn_clear.click()
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-            self.ROICam1_Unlock.setVisible(True)
-            self.ROICam2_Unlock.setVisible(True)
-        return
-
-    @pyqtSlot()
-    def define_home(self):
-        """
-        Capture current pointing position and define it as home position. Save it accordingly.
-        """
-        if self.cam1_thread is not None and self.cam2_thread is not None:
-            self.set_cam1_x = self.cam1_x[-1]
-            self.set_cam1_y = self.cam1_y[-1]
-            self.set_cam2_x = self.cam2_x[-1]
-            self.set_cam2_y = self.cam2_y[-1]
-            print('Set cam 1 x', self.set_cam1_x)
-            print('Set cam 1 y', self.set_cam1_y)
-            print('Set cam 2 x', self.set_cam2_x)
-            print('Set cam 2 y', self.set_cam2_y)
-            HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
-            self.UpdateManager.set_pos = HomePosition
-            if int(self.cb_SystemSelection.currentIndex()) == 1:
-                np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
-                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
-                np.savetxt(filename, HomePosition, fmt='%f')
-            elif int(self.cb_SystemSelection.currentIndex()) == 2:
-                np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
-                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
-                np.savetxt(filename, HomePosition, fmt='%f')
-            try:
-                self.ROICam1_Unlock.setVisible(False)
-                self.ROICam2_Unlock.setVisible(False)
-                self.ROICam1_Lock.setVisible(False)
-                self.ROICam2_Lock.setVisible(False)
-            except:
-                pass
-            self.set_home_marker()
-
-    @pyqtSlot()
-    def load_home(self):
-        """
-        Open a dialogue box for the user to select a home position to load.
-        TODO: make this use Qt and not TK!
-        """
-        root = tk.Tk()
-        root.withdraw()
-        file_path = filedialog.askopenfilename()
-        if int(self.cb_SystemSelection.currentIndex()) == 1:
-            HomePosition = np.loadtxt(file_path, dtype=float)
-            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
-        elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            HomePosition = np.loadtxt(file_path, dtype=float)
-            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
-        UpdateManager.set_pos = np.asarray(HomePosition)
-        print("Set Positions:", HomePosition)
-        try:
-            self.ROICam1_Unlock.setVisible(False)
-            self.ROICam2_Unlock.setVisible(False)
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-        except:
-            pass
-        self.set_home_marker()
-        return
-
-    @pyqtSlot()
-    def begin_align(self):
-        """
-        Begin alignment mode. Need to redo.
-        """
-        global ROICam1_Unlock, ROICam2_Unlock, ROICam1_Lock, ROICam2_Lock
-        global Cam1_LeftArrow, Cam1_RightArrow, Cam1_DownArrow, Cam1_UpArrow
-        global Cam2_LeftArrow, Cam2_RightArrow, Cam2_DownArrow, Cam2_UpArrow
-        global state, start_time
-        global msg
-        if self.state == self.STATE_ALIGN:
-            self.state = self.STATE_MEASURE
-            self.le_num_points.setText('100')
-            self.btn_clear.click()
-            self.UpdateManager.P = self.PID['P']
-            self.UpdateManager.TI = self.PID['Ti']
-            self.UpdateManager.TD = self.PID['Td']
-            self.Update_GUI_PID()
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-            self.ROICam1_Unlock.setVisible(True)
-            self.ROICam2_Unlock.setVisible(True)
-            self.Cam1_LeftArrow.setVisible(False)
-            self.Cam1_RightArrow.setVisible(False)
-            self.Cam1_DownArrow.setVisible(False)
-            self.Cam1_UpArrow.setVisible(False)
-            self.Cam2_LeftArrow.setVisible(False)
-            self.Cam2_RightArrow.setVisible(False)
-            self.Cam2_DownArrow.setVisible(False)
-            self.Cam2_UpArrow.setVisible(False)
-        else:
-            self.state = self.STATE_ALIGN
-            self.le_num_points.setText('10')
-            self.btn_clear.click()
-            self.UpdateManager._integral_ti = np.zeros(4)
-            self.PID = {'P': self.UpdateManager.P, 'Ti': self.UpdateManager.TI, 'Td': self.UpdateManager.TD}
-            self.UpdateManager.TI = 1e20
-            self.UpdateManager.P = 1
-            self.UpdateManager.TD = 0
-            self.Update_GUI_PID()
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-            self.ROICam1_Unlock.setVisible(True)
-            self.ROICam2_Unlock.setVisible(True)
-            if len(self.motor_list) == 0:
-                self.update_motors()
-            try:
-                self.motor_list[0].ch1_v = 75.0
-                self.motor_list[0].ch2_v = 75.0
-                self.motor_list[1].ch1_v = 75.0
-                self.motor_list[1].ch2_v = 75.0
-                self.UpdateManager.V0 = np.array([self.motor_list[0].ch1_v, self.motor_list[0].ch2_v, self.motor_list[1].ch1_v,
-                                             self.motor_list[1].ch2_v])
-            except:
-                self.UpdateManager.V0 = np.array([self.motor_list[0].ch1_v, self.motor_list[0].ch2_v, self.motor_list[1].ch1_v,
-                                             self.motor_list[1].ch2_v])
-                self.msg += "WARNING! Alignment should be done w/ piezos at 75 V, but motors are not connected and " \
-                       "voltages are unkown!"
-                self.statusbar.showMessage('{0}\tUpdate time: {1:.3f} (s)'.format(self.msg, time.time() - self.start_time))
-                time.sleep(5)
-                raise AssertionError("Make Piezo voltages 75.0 before aligning.")
-
-    def set_home_marker(self):
-        """
-        Set the home marker on the image displays.
-        """
-        self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = self.UpdateManager.set_pos
-        pen = pg.mkPen(color=(255, 0, 0), width=2)
-        self.ROICam1_Unlock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
-                                      movable=False, rotatable=False, resizable=False, pen=pen)
-
-        self.ROICam2_Unlock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
-                                      movable=False, rotatable=False, resizable=False, pen=pen)
-        self.gv_camera1.addItem(self.ROICam1_Unlock)
-        self.gv_camera2.getView().addItem(self.ROICam2_Unlock)
-        pen = pg.mkPen(color=(0, 255, 0), width=2)
-        self.ROICam1_Lock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
-                                    movable=False, rotatable=False, resizable=False, pen=pen)
-
-        self.ROICam2_Lock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
-                                    movable=False, rotatable=False, resizable=False, pen=pen)
-        self.gv_camera1.addItem(self.ROICam1_Lock)
-        self.gv_camera2.getView().addItem(self.ROICam2_Lock)
-        self.cam1_x_PlotItem.addLine(y=self.UpdateManager.set_pos[0])
-        self.cam1_y_PlotItem.addLine(y=self.UpdateManager.set_pos[1])
-        self.cam2_x_PlotItem.addLine(y=self.UpdateManager.set_pos[2])
-        self.cam2_y_PlotItem.addLine(y=self.UpdateManager.set_pos[3])
-        if self.state == self.STATE_MEASURE:
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-            self.ROICam1_Unlock.setVisible(True)
-            self.ROICam2_Unlock.setVisible(True)
-        elif self.state == self.STATE_CALIBRATE:
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-            self.ROICam1_Unlock.setVisible(False)
-            self.ROICam2_Unlock.setVisible(False)
-        elif self.state == self.STATE_LOCKED:
-            self.ROICam1_Unlock.setVisible(False)
-            self.ROICam2_Unlock.setVisible(False)
-            self.ROICam1_Lock.setVisible(True)
-            self.ROICam2_Lock.setVisible(True)
-        elif self.state == self.STATE_ALIGN:
-            self.ROICam1_Unlock.setVisible(True)
-            self.ROICam2_Unlock.setVisible(True)
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-        return
-
-    @pyqtSlot()
     def find_cameras(self):
         """
-        This function just populates the GUI with camera options, but should not instantiate any cameras!
-
-        #TODO: I need to just populate lists.
+        This function finds cameras relevent to system selection type (IR or vis). Populate a list of cameras in GUI
+        for user to choose from, but do not instantiate any objects!
         """
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             num_cameras = 0
-            """
-            cam_list = []
-            Commented out for testing blackfly cameras.
             # Find the Mightex cameras
             mightex_engine = MightexEngine()
             if len(mightex_engine.serial_no) == 0:
                 del mightex_engine
             else:
                 for i, serial_no in enumerate(mightex_engine.serial_no):
+                    cam_key = 'Mightex: ' + str(serial_no)
+                    self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
+                    self.cam_init_dict[cam_key] = serial_no
                     num_cameras += 1
-                    c = MightexCamera(mightex_engine, serial_no)
-                    cam_list.append(c)
-                    cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
-
-            # Find blackfly s cameras:
-            # Retrieve singleton reference to system object
-            pyspin_system = PySpin.System.GetInstance()
-
-            # Get current library version
-            pyspin_version = pyspin_system.GetLibraryVersion()
-            print('Library version: %d.%d.%d.%d' % (pyspin_version.major, pyspin_version.minor, pyspin_version.type,
-                                                    pyspin_version.build))
-
-            # Retrieve list of cameras from the system
-            pyspin_cam_list = pyspin_system.GetCameras()
-
-            num_pyspin_cameras = pyspin_cam_list.GetSize()
-            num_cameras += num_pyspin_cameras
-
-            print('Number of cameras detected: %d' % num_pyspin_cameras)
-
-            # Finish if there are no cameras
-            if num_pyspin_cameras == 0:
-                # Clear camera list before releasing system
-                pyspin_cam_list.Clear()
-
-                # Release system instance
-                pyspin_system.ReleaseInstance()
-                return
-            else:
-                for i, cam in enumerate(pyspin_cam_list):
-                    c = BlackflyS(cam)
-                    cam_list.append(c)
-                    cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+                del mightex_engine
+            # Find blackfly s cameras
+            try:
+                c = BlackflyS(0)
+                cam_key = 'blackfly s: ' + c.serial_no
+                self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
+                self.cam_init_dict[cam_key] = 0
+                c.close()
+                del c
+                num_cameras += 1
+            except:
+                # Well no camera at index 0
+                pass
+            try:
+                c = BlackflyS(1)
+                cam_key = 'blackfly s: ' + c.serial_no
+                self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
+                self.cam_init_dict[cam_key] = 1
+                c.close()
+                del c
+                num_cameras +=1
+            except:
+                # Well no camera at index 1.
+                pass
+            # Are there cameras?
             if num_cameras == 0:
                 raise DeviceNotFoundError("No visible cameras found.")
-            """
-            c = BlackflyS(0)
-            cam_key = 'blackfly s: ' + c.serial_no
-            self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
-            self.cam_init_dict[cam_key] = 0
-            c.close()
-            del c
-            c = BlackflyS(1)
-            cam_key = 'blackfly s: ' + c.serial_no
-            self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
-            self.cam_init_dict[cam_key] = 1
-            c.close()
-            del c
-            # Make appropriate Camera Settings available in GUI:
-            self.toggle_BOSON_cam_settings_ui_vis(False)
-            self.toggle_mightex_cam_settings_ui_vis(True)
-            self.toggle_general_cam_settings_ui_vis(True)
-
-            # Load Most Recent Calibration Matrix:
-            try:
-                self.UpdateManager.calibration_matrix = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
-            except OSError:
-                print("Hmm there seems to be no saved calibration, run calibration.")
-
-            # Load the Most Recent Home Position:
-            try:
-                HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
-                self.UpdateManager.set_pos = np.asarray(HomePosition)
-                self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
-                self.set_home_marker()
-            except OSError:
-                self.set_cam1_x = 'dummy'
-                self.set_cam1_y = 'dummy'
-                self.set_cam2_x = 'dummy'
-                self.set_cam2_y = 'dummy'
-                print("Hmm there seems to be no saved Home Position, define one before locking.")
-
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             # Find the Boson Cameras
             pass
@@ -1002,53 +582,617 @@ class Window(QMainWindow, Ui_MainWindow):
                 cam_list.append(c)
                 cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
                 device_id = 1
-            toggle_mightex_cam_settings_ui_vis(False)
-            toggle_general_cam_settings_ui_vis(True)
-            toggle_BOSON_cam_settings_ui_vis(True)
-
-            # Load Most Recent Calibration Matrix:
-            try:
-                UpdateManager.calibration_matrix = np.loadtxt('Most_Recent_Calibration_IR.txt', dtype=float)
-            except OSError:
-                print("Hmm there seems to be no saved calibration, run calibration.")
-
-            # Load the Most Recent Home Position:
-            try:
-                HomePosition = np.loadtxt('Most_Recent_Home_IR.txt', dtype=float)
-                UpdateManager.set_pos = np.asarray(HomePosition)
-                set_cam1_x, set_cam1_y, set_cam2_x, set_cam2_y = HomePosition
-                set_home_marker()
-            except OSError:
-                set_cam1_x = 'dummy'
-                set_cam1_y = 'dummy'
-                set_cam2_x = 'dummy'
-                set_cam2_y = 'dummy'
-                print("Hmm there seems to be no saved Home Position, define one before locking.")
             """
         else:
             print("Choose a system!")
-        self.btn_load_visible.setVisible(False)
-        self.btn_load_IR.setVisible(False)
-
-        self.Cam1_LeftArrow.setPos(self.set_cam1_y + 40, self.set_cam1_x - 95)
-        self.Cam1_RightArrow.setPos(self.set_cam1_y - 40, self.set_cam1_x + 92)
-        self.Cam1_DownArrow.setPos(self.set_cam1_y - 95, self.set_cam1_x - 40)
-        self.Cam1_UpArrow.setPos(self.set_cam1_y + 95, self.set_cam1_x + 40)
-
-        self.Cam2_LeftArrow.setPos(self.set_cam2_y + 40, self.set_cam2_x - 95)
-        self.Cam2_RightArrow.setPos(self.set_cam2_y - 40, self.set_cam2_x + 92)
-        self.Cam2_DownArrow.setPos(self.set_cam2_y - 95, self.set_cam2_x - 40)
-        self.Cam2_UpArrow.setPos(self.set_cam2_y + 95, self.set_cam2_x + 40)
-
         # Update GUI List with available cameras
         self.cb_cam1.setModel(self.cam_model)
         self.cb_cam2.setModel(self.cam_model)
         return
 
+    def load_recent_home(self):
+        """
+        Try to load the most recent home position based on system chosen (vis vs IR).
+        """
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            # Load the Most Recent Home Position:
+            try:
+                HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
+                self.UpdateManager.request_set_home_signal.emit(np.asarray(HomePosition))
+                self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+                self.set_home_marker()
+            except OSError:
+                self.set_cam1_x = 'dummy'
+                self.set_cam1_y = 'dummy'
+                self.set_cam2_x = 'dummy'
+                self.set_cam2_y = 'dummy'
+                print("Hmm there seems to be no saved Home Position, define one before locking.")
+
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            # Load the Most Recent Home Position:
+            try:
+                HomePosition = np.loadtxt('Most_Recent_Home_IR.txt', dtype=float)
+                self.UpdateManager.request_set_home_signal.emit(np.asarray(HomePosition))
+                self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+                self.set_home_marker()
+            except OSError:
+                self.set_cam1_x = 'dummy'
+                self.set_cam1_y = 'dummy'
+                self.set_cam2_x = 'dummy'
+                self.set_cam2_y = 'dummy'
+                print("Hmm there seems to be no saved Home Position, define one before locking.")
+        else:
+            print("Choose a system!")
+        return
+
+    def load_recent_calibration_matrix(self):
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            # Load Most Recent Calibration Matrix:
+            try:
+                self.UpdateManager.request_set_calibration_matrix.emit(np.asarray(np.loadtxt(
+                    'Most_Recent_Calibration.txt', dtype=float)))
+            except OSError:
+                print("Hmm there seems to be no saved calibration, run calibration.")
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            # Load Most Recent Calibration Matrix:
+            try:
+                self.UpdateManager.request_set_calibration_matrix.emit(
+                    np.asarray(np.loadtxt('Most_Recent_Calibration_IR.txt', dtype=float)))
+            except OSError:
+                print("Hmm there seems to be no saved calibration, run calibration.")
+        else:
+            print("Choose a system!")
+        return
+
+    def update_gui_after_system_chosen(self):
+        """
+        Make any updates to the GUI based on a system selection (IR vs. visible).
+        """
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            # Make appropriate Camera Settings available in GUI:
+            self.toggle_BOSON_cam_settings_ui_vis(False)
+            self.toggle_mightex_cam_settings_ui_vis(True)
+            self.toggle_general_cam_settings_ui_vis(True)
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            # Make appropriate Camera Settigns available in GUI
+            self.toggle_mightex_cam_settings_ui_vis(False)
+            self.toggle_general_cam_settings_ui_vis(True)
+            self.toggle_BOSON_cam_settings_ui_vis(True)
+        else:
+            print("Choose a system!")
+        self.btn_load_visible.setVisible(False)
+        self.btn_load_IR.setVisible(False)
+        return
+
+    @pyqtSlot()
+    def load_system(self):
+        """
+        Once a system selection is made, this function is called and finds cameras and attempts to load recent home and
+        calibration matrix.
+        """
+        self.find_cameras()
+        self.load_recent_home()
+        self.load_recent_calibration_matrix()
+        self.update_gui_after_system_chosen()
+        return
+
+    @pyqtSlot()
+    def update_cam1_settings(self):
+        """
+        This function updates the camera settings on camera thread 1. Including selecting the camera on thread 1.
+        """
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            # Grab inputs from the GUI
+            cam1_exp_time = float(self.le_cam1_exp_time.text())
+            cam1_gain = float(self.le_cam1_gain.text())
+            cam1_threshold = float(self.le_cam1_threshold.text())
+            self.UpdateManager.request_set_camera_threshold_signal.emit(1, cam1_threshold)
+
+            # Apply all updates:
+            if self.cam1 is None: # first time this function is called only.
+                # Instantiate a camera object as cam1.
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                if 'fly' in key:
+                    self.cam1 = BlackflyS(self.cam_init_dict[key])
+                    if self.cam1.serial_no not in str(self.cam_init_dict[key]):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                elif "Mightex" in key:
+                    if self.mightex_engine is None:
+                        self.mightex_engine = MightexEngine()
+                    self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                # move camera 1 object to camera 1 thread
+                self.cam1.moveToThread(self.cam1_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(1)
+                # Apply the settings directly before starting thread and thread event loop
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam1.set_gain(cam1_gain)
+                self.cam1.set_exposure_time(cam1_exp_time)
+                # Start the threads event loop
+                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
+                self.cam1_thread.start(priority=4)
+                # Setup camera view.
+                self.cam1_reset = True
+                self.resetHist(self.gv_camera1)
+                # start the infinite event loop around acquiring images:
+                self.cam1.capture_img_signal.emit()
+            else:  # Update settings once cam1 exists and cam1_thread is running
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                if self.cam1.serial_no not in str(self.cam_init_dict[key]):
+                    # User wants to change the camera on cam1_thread. So, do that.
+                    self.cam1.close_signal.emit(False) # False flag does not close the thread.
+                    self.cam1_to_connect = key
+                    self.cam1_settings_to_set = {'exposure': cam1_exp_time, 'gain': cam1_gain}
+                    return
+                self.cam1.exposure_set_signal.emit(cam1_exp_time)
+                self.cam1.gain_set_signal.emit(cam1_gain)
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            # TODO: Update this correctly for the Boson
+            """cam1_index = int(self.cb_cam1.currentIndex())
+            self.cam1_threshold = float(self.le_cam1_threshold.text())
+            self.cam_list[cam1_index].update_frame()
+            self.cam1_reset = True
+            self.resetHist(self.gv_camera1, max=65536)"""
+            pass
+        else:
+            print("Choose a Point Lock system first!")
+
+    def connect_camera_signals(self, cam_number: int):
+        if cam_number == 1:
+            self.cam1.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(1, r0))
+            self.cam1.img_captured_signal.connect(lambda img: setattr(self.UpdateManager, 'cam_1_img', img))
+            self.cam1.exposure_updated_signal.connect(self.update_cam1_exposure)
+            self.cam1.gain_updated_signal.connect(self.update_cam1_gain)
+            self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
+            self.cam1.r0_updated_signal.connect(self.set_cam1_r0)
+            self.cam1.cap_released_signal.connect(self.cam1_thread.quit)
+            self.cam1.destroyed.connect(self.reconnect_cameras)
+            self.cam1.destroyed.connect(lambda: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
+            self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
+        elif cam_number == 2:
+            self.cam2.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(2, r0))
+            self.cam2.img_captured_signal.connect(lambda img: setattr(self.UpdateManager, 'cam_2_img', img))
+            self.cam2.exposure_updated_signal.connect(self.update_cam2_exposure)
+            self.cam2.gain_updated_signal.connect(self.update_cam2_gain)
+            self.cam2.ROI_bounds_updated_signal.connect(self.apply_cam2_ROI)
+            self.cam2.r0_updated_signal.connect(self.set_cam2_r0)
+            self.cam2.cap_released_signal.connect(self.cam2_thread.quit)
+            self.cam2.destroyed.connect(self.reconnect_cameras)
+            self.cam2.destroyed.connect(lambda: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
+            self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
+        return
+
+    @pyqtSlot(int)
+    def reconnect_cameras(self, cam_number: int):
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            if cam_number == 1:
+                key = self.cam1_to_connect
+                if 'fly' in key:
+                    self.cam1 = BlackflyS(self.cam_init_dict[key])
+                    if self.cam1.serial_no not in str(self.cam_init_dict[key]):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                elif "Mightex" in key:
+                    if self.mightex_engine is None:
+                        self.mightex_engine = MightexEngine()
+                    self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(1)
+                # Apply the settings directly before starting thread and thread event loop
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam1.set_gain(self.cam1_settings_to_set['gain'])
+                self.cam1.set_exposure_time(self.cam1_settings_to_set['exposure'])
+                # move camera 1 object to camera 1 thread
+                self.cam1.moveToThread(self.cam1_thread)
+                # Setup camera view.
+                self.cam1_reset = True
+                self.resetHist(self.gv_camera1)
+                # start the infinite event loop around acquiring images:
+                self.cam1.capture_img_signal.emit()
+            elif cam_number == 2:
+                key = self.cam2_to_connect
+                if 'fly' in key:
+                    self.cam2 = BlackflyS(self.cam_init_dict[key])
+                    if self.cam2.serial_no not in str(self.cam_init_dict[key]):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                elif "Mightex" in key:
+                    if self.mightex_engine is None:
+                        self.mightex_engine = MightexEngine()
+                    self.cam2 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(2)
+                # Apply the settings directly before starting thread and thread event loop
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam2.set_gain(self.cam2_settings_to_set['gain'])
+                self.cam2.set_exposure_time(self.cam2_settings_to_set['exposure'])
+                # move camera 2 object to camera 2 thread
+                self.cam2.moveToThread(self.cam2_thread)
+                # Setup camera view.
+                self.cam2_reset = True
+                self.resetHist(self.gv_camera2)
+                # start the infinite event loop around acquiring images:
+                self.cam2.capture_img_signal.emit()
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            # TODO: Update this correctly for the Boson
+            pass
+        else:
+            print("Choose a Point Lock system first!")
+        return
+
+    @pyqtSlot(float)
+    def update_cam1_exposure(self, exposure_time):
+        self.le_cam1_exp_time.setText('%.2f' % (exposure_time))
+        return
+
+    @pyqtSlot(float)
+    def update_cam1_gain(self, gain):
+        self.le_cam1_gain.setText('%.2f' % (gain))
+        return
+
+    @pyqtSlot(np.ndarray)
+    def set_cam1_r0(self, r0):
+        self.cam1_r0 = r0
+        return
+
+    @pyqtSlot(int, np.ndarray)
+    def update_cam_img(self, cam_num: int,  img: np.ndarray):
+        """
+        Update the img displayed in cam1 image viewer object.
+        """
+        # TODO: Do this faster?
+        # TODO: Instead of checking if image display is suppressed, if image display suppressed, then destroy
+        # the connection to this function in the first place. Same for other suppressed plottings.
+        if not self.suppress_image_display:
+            if cam_num == 1:
+                if self.cam1_reset:
+                    self.gv_camera1.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False,
+                                             pos=self.cam1_r0)
+                    self.cam1_reset = False
+                else:
+                    self.gv_camera1.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False,
+                                             pos=self.cam1_r0)
+                # Update max value of camera image:
+                self.le_cam1_max.setText(str(np.max(img)))
+            elif cam_num == 2:
+                if self.cam2_reset:
+                    self.gv_camera2.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False,
+                                             pos=self.cam2_r0)
+                    self.cam2_reset = False
+                else:
+                    self.gv_camera2.setImage(img, autoRange=False, autoLevels=False, autoHistogramRange=False,
+                                             pos=self.cam2_r0)
+                # Update max value of camera image:
+                self.le_cam2_max.setText(str(np.max(img)))
+        return
+
+    @pyqtSlot(int, np.ndarray)
+    def update_cam_com_display(self, cam_num: int, cam_com: np.ndarray):
+        """
+        Set the crosshairs for pointing on image display and also plot the pointing information as time series.
+        """
+        if cam_num == 1:
+            if not self.suppress_image_display:
+                # Update COM crosshairs on the image:
+                self.cam1_x_line.setPos(cam_com[0])
+                self.cam1_y_line.setPos(cam_com[1])
+                self.cam1_x_line.setVisible(True)
+                self.cam1_y_line.setVisible(True)
+
+            # Update the pointing position plots:
+            if not self.suppress_pointing_display:
+                self.cam1_x = self.addToPlot(self.cam1_x, self.cam1_x_plot, cam_com[0],
+                                             maxSize=int(self.le_num_points.text()))
+                self.cam1_y = self.addToPlot(self.cam1_y, self.cam1_y_plot, cam_com[1],
+                                             maxSize=int(self.le_num_points.text()))
+                self.update_gui_std(1)
+        elif cam_num == 2:
+            if not self.suppress_image_display:
+                # Update COM crosshairs on the image:
+                self.cam2_x_line.setPos(cam_com[0])
+                self.cam2_y_line.setPos(cam_com[1])
+                self.cam2_x_line.setVisible(True)
+                self.cam2_y_line.setVisible(True)
+
+            # Update the pointing position plots:
+            if not self.suppress_pointing_display:
+                self.cam2_x = self.addToPlot(self.cam2_x, self.cam2_x_plot, cam_com[0],
+                                             maxSize=int(self.le_num_points.text()))
+                self.cam2_y = self.addToPlot(self.cam2_y, self.cam2_y_plot, cam_com[1],
+                                             maxSize=int(self.le_num_points.text()))
+                self.update_gui_std(2)
+        return
+
+    def convert_img(self, img):
+        pass
+        return
+
+    @pyqtSlot()
+    def update_cam2_settings(self):
+        """
+        This function updates the camera settings on camera thread 2. Including selecting the camera on thread 2.
+        """
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            # Grab inputs from the GUI
+            cam2_exp_time = float(self.le_cam2_exp_time.text())
+            cam2_gain = float(self.le_cam2_gain.text())
+            cam2_threshold = float(self.le_cam2_threshold.text())
+            self.UpdateManager.request_set_camera_threshold_signal.emit(2, cam2_threshold)
+
+            # Apply all updates:
+            if self.cam2 is None: # first time this function is called only.
+                # Instantiate a camera object as cam1.
+                key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
+                if 'fly' in key:
+                    self.cam2 = BlackflyS(self.cam_init_dict[key])
+                    if self.cam2.serial_no not in str(self.cam_init_dict[key]):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                elif "Mightex" in key:
+                    if self.mightex_engine is None:
+                        self.mightex_engine = MightexEngine()
+                    self.cam2 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                # move camera 2 object to camera 2 thread
+                self.cam2.moveToThread(self.cam2_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(2)
+                # Apply the settings directly before starting thread and thread event loop
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam2.set_gain(cam2_gain)
+                self.cam2.set_exposure_time(cam2_exp_time)
+                # Start the threads event loop
+                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
+                self.cam2_thread.start(priority=4)
+                # Setup camera view.
+                self.cam2_reset = True
+                self.resetHist(self.gv_camera2)
+                # start the infinite event loop around acquiring images:
+                self.cam2.capture_img_signal.emit()
+            else:  # Update settings once cam1 exists and cam1_thread is running
+                key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
+                if self.cam2.serial_no not in str(self.cam_init_dict[key]):
+                    # User wants to change the camera on cam2_thread. So, do that.
+                    self.cam2.close_signal.emit(False) # False flag does not close the thread.
+                    self.cam2_to_connect = key
+                    self.cam2_settings_to_set = {'exposure': cam2_exp_time, 'gain': cam2_gain}
+                    return
+                self.cam2.exposure_set_signal.emit(cam2_exp_time)
+                self.cam2.gain_set_signal.emit(cam2_gain)
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            # TODO: Update this correctly for the Boson
+            """cam1_index = int(self.cb_cam1.currentIndex())
+            self.cam1_threshold = float(self.le_cam1_threshold.text())
+            self.cam_list[cam1_index].update_frame()
+            self.cam1_reset = True
+            self.resetHist(self.gv_camera1, max=65536)"""
+            pass
+        else:
+            print("Choose a Point Lock system first!")
+        return
+
+    @pyqtSlot()
+    def update_motors(self):
+        """
+        Tell the update manager to connect the motors.
+        """
+        if self.cb_motors_1.currentData(0) != self.cb_motors_2.currentData(0):
+            # Garrison Updated to add "0" insideself.cb_motors_1.currentData(0)
+            if "MDT693B" in self.cb_motors_1.currentData(0):
+                self.UpdateManager.request_connect_motor_signal(1, str(self.cb_motors_1.currentData(0)[2:15]))
+            else:
+                self.UpdateManager.request_connect_motor_signal(1, str(self.cb_motors_1.currentData(0)))
+            if "MDT693B" in self.cb_motors_2.currentData(0):
+                self.UpdateManager.request_connect_motor_signal(2, str(self.cb_motors_2.currentData(0)[2:15]))
+            else:
+                self.UpdateManager.request_connect_motor_signal(2, str(self.cb_motors_2.currentData(0)))
+        return
+
+    @pyqtSlot()
+    def clear_pointing_plots(self):
+        """
+        Empty the pointing plots data.
+        """
+        self.cam1_x = np.array([])
+        self.cam1_y = np.array([])
+        self.cam2_x = np.array([])
+        self.cam2_y = np.array([])
+        return
+
+    @pyqtSlot()
+    def begin_calibration(self):
+        """
+        Begin calibration. Update GUI and tell Update Manager to calibrate.
+        """
+        self.ROICam1_Unlock.setVisible(False)
+        self.ROICam2_Unlock.setVisible(False)
+        self.ROICam1_Lock.setVisible(False)
+        self.ROICam2_Lock.setVisible(False)
+        self.UpdateManager.request_calibrate_signal.emit()
+        return
+
+    @pyqtSlot()
+    def lock_pointing(self):
+        """
+        Begin to lock the pointing. Update the GUI and tell UpdateManager to lock.
+        """
+        if self.btn_lock.isChecked():
+            if self.cam1_thread is not None and self.cam2_thread is not None:
+                # Start locking
+                # Update GUI
+                self.ROICam1_Unlock.setVisible(False)
+                self.ROICam2_Unlock.setVisible(False)
+                self.ROICam1_Lock.setVisible(True)
+                self.ROICam2_Lock.setVisible(True)
+                """if self.PID:
+                    # TODO: Need to implement this.
+                    self.UpdateManager._integral_ti = np.zeros(4)
+                    if not UpdateManager.P == self.PID['P']:
+                        UpdateManager.P = self.PID['P']
+                    if not UpdateManager.TI == self.PID['Ti']:
+                        UpdateManager.TI = self.PID['Ti']
+                    if not UpdateManager.TD == self.PID['Td']:
+                        UpdateManager.TD = self.PID['Td']"""
+                # Tell UpdateManager to lock.
+                self.UpdateManager.request_toggle_lock_signal.emit(True)
+            else:
+                self.btn_lock.toggle()
+        else:
+            # Update GUI
+            self.ROICam1_Lock.setVisible(False)
+            self.ROICam2_Lock.setVisible(False)
+            self.ROICam1_Unlock.setVisible(True)
+            self.ROICam2_Unlock.setVisible(True)
+        return
+
+    @pyqtSlot()
+    def define_home(self):
+        """
+        Capture current pointing position and define it as home position. Save it accordingly.
+        """
+        if self.cam1_thread is not None and self.cam2_thread is not None:
+            self.set_cam1_x = self.cam1_x[-1]
+            self.set_cam1_y = self.cam1_y[-1]
+            self.set_cam2_x = self.cam2_x[-1]
+            self.set_cam2_y = self.cam2_y[-1]
+            print('Set cam 1 x', self.set_cam1_x)
+            print('Set cam 1 y', self.set_cam1_y)
+            print('Set cam 2 x', self.set_cam2_x)
+            print('Set cam 2 y', self.set_cam2_y)
+            HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
+            self.UpdateManager.request_set_home_signal.emit(HomePosition)
+            self.set_home_marker()
+            if int(self.cb_SystemSelection.currentIndex()) == 1:
+                np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
+                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
+                np.savetxt(filename, HomePosition, fmt='%f')
+            elif int(self.cb_SystemSelection.currentIndex()) == 2:
+                np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
+                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
+                np.savetxt(filename, HomePosition, fmt='%f')
+            try:
+                self.ROICam1_Unlock.setVisible(False)
+                self.ROICam2_Unlock.setVisible(False)
+                self.ROICam1_Lock.setVisible(False)
+                self.ROICam2_Lock.setVisible(False)
+            except:
+                pass
+        return
+
+    @pyqtSlot()
+    def load_home(self):
+        """
+        Open a dialogue box for the user to select a home position to load.
+        TODO: make this use Qt and not TK!
+        """
+        root = tk.Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename()
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            HomePosition = np.loadtxt(file_path, dtype=float)
+            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
+        self.UpdateManager.request_set_home_signal.emit(np.asarray(HomePosition))
+        self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+        self.set_home_marker()
+        print("Set Positions:", HomePosition)
+        try:
+            self.ROICam1_Unlock.setVisible(False)
+            self.ROICam2_Unlock.setVisible(False)
+            self.ROICam1_Lock.setVisible(False)
+            self.ROICam2_Lock.setVisible(False)
+        except:
+            pass
+        return
+
+    def set_home_marker(self):
+        """
+        Set the home marker on the image displays.
+        """
+        pen = pg.mkPen(color=(255, 0, 0), width=2)
+        # Update the ROI Circles on the camera view with the new set points.
+        if self.ROICam1_Unlock is not None:
+            # Remove the old one and delete the old one.
+            self.gv_camera1.removeItem(self.ROICam1_Unlock)
+            del self.ROICam1_Unlock
+        # Make the updated ROI's for unlock display
+        self.ROICam1_Unlock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
+                                      movable=False, rotatable=False, resizable=False, pen=pen)
+
+        if self.ROICam2_Unlock is not None:
+            # Remove the old one and delete the old one.
+            self.gv_camera2.getView().removeItem(self.ROICam2_Unlock)
+            del self.ROICam2_Unlock
+        # Make the updated ROI's for unlock display
+        self.ROICam2_Unlock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
+                                      movable=False, rotatable=False, resizable=False, pen=pen)
+        # Add the updated ROIS to the camera view items.
+        self.gv_camera1.addItem(self.ROICam1_Unlock)
+        self.gv_camera2.getView().addItem(self.ROICam2_Unlock)
+        pen = pg.mkPen(color=(0, 255, 0), width=2)
+        if self.ROICam1_Lock is not None:
+            # Remove the old one and delete the old one.
+            self.gv_camera1.removeItem(self.ROICam1_Lock)
+            del self.ROICam1_Lock
+        # Make updated Lock ROI.
+        self.ROICam1_Lock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
+                                    movable=False, rotatable=False, resizable=False, pen=pen)
+        if self.ROICam2_Lock is not None:
+            # Remove the old one and delete the old one.
+            self.gv_camera2.getView().removeItem(self.ROICam2_Lock)
+            del self.ROICam2_Lock
+        # Make updated Lock ROI.
+        self.ROICam2_Lock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
+                                    movable=False, rotatable=False, resizable=False, pen=pen)
+        # Add the updated Lock icons to the camera views
+        self.gv_camera1.addItem(self.ROICam1_Lock)
+        self.gv_camera2.getView().addItem(self.ROICam2_Lock)
+
+        # Update the COM line plots to show the target position as an infinite line item.
+        if self.cam1_x_set_line is None:
+            self.cam1_x_set_line = self.cam1_x_PlotItem.addLine(y=self.set_cam1_x)
+        else:
+            self.cam1_x_set_line.setValue(self.set_cam1_x)
+        if self.cam1_y_set_line is None:
+            self.cam1_y_set_line = self.cam1_y_PlotItem.addLine(y=self.set_cam1_y)
+        else:
+            self.cam1_y_set_line.setValue(self.set_cam1_y)
+        if self.cam2_x_set_line is None:
+            self.cam2_x_set_line = self.cam2_x_PlotItem.addLine(y=self.set_cam2_x)
+        else:
+            self.cam2_x_set_line.setValue(self.set_cam2_x)
+        if self.cam2_y_set_line is None:
+            self.cam2_y_set_line = self.cam2_y_PlotItem.addLine(y=self.set_cam2_y)
+        else:
+            self.cam2_y_set_line.setValue(self.set_cam2_y)
+
+        # Set the visibility of the lock icon correctly
+        if not self.btn_lock.isChecked():  # Then, the program is not locking.
+            self.ROICam1_Lock.setVisible(False)
+            self.ROICam2_Lock.setVisible(False)
+            self.ROICam1_Unlock.setVisible(True)
+            self.ROICam2_Unlock.setVisible(True)
+        elif self.btn_lock.isChecked():  # Then, the program is locking.
+            self.ROICam1_Unlock.setVisible(False)
+            self.ROICam2_Unlock.setVisible(False)
+            self.ROICam1_Lock.setVisible(True)
+            self.ROICam2_Lock.setVisible(True)
+        return
+
     def service_BOSON(self, cam_index):
         """
         Handle the FFCs and NUCs of Boson.
-        #TODO: I should operate in manual still and correct this to use the right command.
+        # TODO: I should operate in manual still and correct this to use the right command.
           See the emails with FLIR, basically the command I was calling in flirpy was really giving a 0 or 1 not the 0-4
           output option
         """
@@ -1113,26 +1257,17 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         return
 
-    def release_hardware(self):
-        """
-        Release any necessary hardware.
-        """
-        try:
-            for motor in self.motor_list:
-                motor.close()
-        except NameError:
-            pass
-        return
-
     @pyqtSlot()
     def manual_close(self):
         """
-        What to do when app is closing? Release hardware, delete objects, and close threads. Anything else?
+        What to do when app is closing? Release hardware, delete objects, and close threads.
         """
         # Tell cam 1 to release capture instance and then close the thread
-        self.cam1.close_signal.emit(True)
-        # release any hardware
-        self.release_hardware()
+        self.cam1.close_signal.emit(True)  # True also kills the thread eventually.
+        self.cam2.close_signal.emit(True)
+        # Tell the UpdateManager to close down, which will close motors, their threads, and request a deletion of
+        # itself.
+        self.UpdateManager.request_close.emit()
         return
 
     @pyqtSlot()
@@ -1170,7 +1305,6 @@ class Window(QMainWindow, Ui_MainWindow):
         Generate a crop region interactive item to choose ROI for the camera.
         """
         if self.ROICam1_crop is None:
-            self.set_cam1_x, self.set_cam1_y, _, _ = self.UpdateManager.set_pos
             pen = pg.mkPen(color=(0, 0, 0), width=2)
             self.ROICam1_crop = pg.ROI(pos=(self.set_cam1_y - 100, self.set_cam1_x - 100), size=(200, 200),
                                        movable=True, rotatable=False, resizable=True, pen=pen)
@@ -1191,7 +1325,6 @@ class Window(QMainWindow, Ui_MainWindow):
         Generate a crop region interactive item to choose ROI for the camera.
         """
         if self.ROICam2_crop is None:
-            _, _, self.set_cam2_x, self.set_cam2_y = self.UpdateManager.set_pos
             pen = pg.mkPen(color=(0, 0, 0), width=2)
             self.ROICam2_crop = pg.ROI(pos=(self.set_cam2_y - 100, self.set_cam2_x - 100), size=(200, 200),
                                        movable=True, rotatable=False, resizable=True, pen=pen)
@@ -1207,58 +1340,64 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     @pyqtSlot()
-    def update_cam1_ROI_bounds(self):
+    def apply_cam1_ROI(self):
         """
-        Update the ROI Bounds on the camera. Once ROI Bounds updated signal received, the new bounds are applied.
+        Apply the ROI Bounds on the camera.
         """
         if self.cam1_ROI_set:
-            self.cam1_ROI_set = False
-            bounds = self.cam1.ROI_full_bounds
+            self.cam1.ROI_bounds_set_full_view_signal.emit()
         else:
             ymin, xmin = self.ROICam1_crop.pos()
             height, width = self.ROICam1_crop.size()
             ymax = ymin + height
             xmax = xmin + width
             bounds = [xmin, xmax, ymin, ymax]
-        self.cam1.ROI_bounds_set_signal.emit(bounds)
+            # Both updates the bounds of the ROI and immediately applies them.
+            self.cam1.ROI_bounds_set_signal.emit(bounds)
         return
 
-    @pyqtSlot()
-    def apply_cam1_ROI(self):
+    @pyqtSlot(bool)
+    def update_cam_ROI_set(self, roi_is_set: bool, cam_num: int):
         """
-        Apply the chosen ROI in GUI to the camera.
+        Keeps up with whether an ROI on the camera is set by the user (roi_is_set = TRUE) or if the camera has
+        been set to Full View automatically (roi_is_set = False). If the User manually applies a full view ROI, then
+        this flag would still be set to True, since user has ser an ROI, eventhough it is full view ROI.
         """
-        self.cam1.apply_ROI_signal.emit()
+        if cam_num == 1:
+            self.cam1_ROI_set = roi_is_set
+        elif cam_num == 2:
+            self.cam2_ROI_set = roi_is_set
         return
 
     @pyqtSlot()
     def apply_cam2_ROI(self):
         """
-        Apply the chosen ROI in GUI to the camera.
+        Apply the ROI Bounds on the camera.
         """
         if self.cam2_ROI_set:
-            self.cam2_ROI_set = False
-            self.cam2_thread.cam.ROI_bounds = [0, 1024, 0, 1280]
+            self.cam2.ROI_bounds_set_full_view_signal.emit()
         else:
-            self.cam2_ROI_set = True
             ymin, xmin = self.ROICam2_crop.pos()
             height, width = self.ROICam2_crop.size()
             ymax = ymin + height
             xmax = xmin + width
-            self.cam2_thread.cam.ROI_bounds = [xmin, xmax, ymin, ymax]
-        self.cam2_thread.cam.apply_ROI()
+            bounds = [xmin, xmax, ymin, ymax]
+            # Both updates the bounds of the ROI and immediately applies them.
+            self.cam2.ROI_bounds_set_signal.emit(bounds)
         return
 
     @pyqtSlot()
     def update_PID(self):
-        # Update the PID settings with numbers from the GUI
+        # TODO: Do this
+        """# Update the PID settings with numbers from the GUI
         self.UpdateManager.P = float(self.le_P.text())
         self.UpdateManager.TI = float(self.le_Ti.text())
         self.UpdateManager.TD = float(self.le_Td.text())
         self.PID = {'P': self.UpdateManager.P, 'Ti': self.UpdateManager.TI, 'Td': self.UpdateManager.TD}
 
         # Update the GUI with the numbers from the UpdateManager settings
-        self.Update_GUI_PID()
+        self.Update_GUI_PID()"""
+        pass
         return
 
     @pyqtSlot()
@@ -1292,7 +1431,7 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     @pyqtSlot(bool)
-    def load_state(self, triggered, method = 'User_selected_file'):
+    def load_state(self, triggered, method='User_selected_file'):
         """
         Load the GUI settings saved by save_state.
         """
@@ -1303,7 +1442,7 @@ class Window(QMainWindow, Ui_MainWindow):
         else:
             method = 'User_selected_file'
         if method == 'User_selected_file':
-            # Stop using tk.
+            # TODO: Stop using tk.
             print('open dialogue')
             root = tk.Tk()
             root.withdraw()
@@ -1345,16 +1484,18 @@ class Window(QMainWindow, Ui_MainWindow):
             key = str(self.list_unlock_report.currentItem().text())
             self.user_selected_unlock_report = True
         self.label_unlock_report.setText(str(key) + "------------"
-                                       + "number of successive out of bounds"
-                                         " updates with less than 60 seconds "
-                                         "between updates is " + str(
+                                         + "Intiially unlocked at " + str(
+            self.Unlocked_report[key]["first unlocked at "])
+                                         + "number of successive out of bounds"
+                                           " updates with less than 60 seconds "
+                                           "between updates is " + str(
             self.Unlocked_report[key]["number of successive out of bounds"
-                                 " updates with less than 60 seconds "
-                                 "between updates"]) + "Amount of time spent outside voltage "
-                                                       "range is " + str(
+                                      " updates with less than 60 seconds "
+                                      "between updates"]) + "Amount of time spent outside voltage "
+                                                            "range is " + str(
             self.Unlocked_report[key]["Amount of time spent outside voltage "
-                                 "range"]) + "Farthest dx during this round of unlock is " +
-                                       str(self.Unlocked_report[key]["Farthest dx during this round of unlock"]))
+                                      "range"]) + "Farthest dx during this round of unlock is " +
+                                         str(self.Unlocked_report[key]["Farthest dx during this round of unlock"]))
         return
 
     @pyqtSlot()
@@ -1388,6 +1529,7 @@ class Window(QMainWindow, Ui_MainWindow):
     def load_IR_state(self):
         self.load_state(method='Load_IR')
         return
+
 
 # Launch the code here!
 from PyQt5.QtWidgets import QApplication
