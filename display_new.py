@@ -369,10 +369,12 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Find available motors and populate the GUI list with them.
         """
+        num_motors = 0
         if self.ResourceManager is None:
             self.ResourceManager = visa.ResourceManager()
         # Find motors using VISA
         for dev in self.ResourceManager.list_resources():
+            num_motors += 1
             self.motor_model.appendRow(QtGui.QStandardItem(str("MDT693A?" + dev)))
         self.ResourceManager.close()
         del self.ResourceManager
@@ -381,10 +383,11 @@ class Window(QMainWindow, Ui_MainWindow):
         # Find newer mdt693b devices using Thorlabs SDK and add them to the list too
         mdt693b_dev_list = mdt.mdtListDevices()
         for dev in mdt693b_dev_list:
+            num_motors += 1
             self.motor_model.appendRow(QtGui.QStandardItem(str(dev)))
         self.cb_motors_1.setModel(self.motor_model)
         self.cb_motors_2.setModel(self.motor_model)
-        if len(self.ResourceManager.list_resources()) > 1:
+        if num_motors > 1:
             self.cb_motors_1.setCurrentIndex(0)
             self.cb_motors_2.setCurrentIndex(1)
         else:
@@ -520,36 +523,39 @@ class Window(QMainWindow, Ui_MainWindow):
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             num_cameras = 0
             # Find the Mightex cameras
-            mightex_engine = MightexEngine()
-            if len(mightex_engine.serial_no) == 0:
-                del mightex_engine
-            else:
-                for i, serial_no in enumerate(mightex_engine.serial_no):
-                    cam_key = 'Mightex: ' + str(serial_no)
-                    self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
-                    self.cam_init_dict[cam_key] = serial_no
-                    num_cameras += 1
-                del mightex_engine
+            try:
+                mightex_engine = MightexEngine()
+                if len(mightex_engine.serial_no) == 0:
+                    del mightex_engine
+                else:
+                    for i, serial_no in enumerate(mightex_engine.serial_no):
+                        cam_key = 'Mightex: ' + str(serial_no)
+                        self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
+                        self.cam_init_dict[cam_key] = serial_no
+                        num_cameras += 1
+                    del mightex_engine
+            except UnicodeError:
+                # TODO: Mightex Engine is having problems decoding returned S/N. Debug.
+                pass
             # Find blackfly s cameras
             try:
                 c = BlackflyS(0)
+                num_cameras += 1
                 cam_key = 'blackfly s: ' + c.serial_no
                 self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
                 self.cam_init_dict[cam_key] = 0
                 c.close()
                 del c
-                num_cameras += 1
             except:
-                # Well no camera at index 0
                 pass
             try:
                 c = BlackflyS(1)
+                num_cameras += 1
                 cam_key = 'blackfly s: ' + c.serial_no
                 self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
                 self.cam_init_dict[cam_key] = 1
                 c.close()
                 del c
-                num_cameras +=1
             except:
                 # Well no camera at index 1.
                 pass
@@ -703,6 +709,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                if self.cam1_thread is None:
+                    self.cam1_thread = QThread()
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
@@ -749,8 +757,8 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
             self.cam1.r0_updated_signal.connect(self.set_cam1_r0)
             self.cam1.cap_released_signal.connect(self.cam1_thread.quit)
-            self.cam1.destroyed.connect(self.reconnect_cameras)
-            self.cam1.destroyed.connect(lambda: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
+            self.cam1.destroyed.connect(lambda args: self.reconnect_cameras)
+            self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
         elif cam_number == 2:
             self.cam2.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(2, r0))
@@ -760,8 +768,8 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam2.ROI_bounds_updated_signal.connect(self.apply_cam2_ROI)
             self.cam2.r0_updated_signal.connect(self.set_cam2_r0)
             self.cam2.cap_released_signal.connect(self.cam2_thread.quit)
-            self.cam2.destroyed.connect(self.reconnect_cameras)
-            self.cam2.destroyed.connect(lambda: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
+            self.cam2.destroyed.connect(lambda args: self.reconnect_cameras)
+            self.cam2.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
         return
 
@@ -941,6 +949,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                if self.cam2_thread is None:
+                    self.cam2_thread = QThread()
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
@@ -1262,9 +1272,11 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         What to do when app is closing? Release hardware, delete objects, and close threads.
         """
-        # Tell cam 1 to release capture instance and then close the thread
-        self.cam1.close_signal.emit(True)  # True also kills the thread eventually.
-        self.cam2.close_signal.emit(True)
+        # Tell cameras to release capture instance and then close the thread
+        if self.cam1 is not None:
+            self.cam1.close_signal.emit(True)  # True also kills the thread eventually.
+        if self.cam2 is not None:
+            self.cam2.close_signal.emit(True)
         # Tell the UpdateManager to close down, which will close motors, their threads, and request a deletion of
         # itself.
         self.UpdateManager.request_close.emit()

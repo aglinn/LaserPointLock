@@ -57,46 +57,11 @@ class UpdateManager(QObject):
     # TODO: Handle back log of COM captured instead of overwriting, including allowing averaging over multiple images.
 
     def __init__(self):
-        self.calibration_matrix = None
-        self.set_pos = None
-        self.dV = None
-        self.update_voltage = None
-        self.cam_1_com = None
-        self.cam_2_com = None
-        self.cam_1_img = None
-        self.cam_2_img = None
-        self.img1_X_mesh = np.zeros([2, 2])
-        self.img1_Y_mesh = np.zeros([2, 2])
-        self.img2_X_mesh = np.zeros([2, 2])
-        self.img2_Y_mesh = np.zeros([2, 2])
-        self._dx = []
-        self.V0 = None
-        self._t1 = []
-        self._t2 = []
-        self._frequency_domain = None
-        self._update_GUI_images_every_n_images = 20
-        # self._cam1_com_count = self._update_GUI_images_every_n_images
-        # self._cam2_com_count = self._update_GUI_images_every_n_images
-        self._cam1_img_count = self._update_GUI_images_every_n_images
-        self._cam2_img_count = self._update_GUI_images_every_n_images
-        self.img1_threshold = 0
-        self.img2_threshold = 0
-        # connect signals
-        self.connect_signals()
+        # Init QObject
+        super().__init__()
         # These flags become true once com's come in post motors being updated.
         self._cam1_com_updated = False
         self._cam2_com_updated = False
-        self._r0 = np.ndarray([0, 0, 0, 0])
-        # Initialize Threading variables:
-        self.motor1_thread = None
-        self.motor2_thread = None
-        self.motor1 = None
-        self.motor2 = None
-        self.motor1_to_connect = None
-        self.motor2_to_connect = None
-        self.num_attempts_close_motor1 = 0
-        self.num_attempts_close_motor2 = 0
-        self.ResourceManager = None # Only used for old MDT693A piezo controllers.
         # Initialize parameters for confirming piezzo updates are applied
         """
         Any time a voltage set is called, the motor and channel number is set false along with motors_updated flag. Once 
@@ -116,8 +81,42 @@ class UpdateManager(QObject):
         self._locking = False
         self._force_unlock = False
         self.max_time_allowed_unlocked = 120  # s
-        # Flag alignment mode: Not implemented yet
-        # self._aligning = False
+        self.calibration_matrix = None
+        self.set_pos = None
+        self.dV = None
+        self.update_voltage = None
+        self._cam_1_com = None
+        self._cam_2_com = None
+        self._cam_1_img = None
+        self._cam_2_img = None
+        self.img1_X_mesh = np.zeros([2, 2])
+        self.img1_Y_mesh = np.zeros([2, 2])
+        self.img2_X_mesh = np.zeros([2, 2])
+        self.img2_Y_mesh = np.zeros([2, 2])
+        self._dx = []
+        self.V0 = None
+        self._t1 = []
+        self._t2 = []
+        self._frequency_domain = None
+        self._update_GUI_images_every_n_images = 20
+        # self._cam1_com_count = self._update_GUI_images_every_n_images
+        # self._cam2_com_count = self._update_GUI_images_every_n_images
+        self._cam1_img_count = self._update_GUI_images_every_n_images
+        self._cam2_img_count = self._update_GUI_images_every_n_images
+        self.img1_threshold = 0
+        self.img2_threshold = 0
+        # connect signals
+        self.connect_signals()
+        # Initialize Threading variables:
+        self.motor1_thread = None
+        self.motor2_thread = None
+        self.motor1 = None
+        self.motor2 = None
+        self.motor1_to_connect = None
+        self.motor2_to_connect = None
+        self.num_attempts_close_motor1 = 0
+        self.num_attempts_close_motor2 = 0
+        self.ResourceManager = None  # Only used for old MDT693A piezo controllers.
         self.com_found_signal_handler = None
         # params for tracking unlock status
         self.lock_time_start = None
@@ -158,6 +157,7 @@ class UpdateManager(QObject):
         self.starting_v = 75.0 * np.ones(4)
         # Start off the calibration process with voltages at first step
         self.starting_v[0] = self.calibration_voltages[0]
+        self._r0 = np.array([0, 0, 0, 0])
         return
 
     def connect_signals(self):
@@ -185,7 +185,7 @@ class UpdateManager(QObject):
         Connect  all motor signals emitted to appropraite update manager slots and emit update gui signals.
         """
         if motor_number == 1:
-            self.motor1.destroyed.connect(lambda: self.reconnect_motor(1))
+            self.motor1.destroyed.connect(lambda args: self.reconnect_motor(1))
             self.motor1.close_complete_signal.connect(self.accept_motor_close)
             self.motor1.close_fail_signal.connect(self.close_motor_again)
             # ch1 related signals
@@ -213,7 +213,7 @@ class UpdateManager(QObject):
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
         elif motor_number == 2:
-            self.motor2.destroyed.connect(lambda: self.reconnect_motor(2))
+            self.motor2.destroyed.connect(lambda args: self.reconnect_motor(2))
             self.motor2.close_complete_signal.connect(self.accept_motor_close)
             self.motor2.close_fail_signal.connect(self.close_motor_again)
             # ch1 related signals
@@ -1532,7 +1532,6 @@ class UpdateManager(QObject):
         """
         Calculate the standard deviation the dx vector.
         """
-
         return np.nanstd(self.dx, axis=0)
 
     # Camera related properties and methods.
@@ -1561,8 +1560,11 @@ class UpdateManager(QObject):
         """
         img from camera 1. Also inform threads that new img is received.
         """
+        # Threshold the image.
+        if self.img1_threshold != 0:
+            img[img < self.img1_threshold] = 0
         self._cam_1_img = img
-        self.img_received_signal.emit(1)
+        self.cam_img_received_signal.emit(1)
         if self._cam1_img_count >= self._update_GUI_images_every_n_images:
             self.update_gui_img_signal.emit(1, img)
             self._cam1_img_count = 0
@@ -1578,8 +1580,6 @@ class UpdateManager(QObject):
         """
         if cam_number == 1:
             if not np.sum(self.cam_1_img) == 0:
-                # Threshold the image.
-                self.cam_1_img[self.cam_1_img < self.img1_threshold] = 0
                 # Enforce that the meshes for calculating COM have the correct shape!
                 if self.img1_X_mesh.shape[0] != self.cam_1_img.shape[0] or \
                         self.img1_X_mesh.shape[1] != self.cam_1_img.shape[1]:
@@ -1614,8 +1614,6 @@ class UpdateManager(QObject):
                     self._cam1_com_count += 1"""
         elif cam_number == 2:
             if not np.sum(self.cam_2_img) == 0:
-                # Threshold the image.
-                self.cam_2_img[self.cam_2_img < self.img2_threshold] = 0
                 # Enforce that the meshes for calculating COM have the correct shape!
                 if self.img2_X_mesh.shape[0] != self.cam_2_img.shape[0] or \
                         self.img2_X_mesh.shape[1] != self.cam_2_img.shape[1]:
@@ -1653,7 +1651,7 @@ class UpdateManager(QObject):
         self.num_cams_connected += increment_num_cameras
         if self.num_cams_connected < 0:
             raise Exception("Somehow Update Manager now believes there are - cameras connected?")
-        elif self.num_cams_connected > 0:
+        elif self.num_cams_connected > 2:
             raise Exception("Somehow Update Manager now believes there are >2 cameras connected?")
         return
 
@@ -1666,8 +1664,11 @@ class UpdateManager(QObject):
         """
         img from camera 2. Also inform threads that new img is received.
         """
+        # Threshold the image.
+        if self.img2_threshold != 0:
+            img[img < self.img2_threshold] = 0
         self._cam_2_img = img
-        self.img_received_signal.emit(2)
+        self.cam_img_received_signal.emit(2)
         if self._cam2_img_count >= self._update_GUI_images_every_n_images:
             self.update_gui_img_signal.emit(2, img)
             self._cam2_img_count = 0

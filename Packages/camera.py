@@ -1406,10 +1406,10 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.exposure_set_signal.connect(self.set_exposure_time)
         self.gain_set_signal.connect(self.set_gain)
         self.close_signal.connect(self.stop_capturing)
-        self.ROI_bounds_updated_signal.connect(self.apply_ROI_signal) # If new ROI region set, apply it immediately.
+        self.ROI_bounds_updated_signal.connect(self.apply_ROI_signal)  # If new ROI region set, apply it immediately.
         self.ROI_bounds_set_signal.connect(lambda v: setattr(self, 'ROI_bounds', v))
         self.release_cap_signal.connect(self.close)
-        self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view())
+        self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
         return
 
     def update_frame(self):
