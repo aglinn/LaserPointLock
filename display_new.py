@@ -12,7 +12,11 @@
 # TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
 #  parallel.
 # TODO: I need to make sure that the older piezzo controllers still work with this code!
-# TODO: Delete the align toggle button! 
+# TODO: Delete the align toggle button!
+# TODO: Applying an ROI to the cameras fails.
+# TODO: Connecting 2 cameras is failing, although connecting either camera in either camera view works fine. I do not
+# think that I am simply overloading the GUI event loop, because suppressing image display does not update COM plots
+# correctly??
 from PyQt5.QtWidgets import QMainWindow
 from Packages.pointing_ui import Ui_MainWindow
 
@@ -245,7 +249,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.btn_cam2_apply_ROI.clicked.connect(self.apply_cam2_ROI)
         self.list_unlock_report.clicked.connect(self.display_unlock_report)
         self.cb_suppress_image_update.clicked.connect(self.toggle_img_display)
-        self.cb_suppress_pointing_updat.clicked.connect(self.toggle_img_display)
+        self.cb_suppress_pointing_updat.clicked.connect(self.toggle_pointing_display)
         return
 
     def connect_UpdateManager_signals(self):
@@ -763,10 +767,10 @@ class Window(QMainWindow, Ui_MainWindow):
         elif cam_number == 2:
             self.cam2.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(2, r0))
             self.cam2.img_captured_signal.connect(lambda img: setattr(self.UpdateManager, 'cam_2_img', img))
-            self.cam2.exposure_updated_signal.connect(lambda exp: self.update_cam2_exposure(2, exp))
-            self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam2_gain(2, gain))
+            self.cam2.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(2, exp))
+            self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam_gain(2, gain))
             self.cam2.ROI_bounds_updated_signal.connect(self.apply_cam2_ROI)
-            self.cam2.r0_updated_signal.connect(lambda r0: self.set_cam2_r0(2, r0))
+            self.cam2.r0_updated_signal.connect(lambda r0: self.set_cam_r0(2, r0))
             self.cam2.cap_released_signal.connect(self.cam2_thread.quit)
             self.cam2.destroyed.connect(lambda args: self.reconnect_cameras)
             self.cam2.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
@@ -1006,13 +1010,13 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.cb_motors_1.currentData(0) != self.cb_motors_2.currentData(0):
             # Garrison Updated to add "0" insideself.cb_motors_1.currentData(0)
             if "MDT693B" in self.cb_motors_1.currentData(0):
-                self.UpdateManager.request_connect_motor_signal(1, str(self.cb_motors_1.currentData(0)[2:15]))
+                self.UpdateManager.request_connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)[2:15]))
             else:
-                self.UpdateManager.request_connect_motor_signal(1, str(self.cb_motors_1.currentData(0)))
+                self.UpdateManager.request_connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
             if "MDT693B" in self.cb_motors_2.currentData(0):
-                self.UpdateManager.request_connect_motor_signal(2, str(self.cb_motors_2.currentData(0)[2:15]))
+                self.UpdateManager.request_connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)[2:15]))
             else:
-                self.UpdateManager.request_connect_motor_signal(2, str(self.cb_motors_2.currentData(0)))
+                self.UpdateManager.request_connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
         return
 
     @pyqtSlot()
