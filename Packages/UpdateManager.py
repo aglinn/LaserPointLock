@@ -1576,7 +1576,6 @@ class UpdateManager(QObject):
         """
         if cam_number == 1:
             if not np.sum(self.cam_1_img) == 0:
-                print("processing a non-zero image from camera 1")
                 # Enforce that the meshes for calculating COM have the correct shape!
                 if self.img1_X_mesh.shape[0] != self.cam_1_img.shape[0] or \
                         self.img1_X_mesh.shape[1] != self.cam_1_img.shape[1]:
@@ -1663,6 +1662,7 @@ class UpdateManager(QObject):
         img from camera 2. Also inform threads that new img is received.
         """
         # Threshold the image.
+        print("Received an image from camera 2.")
         if self.img2_threshold != 0:
             img[img < self.img2_threshold] = 0
         self._cam_2_img = img
