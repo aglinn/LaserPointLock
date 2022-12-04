@@ -711,15 +711,19 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(int)
     def reconnect_cameras(self, cam_number: int):
-        print("Reconnect cameras is in fact being called!")
+        """
+        Reconnect cameras. This function is called when changing a camera on a particular thread. So, if the user
+        updates camera settings, including the camera selected, then this is called.
+        This function connects a new camera and updates its settings according to user selected settings.
+        # TODO: Known bug! This function was designed to be called on cam_object deletion, but it is not being called at
+            that time. Instead, the user needs to hit update again, and the try/except statements call this. This does
+            allow the user to do the desired camera swap, but requires a second attempt—buggy.
+        """
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             if cam_number == 1:
-                print("Reconnecting camera 1 visible system.")
                 key = self.cam1_to_connect
                 if 'fly' in key:
-                    print("Reconnecting blackfly camera.")
                     self.cam1 = BlackflyS(self.cam_init_dict[key])
-                    print("blackfly camera reconnected.")
                     if self.cam1.serial_no not in str(self.cam_init_dict[key]):
                         print("Somehow the camera initialized does not have the anticipated serial number.")
                 elif "Mightex" in key:
