@@ -613,10 +613,6 @@ class UpdateManager(QObject):
                 self.motor1.moveToThread(self.motor1_thread)
                 # Reset motor1_to_connect to None, because it is being connected now.
                 self.motor1_to_connect = None
-            else:
-                # If motor 1 was deleted and there is not a new motor to be connected, then I assume it is time to quit
-                # the thread.
-                self.motor1_thread.quit()
         elif motor_number == 2:
             if self.motor2_to_connect is not None:
                 # Instantiate a motor
@@ -631,10 +627,6 @@ class UpdateManager(QObject):
                 self.motor2.moveToThread(self.motor2_thread)
                 # Reset motor2_to_connect to None, because it is being connected now.
                 self.motor2_to_connect = None
-            else:
-                # If motor 1 was deleted and there is not a new motor to be connected, then I assume it is time to quit
-                # the thread.
-                self.motor2_thread.quit()
         return
 
     @pyqtSlot(int, int, float)
@@ -1824,11 +1816,33 @@ class UpdateManager(QObject):
     @pyqtSlot()
     def close(self):
         """
-        Request to close down the UpdateManager: Requires, deleting motors, stopping motor threads, and deleting myself.
+        Request to close down the UpdateManager: Requires, deleting motors and stopping and deleting motor threads
         """
         # Quit motor threads.
-        self.motor1_thread.quit()
-        self.motor2_thread.quit()
+        if self.motor1_thread is not None:
+            self.motor1_thread.quit()
+        if self.motor2_thread is not None:
+            self.motor2_thread.quit()
+        # Wait for threads to return
+        if self.motor1_thread is not None:
+            self.motor1_thread.wait()
+        if self.motor2_thread is not None:
+            self.motor2_thread.wait()
+
+        # Motor threads are not running. Nothing directly calls the motors, thus nothing will simultaneously be
+        # interacting with my motor objects. So, I can call them directly. No race concerns.
+
+        # Close any motor objects
+        if self.motor1 is not None:
+            self.motor1._app_closing = True
+            self.motor1.close()
+            del self.motor1
+            del self.motor1_thread
+        if self.motor2 is not None:
+            self.motor2._app_closing = True
+            self.motor2.close()
+            del self.motor2
+            del self.motor2_thread
         return
 
 

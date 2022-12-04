@@ -1373,7 +1373,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     ROI_bounds_set_signal = pyqtSignal(list)
     ROI_bounds_updated_signal = pyqtSignal()
     release_cap_signal = pyqtSignal()
-    cap_released_signal = pyqtSignal()
     r0_updated_signal = pyqtSignal(np.ndarray)
     ROI_bounds_set_full_view_signal = pyqtSignal()
 
@@ -1683,10 +1682,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot()
     def close(self):
         self.cap.release()
-        if self._app_closing:
-            self.cap_released.emit()
-            self.deleteLater()
-        else:
+        if not self._app_closing:
             # So far only calling like this to disconnect the camera in an effort to reconnect another. So, delete this
             # object, but do not delete the thread, which is what emitting cap_released signal does.
             self.deleteLater()

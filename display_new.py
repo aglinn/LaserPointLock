@@ -686,72 +686,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.update_gui_after_system_chosen()
         return
 
-    @pyqtSlot()
-    def update_cam1_settings(self):
-        """
-        This function updates the camera settings on camera thread 1. Including selecting the camera on thread 1.
-        """
-        if int(self.cb_SystemSelection.currentIndex()) == 1:
-            # Grab inputs from the GUI
-            cam1_exp_time = float(self.le_cam1_exp_time.text())
-            cam1_gain = float(self.le_cam1_gain.text())
-            cam1_threshold = float(self.le_cam1_threshold.text())
-            self.UpdateManager.request_set_camera_threshold_signal.emit(1, cam1_threshold)
-
-            # Apply all updates:
-            if self.cam1 is None: # first time this function is called only.
-                # Instantiate a camera object as cam1.
-                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
-                if 'fly' in key:
-                    self.cam1 = BlackflyS(self.cam_init_dict[key])
-                    if self.cam1.serial_no not in str(self.cam_init_dict[key]):
-                        print("Somehow the camera initialized does not have the anticipated serial number.")
-                elif "Mightex" in key:
-                    if self.mightex_engine is None:
-                        self.mightex_engine = MightexEngine()
-                    self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
-                else:
-                    raise NotImplemented('Choose a supported camera type.')
-                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
-                if self.cam1_thread is None:
-                    self.cam1_thread = QThread()
-                # move camera 1 object to camera 1 thread
-                self.cam1.moveToThread(self.cam1_thread)
-                # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.connect_camera_signals(1)
-                # Apply the settings directly before starting thread and thread event loop
-                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam1.set_gain(cam1_gain)
-                self.cam1.set_exposure_time(cam1_exp_time)
-                # Start the threads event loop
-                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
-                self.cam1_thread.start(priority=4)
-                # Setup camera view.
-                self.cam1_reset = True
-                self.resetHist(self.gv_camera1)
-                # start the infinite event loop around acquiring images:
-                self.cam1.capture_img_signal.emit()
-            else:  # Update settings once cam1 exists and cam1_thread is running
-                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
-                if self.cam1.serial_no not in str(self.cam_init_dict[key]):
-                    # User wants to change the camera on cam1_thread. So, do that.
-                    self.cam1.close_signal.emit(False) # False flag does not close the thread.
-                    self.cam1_to_connect = key
-                    self.cam1_settings_to_set = {'exposure': cam1_exp_time, 'gain': cam1_gain}
-                    return
-                self.cam1.exposure_set_signal.emit(cam1_exp_time)
-                self.cam1.gain_set_signal.emit(cam1_gain)
-        elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            # TODO: Update this correctly for the Boson
-            """cam1_index = int(self.cb_cam1.currentIndex())
-            self.cam1_threshold = float(self.le_cam1_threshold.text())
-            self.cam_list[cam1_index].update_frame()
-            self.cam1_reset = True
-            self.resetHist(self.gv_camera1, max=65536)"""
-            pass
-        else:
-            print("Choose a Point Lock system first!")
-
     def connect_camera_signals(self, cam_number: int):
         if cam_number == 1:
             self.cam1.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(1, r0))
@@ -760,8 +694,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.gain_updated_signal.connect(lambda gain: self.update_cam_gain(1, gain))
             self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
             self.cam1.r0_updated_signal.connect(lambda r0: self.set_cam_r0(1, r0))
-            self.cam1.cap_released_signal.connect(self.cam1_thread.quit)
-            self.cam1.destroyed.connect(lambda args: self.reconnect_cameras)
+            self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
             self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
         elif cam_number == 2:
@@ -771,8 +704,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam_gain(2, gain))
             self.cam2.ROI_bounds_updated_signal.connect(self.apply_cam2_ROI)
             self.cam2.r0_updated_signal.connect(lambda r0: self.set_cam_r0(2, r0))
-            self.cam2.cap_released_signal.connect(self.cam2_thread.quit)
-            self.cam2.destroyed.connect(lambda args: self.reconnect_cameras)
+            self.cam2.destroyed.connect(lambda args: self.reconnect_cameras(2))
             self.cam2.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
         return
@@ -933,6 +865,73 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def convert_img(self, img):
         pass
+        return
+
+    @pyqtSlot()
+    def update_cam1_settings(self):
+        """
+        This function updates the camera settings on camera thread 1. Including selecting the camera on thread 1.
+        """
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            # Grab inputs from the GUI
+            cam1_exp_time = float(self.le_cam1_exp_time.text())
+            cam1_gain = float(self.le_cam1_gain.text())
+            cam1_threshold = float(self.le_cam1_threshold.text())
+            self.UpdateManager.request_set_camera_threshold_signal.emit(1, cam1_threshold)
+
+            # Apply all updates:
+            if self.cam1 is None:  # first time this function is called only.
+                # Instantiate a camera object as cam1.
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                if 'fly' in key:
+                    self.cam1 = BlackflyS(self.cam_init_dict[key])
+                    if self.cam1.serial_no not in str(self.cam_init_dict[key]):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                elif "Mightex" in key:
+                    if self.mightex_engine is None:
+                        self.mightex_engine = MightexEngine()
+                    self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                if self.cam1_thread is None:
+                    self.cam1_thread = QThread()
+                # move camera 1 object to camera 1 thread
+                self.cam1.moveToThread(self.cam1_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(1)
+                # Apply the settings directly before starting thread and thread event loop
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam1.set_gain(cam1_gain)
+                self.cam1.set_exposure_time(cam1_exp_time)
+                # Start the threads event loop
+                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
+                self.cam1_thread.start(priority=4)
+                # Setup camera view.
+                self.cam1_reset = True
+                self.resetHist(self.gv_camera1)
+                # start the infinite event loop around acquiring images:
+                self.cam1.capture_img_signal.emit()
+            else:  # Update settings once cam1 exists and cam1_thread is running
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                if self.cam1.serial_no not in str(self.cam_init_dict[key]):
+                    # User wants to change the camera on cam1_thread. So, do that.
+                    self.cam1.close_signal.emit(False)  # False flag does not close the thread.
+                    self.cam1_to_connect = key
+                    self.cam1_settings_to_set = {'exposure': cam1_exp_time, 'gain': cam1_gain}
+                    return
+                self.cam1.exposure_set_signal.emit(cam1_exp_time)
+                self.cam1.gain_set_signal.emit(cam1_gain)
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            # TODO: Update this correctly for the Boson
+            """cam1_index = int(self.cb_cam1.currentIndex())
+            self.cam1_threshold = float(self.le_cam1_threshold.text())
+            self.cam_list[cam1_index].update_frame()
+            self.cam1_reset = True
+            self.resetHist(self.gv_camera1, max=65536)"""
+            pass
+        else:
+            print("Choose a Point Lock system first!")
         return
 
     @pyqtSlot()
@@ -1283,16 +1282,47 @@ class Window(QMainWindow, Ui_MainWindow):
     @pyqtSlot()
     def manual_close(self):
         """
-        What to do when app is closing? Release hardware, delete objects, and close threads.
+        What to do when app is closing? Release hardware, delete objects, and close threads. Need to write this function
+        to not require returning to the GUI Event loop to complete closing. Want everything to happen in this slot!
         """
-        # Tell cameras to release capture instance and then close the thread
+        # Tell camera threads to quit
+        if self.cam1_thread is not None:
+            self.cam1_thread.quit()
+        if self.cam2_thread is not None:
+            self.cam2_thread.quit()
+
+        # Tell the UpdateManager Thread to quit. Nothing else ever tells this thread/object to close. So, they exist!
+        self.UpdateManager_thread.quit()
+        # Wait on all threads to return.
+        if self.cam1_thread is not None:
+            self.cam1_thread.wait()
+        if self.cam2_thread is not None:
+            self.cam2_thread.wait()
+        self.UpdateManager_thread.wait()
+
+        # Close Update Manager now, because this function stops and destroys motor threads and destroys motors.
+        # BUT Does NOT delete UpdateManager.
+        self.UpdateManager.close()
+
+        # All but this (GUI/main) thread are now closed—no event loops running. Therefore, direct calls to QObjects are
+        # thread safe, because, only this thread is running, i.e. no race conditions.
+
+        # Close and delete cameras. Delete camera threads:
         if self.cam1 is not None:
-            self.cam1.close_signal.emit(True)  # True also kills the thread eventually.
+            self.cam1._app_closing = True
+            self.cam1.close()
+            del self.cam1
+        if self.cam1_thread is not None:
+            del self.cam1_thread
         if self.cam2 is not None:
-            self.cam2.close_signal.emit(True)
-        # Tell the UpdateManager to close down, which will close motors, their threads, and request a deletion of
-        # itself.
-        self.UpdateManager.request_close.emit()
+            self.cam2._app_closing = True
+            self.cam2.close()
+            del self.cam2
+        if self.cam2_thread is not None:
+            del self.cam2_thread
+
+        # delete updatemanager
+        del self.UpdateManager
         return
 
     @pyqtSlot()

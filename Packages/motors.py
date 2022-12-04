@@ -380,6 +380,7 @@ class MDT693B_Motor(QObject):
         self._ch1_v = self.ch1_v
         self._ch2_v = self.ch2_v
         self.connect_signals()
+        self._app_closing = False
         return
 
     def connect_signals(self):
@@ -395,12 +396,15 @@ class MDT693B_Motor(QObject):
         # Close connection to port
         ret = mdt.mdtClose(self.handle)
         if ret < 0:
+            # Close failed
             self.close_fail_signal.emit(self.motor_number)
             raise Exception("Motor did not close.")
         else:
+            # Close successful
             print("closed a mdt motor number ", self.motor_number)
             self.close_complete_signal.emit(self.motor_number)
-            self.deleteLater()
+            if not self._app_closing:
+                self.deleteLater()
             return
 
     def __del__(self):
