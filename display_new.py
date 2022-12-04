@@ -556,9 +556,10 @@ class Window(QMainWindow, Ui_MainWindow):
                 pass
             # Find blackfly s cameras
             try:
-                c = BlackflyS(0)
+                # c = BlackflyS(0)
                 num_cameras += 1
-                cam_key = 'blackfly s: ' + c.serial_no
+                # cam_key = 'blackfly s: ' + c.serial_no
+                cam_key = 'blackfly s: ' + str(0)
                 self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
                 self.cam_init_dict[cam_key] = 0
                 c.close()
@@ -566,9 +567,10 @@ class Window(QMainWindow, Ui_MainWindow):
             except:
                 pass
             try:
-                c = BlackflyS(1)
+                # c = BlackflyS(1)
                 num_cameras += 1
-                cam_key = 'blackfly s: ' + c.serial_no
+                # cam_key = 'blackfly s: ' + c.serial_no
+                cam_key = 'blackfly s: ' + str(1)
                 self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
                 self.cam_init_dict[cam_key] = 1
                 c.close()

@@ -1609,6 +1609,7 @@ class UpdateManager(QObject):
                 else:
                     self._cam1_com_count += 1"""
         elif cam_number == 2:
+            print("Inside processing of image 2.")
             if not np.sum(self.cam_2_img) == 0:
                 print("processing a non-zero image from camera 2")
                 # Enforce that the meshes for calculating COM have the correct shape!
