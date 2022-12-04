@@ -5,6 +5,7 @@ from lmfit import Parameters, minimize
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread
 from Packages.motors import MDT693B_Motor, MDT693A_Motor
 from datetime import datetime
+import cv2
 
 
 class update_out_of_bounds(Exception):
@@ -1568,15 +1569,14 @@ class UpdateManager(QObject):
             self._cam1_img_count += 1
         return
 
-    @pyqtSlot(int)
-    def process_img(self, cam_number: int):
+    @staticmethod
+    def find_com(img):
         """
-        Given an image, self.cam_x_img, calculate the center of mass in pixel coordinates
-        For now, just find COM, but in the future, do any preprocessing that I want.
+        Find the COM of an image.
         """
-        if cam_number == 1:
-            if not np.sum(self.cam_1_img) == 0:
-                # Enforce that the meshes for calculating COM have the correct shape!
+        """
+        OLD
+        # Enforce that the meshes for calculating COM have the correct shape!
                 if self.img1_X_mesh.shape[0] != self.cam_1_img.shape[0] or \
                         self.img1_X_mesh.shape[1] != self.cam_1_img.shape[1]:
                     # XY meshes are off, so rebuild them. Otherwise, keep using them.
@@ -1603,41 +1603,35 @@ class UpdateManager(QObject):
                 self.cam_1_com = np.asarray([com_x, com_y])
                 # Try emitting the new com every time and see if the GUI can keep up or not.
                 self.update_gui_cam_com_signal.emit(1, self.cam_1_com)
-                """if self._cam1_com_count == self._update_GUI_images_every_n_images:
-                    self.cam1_com_update_gui_signal.emit(self.cam_1_com)
-                    self._cam1_com_count = 1
-                else:
-                    self._cam1_com_count += 1"""
+        """
+        ret, thresh = cv2.threshold(img, 0.1, 255, 0)
+        M = cv2.moments(thresh)
+        if M['m00'] != 0:
+            com_x = M["m10"] / M["m00"]
+            com_y = M["m01"] / M["m00"]
+            return com_x, com_y
+        return None, None
+
+    @pyqtSlot(int)
+    def process_img(self, cam_number: int):
+        """
+        Given an image, self.cam_x_img, calculate the center of mass in pixel coordinates
+        For now, just find COM, but in the future, do any preprocessing that I want.
+        """
+        if cam_number == 1:
+            com_x, com_y = self.find_com(self.cam_1_img)
+            if com_x is not None:
+                com_x += self._r0[0]
+                com_y += self._r0[1]
+                self.cam_1_com = np.asarray([com_x, com_y])
+                self.update_gui_cam_com_signal.emit(1, self.cam_1_com)
         elif cam_number == 2:
             print("Inside processing of image 2.")
-            if not np.sum(self.cam_2_img) == 0:
-                print("processing a non-zero image from camera 2")
-                # Enforce that the meshes for calculating COM have the correct shape!
-                if self.img2_X_mesh.shape[0] != self.cam_2_img.shape[0] or \
-                        self.img2_X_mesh.shape[1] != self.cam_2_img.shape[1]:
-                    # XY meshes are off, so rebuild them. Otherwise, keep using them.
-                    Nx, Ny = self.cam_2_img.shape
-                    x = np.arange(Nx)
-                    y = np.arange(Ny)
-                    self.img2_X_mesh, self.img2_Y_mesh = np.meshgrid(x, y, indexing='ij')
-                    # Apply offset of starting pixel coordinate for ROI purposes
-                    self.img2_X_mesh += self._r0[2]
-                    self.img2_Y_mesh += self._r0[3]
-                # Enforce that the x-coordinate starts at the pixel offset it should.
-                if self.img2_X_mesh[0, 0] != self._r0[2]:
-                    if self.img2_X_mesh[0, 0] != 0:
-                        self.img2_X_mesh -= self.img2_X_mesh[0, 0]
-                    self.img2_X_mesh += self._r0[2]
-                # Enforce that the Y-coordinate starts at the pixel offset it should.
-                if self.img2_Y_mesh[0, 0] != self._r0[3]:
-                    if self.img2_Y_mesh[0, 0] != 0:
-                        self.img2_Y_mesh -= self.img2_Y_mesh[0, 0]
-                    self.img2_Y_mesh += self._r0[3]
-                w = np.divide(self.cam_2_img, np.sum(self.cam_2_img))
-                com_x = np.sum(self.img2_X_mesh * w)
-                com_y = np.sum(self.img2_Y_mesh * w)
+            com_x, com_y = self.find_com(self.cam_2_img)
+            if com_x is not None:
+                com_x += self._r0[2]
+                com_y += self._r0[3]
                 self.cam_2_com = np.asarray([com_x, com_y])
-                # Try emitting the new com every time and see if the GUI can keep up or not.
                 self.update_gui_cam_com_signal.emit(2, self.cam_2_com)
         return
 
