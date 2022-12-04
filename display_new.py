@@ -711,11 +711,15 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(int)
     def reconnect_cameras(self, cam_number: int):
+        print("Reconnect cameras is in fact being called!")
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             if cam_number == 1:
+                print("Reconnecting camera 1 visible system.")
                 key = self.cam1_to_connect
                 if 'fly' in key:
+                    print("Reconnecting blackfly camera.")
                     self.cam1 = BlackflyS(self.cam_init_dict[key])
+                    print("blackfly camera reconnected.")
                     if self.cam1.serial_no not in str(self.cam_init_dict[key]):
                         print("Somehow the camera initialized does not have the anticipated serial number.")
                 elif "Mightex" in key:
@@ -914,14 +918,22 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1.capture_img_signal.emit()
             else:  # Update settings once cam1 exists and cam1_thread is running
                 key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
-                if self.cam1.serial_no not in str(self.cam_init_dict[key]):
-                    # User wants to change the camera on cam1_thread. So, do that.
-                    self.cam1.close_signal.emit(False)  # False flag does not close the thread.
-                    self.cam1_to_connect = key
-                    self.cam1_settings_to_set = {'exposure': cam1_exp_time, 'gain': cam1_gain}
-                    return
-                self.cam1.exposure_set_signal.emit(cam1_exp_time)
-                self.cam1.gain_set_signal.emit(cam1_gain)
+                self.cam1_settings_to_set = {'exposure': cam1_exp_time, 'gain': cam1_gain}
+                self.cam1_to_connect = key
+                try:
+                    if self.cam1.serial_no not in str(self.cam_init_dict[key]):
+                        # User wants to change the camera on cam1_thread. So, do that.
+                        self.cam1.close_signal.emit(False)  # False flag does not close the thread.
+                        return
+                    self.cam1.exposure_set_signal.emit(cam1_exp_time)
+                    self.cam1.gain_set_signal.emit(cam1_gain)
+                except RuntimeError as e:
+                    if 'has been deleted' in str(e):
+                        # This error is being thrown, because camera1 does not currently exist. So, call the reconnect
+                        # Camera function, which should reconnect the camera to connect with setttigns to set.
+                        self.reconnect_cameras(cam_number=1)
+                    # Otherwise, I do not know why this is happening. So, raise the error as is.
+                    raise RuntimeError(str(e))
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             # TODO: Update this correctly for the Boson
             """cam1_index = int(self.cb_cam1.currentIndex())
@@ -981,14 +993,22 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam2.capture_img_signal.emit()
             else:  # Update settings once cam1 exists and cam1_thread is running
                 key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
-                if self.cam2.serial_no not in str(self.cam_init_dict[key]):
-                    # User wants to change the camera on cam2_thread. So, do that.
-                    self.cam2.close_signal.emit(False) # False flag does not close the thread.
-                    self.cam2_to_connect = key
-                    self.cam2_settings_to_set = {'exposure': cam2_exp_time, 'gain': cam2_gain}
-                    return
-                self.cam2.exposure_set_signal.emit(cam2_exp_time)
-                self.cam2.gain_set_signal.emit(cam2_gain)
+                self.cam2_to_connect = key
+                self.cam2_settings_to_set = {'exposure': cam2_exp_time, 'gain': cam2_gain}
+                try:
+                    if self.cam2.serial_no not in str(self.cam_init_dict[key]):
+                        # User wants to change the camera on cam2_thread. So, do that.
+                        self.cam2.close_signal.emit(False) # False flag does not close the thread.
+                        return
+                    self.cam2.exposure_set_signal.emit(cam2_exp_time)
+                    self.cam2.gain_set_signal.emit(cam2_gain)
+                except RuntimeError as e:
+                    if 'has been deleted' in str(e):
+                        # This error is being thrown, because camera1 does not currently exist. So, call the reconnect
+                        # Camera function, which should reconnect the camera to connect with setttigns to set.
+                        self.reconnect_cameras(cam_number=2)
+                    # Otherwise, I do not know why this is happening. So, raise the error as is.
+                    raise RuntimeError(str(e))
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             # TODO: Update this correctly for the Boson
             """cam1_index = int(self.cb_cam1.currentIndex())
