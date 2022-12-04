@@ -1561,8 +1561,8 @@ class UpdateManager(QObject):
         if self.img1_threshold != 0:
             img[img < self.img1_threshold] = 0
         self._cam_1_img = img
+        self.cam_img_received_signal.emit(1)
         if self._cam1_img_count >= self._update_GUI_images_every_n_images:
-            self.cam_img_received_signal.emit(1)
             self.update_gui_img_signal.emit(1, img)
             self._cam1_img_count = 0
         else:
@@ -1661,8 +1661,8 @@ class UpdateManager(QObject):
         if self.img2_threshold != 0:
             img[img < self.img2_threshold] = 0
         self._cam_2_img = img
+        self.cam_img_received_signal.emit(2)
         if self._cam2_img_count >= self._update_GUI_images_every_n_images:
-            self.cam_img_received_signal.emit(2)
             self.update_gui_img_signal.emit(2, img)
             self._cam2_img_count = 0
         else:
