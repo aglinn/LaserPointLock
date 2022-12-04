@@ -86,8 +86,8 @@ class Window(QMainWindow, Ui_MainWindow):
         ######################################
         # Start update manager's thread:
         self.UpdateManager_thread = QThread()
-        self.UpdateManager_thread.started.connect(print("Update Manager Thread Started."))
-        self.UpdateManager_thread.finished.connect(print("Update Manager Thread has finished."))
+        self.UpdateManager_thread.started.connect(lambda: print("Update Manager Thread Started."))
+        self.UpdateManager_thread.finished.connect(lambda: print("Update Manager Thread has finished."))
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
         # Connect signals related to update manager.
@@ -416,6 +416,17 @@ class Window(QMainWindow, Ui_MainWindow):
         self.cam1_y_line.setVisible(False)
         self.cam2_x_line.setVisible(False)
         self.cam2_y_line.setVisible(False)
+        return
+
+    @pyqtSlot(str, bool)
+    def report_thread_updates(self, threadname: str, thread_starting: bool):
+        """
+        print a statement reflecting whether the thread has started (True) or is stopping (False)
+        """
+        if thread_starting:
+            print(threadname + ' thread starting.')
+        else:
+            print(threadname + ' thread finished')
         return
 
     # Set the camera settings buttons invisible, until a Point Lock System is chosen. Then, make visible the correct
@@ -894,8 +905,8 @@ class Window(QMainWindow, Ui_MainWindow):
             # Apply all updates:
             if self.cam1_thread is None:  # first time this function is called only.
                 self.cam1_thread = QThread()
-                self.cam1_thread.finished.connect(print("Camera 1 thread has finished."))
-                self.cam1_thread.started.connect(print("Camera 1 thread has started."))
+                self.cam1_thread.finished.connect(lambda: print("Camera 1 thread has finished."))
+                self.cam1_thread.started.connect(lambda: print("Camera 1 thread has started."))
                 # Instantiate a camera object as cam1.
                 key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
                 if 'fly' in key:
@@ -970,8 +981,8 @@ class Window(QMainWindow, Ui_MainWindow):
             # Apply all updates:
             if self.cam2_thread is None:  # first time this function is called only.
                 self.cam2_thread = QThread()
-                self.cam2_thread.finished.connect(print("Camera 2 thread has finished."))
-                self.cam2_thread.started.connect(print("Camera 2 thread has started."))
+                self.cam2_thread.finished.connect(lambda: print("Camera 2 thread has finished."))
+                self.cam2_thread.started.connect(lambda: print("Camera 2 thread has started."))
                 # Instantiate a camera object as cam1.
                 key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
                 if 'fly' in key:

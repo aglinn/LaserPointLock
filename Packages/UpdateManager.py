@@ -538,8 +538,8 @@ class UpdateManager(QObject):
             if self.motor1_thread is None:  # First time that a motor is connected as motor 1!
                 # Start a thread for the motor to live in
                 self.motor1_thread = QThread()
-                self.motor1_thread.started.connect(print("Motor 1 thread has started."))
-                self.motor1_thread.finished.connect(print("Motor 1 thread has finished."))
+                self.motor1_thread.started.connect(lambda: print("Motor 1 thread has started."))
+                self.motor1_thread.finished.connect(lambda: print("Motor 1 thread has finished."))
                 # Connect motor_1_thread.finished signal to a method to clean up when closing.
                 self.motor1_thread.finished.connect(lambda: self.accept_motor_thread_close(1))
                 # Instantiate a motor
@@ -570,8 +570,8 @@ class UpdateManager(QObject):
             if self.motor2_thread is None:  # First time that a motor is connected as motor 1!
                 # Start a thread for the motor to live in
                 self.motor2_thread = QThread()
-                self.motor2_thread.started.connect(print("Motor 2 thread has started."))
-                self.motor2_thread.finished.connect(print("Motor 2 thread has finished."))
+                self.motor2_thread.started.connect(lambda: print("Motor 2 thread has started."))
+                self.motor2_thread.finished.connect(lambda: print("Motor 2 thread has finished."))
                 # Connect motor_1_thread.finished signal to a method to clean up when closing.
                 self.motor2_thread.finished.connect(lambda: self.accept_motor_thread_close(2))
                 # Instantiate a motor
