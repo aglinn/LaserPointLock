@@ -1560,8 +1560,8 @@ class UpdateManager(QObject):
         if self.img1_threshold != 0:
             img[img < self.img1_threshold] = 0
         self._cam_1_img = img
-        self.cam_img_received_signal.emit(1)
         if self._cam1_img_count >= self._update_GUI_images_every_n_images:
+            self.cam_img_received_signal.emit(1)
             self.update_gui_img_signal.emit(1, img)
             self._cam1_img_count = 0
         else:
@@ -1597,7 +1597,7 @@ class UpdateManager(QObject):
                     if self.img1_Y_mesh[0, 0] != 0:
                         self.img1_Y_mesh -= self.img1_Y_mesh[0, 0]
                     self.img1_Y_mesh += self._r0[1]
-                w = self.cam_1_img / np.sum(self.cam_1_img)
+                w = np.divide(self.cam_1_img, np.sum(self.cam_1_img))
                 com_x = np.sum(self.img1_X_mesh * w)
                 com_y = np.sum(self.img1_Y_mesh * w)
                 self.cam_1_com = np.asarray([com_x, com_y])
@@ -1633,7 +1633,7 @@ class UpdateManager(QObject):
                     if self.img2_Y_mesh[0, 0] != 0:
                         self.img2_Y_mesh -= self.img2_Y_mesh[0, 0]
                     self.img2_Y_mesh += self._r0[3]
-                w = self.cam_2_img / np.sum(self.cam_2_img)
+                w = np.divide(self.cam_2_img, np.sum(self.cam_2_img))
                 com_x = np.sum(self.img2_X_mesh * w)
                 com_y = np.sum(self.img2_Y_mesh * w)
                 self.cam_2_com = np.asarray([com_x, com_y])
@@ -1667,8 +1667,8 @@ class UpdateManager(QObject):
         if self.img2_threshold != 0:
             img[img < self.img2_threshold] = 0
         self._cam_2_img = img
-        self.cam_img_received_signal.emit(2)
         if self._cam2_img_count >= self._update_GUI_images_every_n_images:
+            self.cam_img_received_signal.emit(2)
             self.update_gui_img_signal.emit(2, img)
             self._cam2_img_count = 0
         else:

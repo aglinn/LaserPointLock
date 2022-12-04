@@ -540,6 +540,8 @@ class Window(QMainWindow, Ui_MainWindow):
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             num_cameras = 0
             # Find the Mightex cameras
+            """
+            # TODO: Update code to work with Mightex Cameras again
             try:
                 mightex_engine = MightexEngine()
                 if len(mightex_engine.serial_no) == 0:
@@ -553,28 +555,30 @@ class Window(QMainWindow, Ui_MainWindow):
                     del mightex_engine
             except UnicodeError:
                 # TODO: Mightex Engine is having problems decoding returned S/N. Debug.
-                pass
+                pass"""
             # Find blackfly s cameras
             try:
+                # For now manually add the serial number and do not confirm that the camera is openable.
                 # c = BlackflyS(0)
                 num_cameras += 1
                 # cam_key = 'blackfly s: ' + c.serial_no
                 cam_key = 'blackfly s: ' + str(0)
                 self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
                 self.cam_init_dict[cam_key] = 0
-                c.close()
-                del c
+                # c.close()
+                # del c
             except:
                 pass
             try:
+                # For now manually add the serial number and do not confirm that the camera is openable.
                 # c = BlackflyS(1)
                 num_cameras += 1
                 # cam_key = 'blackfly s: ' + c.serial_no
                 cam_key = 'blackfly s: ' + str(1)
                 self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
                 self.cam_init_dict[cam_key] = 1
-                c.close()
-                del c
+                # c.close()
+                # del c
             except:
                 # Well no camera at index 1.
                 pass
