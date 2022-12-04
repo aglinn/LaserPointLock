@@ -86,6 +86,8 @@ class Window(QMainWindow, Ui_MainWindow):
         ######################################
         # Start update manager's thread:
         self.UpdateManager_thread = QThread()
+        self.UpdateManager_thread.started.connect(print("Update Manager Thread Started."))
+        self.UpdateManager_thread.finished.connect(print("Update Manager Thread has finished."))
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
         # Connect signals related to update manager.
@@ -849,6 +851,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
             # Update the pointing position plots:
             if not self.suppress_pointing_display:
+                print("Updating the camera 1 COM data.")
                 self.cam1_x = self.addToPlot(self.cam1_x, self.cam1_x_plot, cam_com[0],
                                              maxSize=int(self.le_num_points.text()))
                 self.cam1_y = self.addToPlot(self.cam1_y, self.cam1_y_plot, cam_com[1],
@@ -864,6 +867,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
             # Update the pointing position plots:
             if not self.suppress_pointing_display:
+                print("Updating the camera 2 COM data.")
                 self.cam2_x = self.addToPlot(self.cam2_x, self.cam2_x_plot, cam_com[0],
                                              maxSize=int(self.le_num_points.text()))
                 self.cam2_y = self.addToPlot(self.cam2_y, self.cam2_y_plot, cam_com[1],
@@ -888,7 +892,10 @@ class Window(QMainWindow, Ui_MainWindow):
             self.UpdateManager.request_set_camera_threshold_signal.emit(1, cam1_threshold)
 
             # Apply all updates:
-            if self.cam1 is None:  # first time this function is called only.
+            if self.cam1_thread is None:  # first time this function is called only.
+                self.cam1_thread = QThread()
+                self.cam1_thread.finished.connect(print("Camera 1 thread has finished."))
+                self.cam1_thread.started.connect(print("Camera 1 thread has started."))
                 # Instantiate a camera object as cam1.
                 key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
                 if 'fly' in key:
@@ -902,8 +909,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
-                if self.cam1_thread is None:
-                    self.cam1_thread = QThread()
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
@@ -963,7 +968,10 @@ class Window(QMainWindow, Ui_MainWindow):
             self.UpdateManager.request_set_camera_threshold_signal.emit(2, cam2_threshold)
 
             # Apply all updates:
-            if self.cam2 is None: # first time this function is called only.
+            if self.cam2_thread is None:  # first time this function is called only.
+                self.cam2_thread = QThread()
+                self.cam2_thread.finished.connect(print("Camera 2 thread has finished."))
+                self.cam2_thread.started.connect(print("Camera 2 thread has started."))
                 # Instantiate a camera object as cam1.
                 key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
                 if 'fly' in key:
@@ -977,8 +985,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
-                if self.cam2_thread is None:
-                    self.cam2_thread = QThread()
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
