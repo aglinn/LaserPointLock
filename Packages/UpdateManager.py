@@ -729,10 +729,10 @@ class UpdateManager(QObject):
                     if self.num_attempts_set_motor1_ch1_V <= self.max_setV_attempts_calib:
                         if self.calibration_sweep_index == 0:
                             # I am trying to set a particular voltage on this motor.
-                            self.motor1.request_set_ch1V_signal(self.calibration_voltages[self.voltage_step - 1])
+                            self.motor1.request_set_ch1V_signal.emit(self.calibration_voltages[self.voltage_step - 1])
                         else:
                             # I should only be trying to reset to 75.0 V
-                            self.motor1.request_set_ch1V_signal(75.0)
+                            self.motor1.request_set_ch1V_signal.emit(75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
                         self.motor1.request_get_ch1V_signal.emit()
@@ -746,10 +746,10 @@ class UpdateManager(QObject):
                     if self.num_attempts_set_motor1_ch2_V <= self.max_setV_attempts_calib:
                         if self.calibration_sweep_index == 1:
                             # I am trying to set a particular voltage on this motor.
-                            self.motor1.request_set_ch2V_signal(self.calibration_voltages[self.voltage_step - 1])
+                            self.motor1.request_set_ch2V_signal.emit(self.calibration_voltages[self.voltage_step - 1])
                         else:
                             # I should only be trying to reset to 75.0 V
-                            self.motor1.request_set_ch2V_signal(75.0)
+                            self.motor1.request_set_ch2V_signal.emit(75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
                         self.motor1.request_get_ch2V_signal.emit()
@@ -764,10 +764,10 @@ class UpdateManager(QObject):
                     if self.num_attempts_set_motor2_ch1_V <= self.max_setV_attempts_calib:
                         if self.calibration_sweep_index == 2:
                             # I am trying to set a particular voltage on this motor.
-                            self.motor2.request_set_ch1V_signal(self.calibration_voltages[self.voltage_step - 1])
+                            self.motor2.request_set_ch1V_signal.emit(self.calibration_voltages[self.voltage_step - 1])
                         else:
                             # I should only be trying to reset to 75.0 V
-                            self.motor2.request_set_ch1V_signal(75.0)
+                            self.motor2.request_set_ch1V_signal.emit(75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
                         self.motor2.request_get_ch2V_signal.emit()
@@ -781,10 +781,10 @@ class UpdateManager(QObject):
                     if self.num_attempts_set_motor2_ch2_V <= self.max_setV_attempts_calib:
                         if self.calibration_sweep_index == 3:
                             # I am trying to set a particular voltage on this motor.
-                            self.motor2.request_set_ch2V_signal(self.calibration_voltages[self.voltage_step - 1])
+                            self.motor2.request_set_ch2V_signal.emit(self.calibration_voltages[self.voltage_step - 1])
                         else:
                             # I should only be trying to reset to 75.0 V
-                            self.motor2.request_set_ch2V_signal(75.0)
+                            self.motor2.request_set_ch2V_signal.emit(75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
                         self.motor2.request_get_ch2V_signal.emit()
@@ -840,10 +840,10 @@ class UpdateManager(QObject):
                         return
 
             # Apply all update voltages
-            self.motor1.request_set_ch1V_signal(self.update_voltage[0])
-            self.motor2.request_set_ch1V_signal(self.update_voltage[2])
-            self.motor1.request_set_ch2V_signal(self.update_voltage[1])
-            self.motor2.request_set_ch2V_signal(self.update_voltage[3])
+            self.motor1.request_set_ch1V_signal.emit(self.update_voltage[0])
+            self.motor2.request_set_ch1V_signal.emit(self.update_voltage[2])
+            self.motor1.request_set_ch2V_signal.emit(self.update_voltage[1])
+            self.motor2.request_set_ch2V_signal.emit(self.update_voltage[3])
         return
 
     def report_unlock(self):
@@ -1071,10 +1071,10 @@ class UpdateManager(QObject):
         self.calibration_sweep_index = 0
         self.voltage_step = 1  # Start at 1, because index 0 is set on motor1 ch1 as starting voltage
         self._calibrating = True
-        self.motor1.request_set_ch1V_signal(self.starting_v[0])
-        self.motor2.request_set_ch1V_signal(self.starting_v[2])
-        self.motor1.request_set_ch2V_signal(self.starting_v[1])
-        self.motor2.request_set_ch2V_signal(self.starting_v[3])
+        self.motor1.request_set_ch1V_signal.emit(self.starting_v[0])
+        self.motor2.request_set_ch1V_signal.emit(self.starting_v[2])
+        self.motor1.request_set_ch2V_signal.emit(self.starting_v[1])
+        self.motor2.request_set_ch2V_signal.emit(self.starting_v[3])
         return
 
     @pyqtSlot()
@@ -1103,7 +1103,7 @@ class UpdateManager(QObject):
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
                     # Set motor 1 ch1 back to center voltage
-                    self.motor1.request_set_ch1V_signal(75.0)
+                    self.motor1.request_set_ch1V_signal.emit(75.0)
                     self.motor1.request_set_ch2V_signal.emit(set_voltage)
                     self.voltage_step += 1
                 # Now capture the pointing information from the last voltage step.
@@ -1157,7 +1157,7 @@ class UpdateManager(QObject):
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
                     # Set motor 1 ch2 back to center voltage
-                    self.motor1.request_set_ch2V_signal(75.0)
+                    self.motor1.request_set_ch2V_signal.emit(75.0)
                     self.motor2.request_set_ch1V_signal.emit(set_voltage)
                     self.voltage_step += 1
                 # Now capture the pointing information from the last voltage step.
@@ -1211,7 +1211,7 @@ class UpdateManager(QObject):
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
                     # Set motor 2 ch1 back to center voltage
-                    self.motor2.request_set_ch1V_signal(75.0)
+                    self.motor2.request_set_ch1V_signal.emit(75.0)
                     self.motor2.request_set_ch2V_signal.emit(set_voltage)
                     self.voltage_step += 1
                 # Now capture the pointing information from the last voltage step.
@@ -1264,7 +1264,7 @@ class UpdateManager(QObject):
                     # But I still need pointing info from the last motor set position.
                     self.voltage_step = 1
                     # Set motor 2 ch2 back to center voltage
-                    self.motor2.request_set_ch2V_signal(75.0)
+                    self.motor2.request_set_ch2V_signal.emit(75.0)
 
                 # Now capture the pointing information from the last voltage step.
                 # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
