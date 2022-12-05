@@ -97,7 +97,7 @@ class UpdateManager(QObject):
         self.img2_X_mesh = np.zeros([2, 2])
         self.img2_Y_mesh = np.zeros([2, 2])
         self._dx = []
-        self.V0 = None
+        self.V0 = np.array([75.0, 75.0, 75.0, 75.0])
         self._t1 = []
         self._t2 = []
         self._frequency_domain = None
