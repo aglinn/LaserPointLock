@@ -1399,14 +1399,18 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self._keep_capturing = True
         self._app_closing = False
         self.timer = QTimer()
-        self.timer.setInterval(18)  # int in ms. Need to set this better based on current frame rate.
+        self.timeout_time = 18
+        self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         self.timer.timeout.connect(self.get_frame)
         self.timer.setSingleShot(False)
-        self.timer.start()
         return
 
     def connect_signals(self):
-        self.capture_img_signal.connect(self.grab_frames_continuously, type=Qt.QueuedConnection)
+        """
+        Connect all camera received signals to slots.
+        """
+        # I used to set a queued connection to grab frames continuously inside grab frames continuously. Now user timer.
+        # self.capture_img_signal.connect(self.grab_frames_continuously, type=Qt.QueuedConnection)
         self.exposure_set_signal.connect(self.set_exposure_time)
         self.gain_set_signal.connect(self.set_gain)
         self.close_signal.connect(self.stop_capturing)
@@ -1430,11 +1434,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot()
     def grab_frames_continuously(self):
         self.get_frame()
-        if self._keep_capturing:
-            # self.timer.start()
-            pass
-            # self.capture_img_signal.emit()
-        else:
+        if not self._keep_capturing:
+            self.timer.stop()
             self.release_cap_signal.emit()
         return
 

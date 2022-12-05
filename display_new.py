@@ -27,7 +27,7 @@ import time
 import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread, QTimer
 from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
 from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
 from Packages.motors import MDT693A_Motor
@@ -223,6 +223,23 @@ class Window(QMainWindow, Ui_MainWindow):
         self.toggle_mightex_cam_settings_ui_vis(False)
         self.toggle_general_cam_settings_ui_vis(False)
         self.toggle_BOSON_cam_settings_ui_vis(False)
+        self.timer = QTimer()
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.ping_UpdateManager)
+        self.timer.start()
+        return
+
+    @pyqtSlot()
+    def ping_UpdateManager(self):
+        """
+        Queue an event on the update manager and see how long they take to respond.
+        """
+        self.UpdateManager.request_ping.emit(time.monotonic())
+        return
+
+    @pyqtSlot(float)
+    def report_UpdateManager_ping(self, ping_time: float):
+        print(ping_time, " is how long the Update Manager took to receive a signal to enter its slot.")
         return
 
     def connectSignalsSlots(self):
@@ -261,6 +278,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.update_gui_piezo_voltage_signal.connect(self.update_gui_with_piezo_voltages)
         self.UpdateManager.update_gui_locked_state.connect(self.confirm_lock_state)
         self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
+        self.UpdateManager.update_gui_ping.connect(self.report_UpdateManager_ping)
         return
 
     @pyqtSlot(dict)
@@ -764,7 +782,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
                 # start the infinite event loop around acquiring images:
-                self.cam1.capture_img_signal.emit()
+                self.cam1.timer.start()
             elif cam_number == 2:
                 key = self.cam2_to_connect
                 if 'fly' in key:
@@ -790,7 +808,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam2_reset = True
                 self.resetHist(self.gv_camera2)
                 # start the infinite event loop around acquiring images:
-                self.cam2.capture_img_signal.emit()
+                self.cam2.timer.start()
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             # TODO: Update this correctly for the Boson
             pass
@@ -940,7 +958,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
                 # start the infinite event loop around acquiring images:
-                self.cam1.capture_img_signal.emit()
+                self.cam1.timer.start()
             else:  # Update settings once cam1 exists and cam1_thread is running
                 key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
                 self.cam1_settings_to_set = {'exposure': cam1_exp_time, 'gain': cam1_gain}
@@ -1016,7 +1034,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam2_reset = True
                 self.resetHist(self.gv_camera2)
                 # start the infinite event loop around acquiring images:
-                self.cam2.capture_img_signal.emit()
+                self.cam2.timer.start()
             else:  # Update settings once cam1 exists and cam1_thread is running
                 key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
                 self.cam2_to_connect = key

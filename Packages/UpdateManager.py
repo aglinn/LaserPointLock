@@ -43,6 +43,7 @@ class UpdateManager(QObject):
     update_locking_out_of_bounds_params_signal = pyqtSignal(bool, float)
     request_set_camera_threshold_signal = pyqtSignal(int, float)
     request_close = pyqtSignal()
+    request_ping = pyqtSignal(float)
 
     # Signals emitted by Update Manager to the GUI
     update_gui_piezo_voltage_signal = pyqtSignal(int, int, float)
@@ -52,6 +53,7 @@ class UpdateManager(QObject):
     # This reports all COM found regardless of motor status to GUI.
     update_gui_cam_com_signal = pyqtSignal(int, np.ndarray)
     update_gui_new_calibration_matrix_signal = pyqtSignal(np.ndarray)  # send this to GUI for GUI thread to save
+    update_gui_ping = pyqtSignal(float)
 
     # TODO: Implement timing synchronization?
     # TODO: Implement triggering of cameras?
@@ -178,6 +180,12 @@ class UpdateManager(QObject):
         self.request_update_r0_signal.connect(self.update_r0)
         self.request_set_camera_threshold_signal.connect(self.update_img_thresholds)
         self.request_close.connect(self.close)
+        self.request_ping.connect(self.return_ping)
+        return
+
+    @pyqtSlot(float)
+    def return_ping(self, start_time: float):
+        self.update_gui_ping.emit(time.monotonic() - start_time)
         return
 
     # Motor related methods.
