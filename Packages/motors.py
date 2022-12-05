@@ -440,7 +440,7 @@ class MDT693B_Motor(QObject):
                   ", and serial number,", self._serial_number, " was not read correctly.")
             self.get_ch1V_failed_signal.emit(self.motor_number, 1)
         else:
-            self.returning_ch1V_signal.emit(self.motor_number, 1, self._ch1_v)
+            self.returning_ch1V_signal.emit(self.motor_number, 1, self._ch1_v[0])
         return self._ch1_v[0]
 
     @property
@@ -454,7 +454,7 @@ class MDT693B_Motor(QObject):
                   ", and serial number,", self._serial_number, " was not read correctly.")
             self.get_ch2V_failed_signal.emit(self.motor_number, 2)
         else:
-            self.returning_ch2V_signal.emit(self.motor_number, 2, self._ch2_v)
+            self.returning_ch2V_signal.emit(self.motor_number, 2, self._ch2_v[0])
         return self._ch2_v[0]
 
     @ch1_v.setter
