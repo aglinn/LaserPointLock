@@ -464,7 +464,6 @@ class MDT693B_Motor(QObject):
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch1 == 'Y' or self.ch1 == 'y':
             rep = mdt.mdtSetYAxisVoltage(self.handle, v)
-        print("rep is ", rep)
         if rep >= 0:
             self.set_ch1V_complete_signal.emit(self.motor_number, 1, v)
         else:
@@ -480,7 +479,6 @@ class MDT693B_Motor(QObject):
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch2 == 'Y' or self.ch2 == 'y':
             rep = mdt.mdtSetYAxisVoltage(self.handle, v)
-        print("rep is ", rep)
         if rep >= 0:
             self.set_ch2V_complete_signal.emit(self.motor_number, 2, v)
         else:
