@@ -1695,11 +1695,12 @@ class UpdateManager(QObject):
         vector is a row vector (row position, column position) of COM on cam 1
         """
         self._cam_1_com = vector
-        print("setting COM")
         if self._motors_updated:
-            print("motors have been updated. Emitting com_found_signal")
             self._cam1_com_updated = True
             self.com_found_signal.emit()
+        else:
+            print("motors not updated, ",
+                  self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
         return
 
     @property
@@ -1712,11 +1713,12 @@ class UpdateManager(QObject):
         vector is a row vector (row position, column position) of COM on cam 2
         """
         self._cam_2_com = vector
-        print("setting COM")
         if self._motors_updated:
-            print("motors have been updated. Emitting com_found_signal")
             self._cam2_com_updated = True
             self.com_found_signal.emit()
+        else:
+            print("motors not updated, ",
+                  self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
         return
 
     def com(self):
