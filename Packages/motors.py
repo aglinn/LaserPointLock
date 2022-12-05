@@ -376,8 +376,8 @@ class MDT693B_Motor(QObject):
 
         self._ch1 = ch1
         self._ch2 = ch2
-        self._ch1_v = np.array([0])
-        self._ch2_v = np.array([0])
+        self._ch1_v = np.array([0], dtype='d')
+        self._ch2_v = np.array([0], dtype='d')
         self._ch1_v = self.ch1_v
         self._ch2_v = self.ch2_v
         self.connect_signals()
