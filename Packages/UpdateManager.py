@@ -1557,58 +1557,19 @@ class UpdateManager(QObject):
         """
         img from camera 1. Also inform threads that new img is received.
         """
-        # Threshold the image.
-        if self.img1_threshold != 0:
-            img[img < self.img1_threshold] = 0
         self._cam_1_img = img
         self.cam_img_received_signal.emit(1)
-        if self._cam1_img_count >= self._update_GUI_images_every_n_images:
-            self.update_gui_img_signal.emit(1, img)
-            self._cam1_img_count = 0
-        else:
-            self._cam1_img_count += 1
         return
 
     @staticmethod
-    def find_com(img):
+    def find_com(img_thresh):
         """
-        Find the COM of an image.
+        Find the COM of an thresholded image as returned by cv2.threshold
         """
-        """
-        OLD
-        # Enforce that the meshes for calculating COM have the correct shape!
-                if self.img1_X_mesh.shape[0] != self.cam_1_img.shape[0] or \
-                        self.img1_X_mesh.shape[1] != self.cam_1_img.shape[1]:
-                    # XY meshes are off, so rebuild them. Otherwise, keep using them.
-                    Nx, Ny = self.cam_1_img.shape
-                    x = np.arange(Nx)
-                    y = np.arange(Ny)
-                    self.img1_X_mesh, self.img1_Y_mesh = np.meshgrid(x, y, indexing='ij')
-                    # Apply offset of starting pixel coordinate for ROI purposes
-                    self.img1_X_mesh += self._r0[0]
-                    self.img1_Y_mesh += self._r0[1]
-                # Enforce that the x-coordinate starts at the pixel offset it should.
-                if self.img1_X_mesh[0, 0] != self._r0[0]:
-                    if self.img1_X_mesh[0, 0] != 0:
-                        self.img1_X_mesh -= self.img1_X_mesh[0, 0]
-                    self.img1_X_mesh += self._r0[0]
-                # Enforce that the Y-coordinate starts at the pixel offset it should.
-                if self.img1_Y_mesh[0, 0] != self._r0[1]:
-                    if self.img1_Y_mesh[0, 0] != 0:
-                        self.img1_Y_mesh -= self.img1_Y_mesh[0, 0]
-                    self.img1_Y_mesh += self._r0[1]
-                w = np.divide(self.cam_1_img, np.sum(self.cam_1_img))
-                com_x = np.sum(self.img1_X_mesh * w)
-                com_y = np.sum(self.img1_Y_mesh * w)
-                self.cam_1_com = np.asarray([com_x, com_y])
-                # Try emitting the new com every time and see if the GUI can keep up or not.
-                self.update_gui_cam_com_signal.emit(1, self.cam_1_com)
-        """
-        ret, thresh = cv2.threshold(img, 0.1, 255, 0)
-        M = cv2.moments(thresh)
+        M = cv2.moments(img_thresh)
         if M['m00'] != 0:
-            com_x = M["m10"] / M["m00"]
-            com_y = M["m01"] / M["m00"]
+            com_x = M["m01"] / M["m00"]
+            com_y = M["m10"] / M["m00"]
             return com_x, com_y
         return None, None
 
@@ -1619,20 +1580,33 @@ class UpdateManager(QObject):
         For now, just find COM, but in the future, do any preprocessing that I want.
         """
         if cam_number == 1:
-            com_x, com_y = self.find_com(self.cam_1_img)
+            ret, img_thresh = cv2.threshold(self.cam_1_img, self.img1_threshold, 255, cv2.THRESH_TOZERO)
+            com_x, com_y = self.find_com(img_thresh)
             if com_x is not None:
                 com_x += self._r0[0]
                 com_y += self._r0[1]
                 self.cam_1_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(1, self.cam_1_com)
+            if self._cam1_img_count >= self._update_GUI_images_every_n_images:
+                self.update_gui_img_signal.emit(1, np.asarray(img_thresh))
+                self._cam1_img_count = 0
+            else:
+                self._cam1_img_count += 1
+
         elif cam_number == 2:
             print("Inside processing of image 2.")
-            com_x, com_y = self.find_com(self.cam_2_img)
+            ret, img_thresh = cv2.threshold(self.cam_2_img, self.img2_threshold, 255, cv2.THRESH_TOZERO)
+            com_x, com_y = self.find_com(img_thresh)
             if com_x is not None:
                 com_x += self._r0[2]
                 com_y += self._r0[3]
                 self.cam_2_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(2, self.cam_2_com)
+            if self._cam2_img_count >= self._update_GUI_images_every_n_images:
+                self.update_gui_img_signal.emit(2, np.asarray(img_thresh))
+                self._cam2_img_count = 0
+            else:
+                self._cam2_img_count += 1
         return
 
     @pyqtSlot(int)
@@ -1656,17 +1630,9 @@ class UpdateManager(QObject):
         """
         img from camera 2. Also inform threads that new img is received.
         """
-        # Threshold the image.
         print("Received an image from camera 2.")
-        if self.img2_threshold != 0:
-            img[img < self.img2_threshold] = 0
         self._cam_2_img = img
         self.cam_img_received_signal.emit(2)
-        if self._cam2_img_count >= self._update_GUI_images_every_n_images:
-            self.update_gui_img_signal.emit(2, img)
-            self._cam2_img_count = 0
-        else:
-            self._cam2_img_count += 1
         return
 
     @property
