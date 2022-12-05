@@ -592,7 +592,6 @@ class UpdateManager(QObject):
                 # Connect motor_1_thread.finished signal to a method to clean up when closing.
                 self.motor2_thread.finished.connect(lambda: self.accept_motor_thread_close(2))
                 # Instantiate a motor
-                print(motor_to_connect)
                 if "MDT693B" in motor_to_connect:
                     self.motor2 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=2)
                 else:

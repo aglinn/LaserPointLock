@@ -435,12 +435,12 @@ class MDT693B_Motor(QObject):
             ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch1_v)
         elif self.ch1 == 'Y' or self.ch1 == 'y':
             ret = mdt.mdtGetYAxisVoltage(self.handle, self._ch1_v)
-        if ret < 0:
+        if ret >= 0:
+            self.returning_ch1V_signal.emit(self.motor_number, 1, self._ch1_v[0])
+        else:
             print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not read correctly.")
             self.get_ch1V_failed_signal.emit(self.motor_number, 1)
-        else:
-            self.returning_ch1V_signal.emit(self.motor_number, 1, self._ch1_v[0])
         return self._ch1_v[0]
 
     @property
@@ -449,12 +449,12 @@ class MDT693B_Motor(QObject):
             ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch2_v)
         elif self.ch2 == 'Y' or self.ch2 == 'y':
             ret = mdt.mdtGetYAxisVoltage(self.handle, self._ch2_v)
-        if ret < 0:
+        if ret >= 0:
+            self.returning_ch2V_signal.emit(self.motor_number, 2, self._ch2_v[0])
+        else:
             print("Warning: The voltage on ch2,", self.ch2, ", on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not read correctly.")
             self.get_ch2V_failed_signal.emit(self.motor_number, 2)
-        else:
-            self.returning_ch2V_signal.emit(self.motor_number, 2, self._ch2_v[0])
         return self._ch2_v[0]
 
     @ch1_v.setter
@@ -464,12 +464,12 @@ class MDT693B_Motor(QObject):
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch1 == 'Y' or self.ch1 == 'y':
             rep = mdt.mdtSetYAxisVoltage(self.handle, v)
-        if rep < 0:
+        if rep >= 0:
+            self.set_ch1V_complete_signal.emit(self.motor_number, 1, v)
+        else:
             print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not SET correctly.")
             self.set_ch1V_failed_signal.emit(self.motor_number, 1)
-        else:
-            self.set_ch1V_complete_signal.emit(self.motor_number, 1, v)
         return
 
     @ch2_v.setter
@@ -479,12 +479,12 @@ class MDT693B_Motor(QObject):
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch2 == 'Y' or self.ch2 == 'y':
             rep = mdt.mdtSetYAxisVoltage(self.handle, v)
-        if rep < 0:
+        if rep >= 0:
+            self.set_ch2V_complete_signal.emit(self.motor_number, 2, v)
+        else:
             print("Warning: The ch1,", self.ch2, ", voltage on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not SET correctly.")
             self.set_ch2V_failed_signal.emit(self.motor_number, 2)
-        else:
-            self.set_ch2V_complete_signal.emit(self.motor_number, 2, v)
         return
 
     def get_info(self, id):
