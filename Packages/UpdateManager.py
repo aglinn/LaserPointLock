@@ -282,29 +282,29 @@ class UpdateManager(QObject):
         self._cam2_com_updated = False
         if motor_number == 1:
             if motor_chanel == 1:
-                self.motor1.request_set_ch1V_signal.emit(voltage)
                 self.motor1_ch1_updated = False
-                print("requesting set 1,1 ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                print("requesting set 1,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                       self.motor2_ch2_updated)
+                self.motor1.request_set_ch1V_signal.emit(voltage)
                 self.num_attempts_set_motor1_ch1_V += 1
             elif motor_chanel == 2:
-                self.motor1.request_set_ch2V_signal.emit(voltage)
                 self.motor1_ch2_updated = False
-                print("requesting set 1,2 ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                print("requesting set 1,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                       self.motor2_ch2_updated)
+                self.motor1.request_set_ch2V_signal.emit(voltage)
                 self.num_attempts_set_motor1_ch2_V += 1
         elif motor_number == 2:
             if motor_chanel == 1:
-                self.motor2.request_set_ch1V_signal.emit(voltage)
                 self.motor2_ch1_updated = False
-                print("requesting set 2,1 ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                print("requesting set 2,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                       self.motor2_ch2_updated)
+                self.motor2.request_set_ch1V_signal.emit(voltage)
                 self.num_attempts_set_motor2_ch1_V += 1
             elif motor_chanel == 2:
-                self.motor2.request_set_ch2V_signal.emit(voltage)
                 self.motor2_ch2_updated = False
-                print("requesting set 2,2 ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                print("requesting set 2,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                       self.motor2_ch2_updated)
+                self.motor2.request_set_ch2V_signal.emit(voltage)
                 self.num_attempts_set_motor2_ch2_V += 1
         return
 
