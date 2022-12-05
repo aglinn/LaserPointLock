@@ -1071,12 +1071,14 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         if self.cb_motors_1.currentData(0) != self.cb_motors_2.currentData(0):
             # Garrison Updated to add "0" insideself.cb_motors_1.currentData(0)
-            if "MDT693B" in self.cb_motors_1.currentData(0):
-                self.UpdateManager.request_connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)[2:15]))
+            if "MDT693B" in self.cb_motors_1.currentData(1):
+                self.UpdateManager.request_connect_motor_signal.emit(1, 'MDT693B: ' +
+                                                                     str(self.cb_motors_1.currentData(0)[2:15]))
             else:
                 self.UpdateManager.request_connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
-            if "MDT693B" in self.cb_motors_2.currentData(0):
-                self.UpdateManager.request_connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)[2:15]))
+            if "MDT693B" in self.cb_motors_2.currentData(1):
+                self.UpdateManager.request_connect_motor_signal.emit(2, 'MDT693B: ' +
+                                                                     str(self.cb_motors_2.currentData(0)[2:15]))
             else:
                 self.UpdateManager.request_connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
         return

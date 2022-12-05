@@ -586,6 +586,8 @@ class UpdateManager(QObject):
                 # Instantiate a motor
                 print(motor_to_connect)
                 if "MDT693B" in motor_to_connect:
+                    motor_to_connect = motor_to_connect[10:]
+                    print(motor_to_connect)
                     self.motor2 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=2)
                 else:
                     if self.ResourceManager is None:
