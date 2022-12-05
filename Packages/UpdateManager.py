@@ -739,6 +739,7 @@ class UpdateManager(QObject):
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor1_ch1_V = 0
                 elif self._locking:
+                    print("Accepted set failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor1_ch1_updated = True
             elif motor_ch == 2:
@@ -756,6 +757,7 @@ class UpdateManager(QObject):
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor1_ch2_V = 0
                 elif self._locking:
+                    print("Accepted set failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor1_ch2_updated = True
         elif motor_number == 2:
@@ -774,6 +776,7 @@ class UpdateManager(QObject):
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor2_ch1_V = 0
                 elif self._locking:
+                    print("Accepted set failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor2_ch1_updated = True
             elif motor_ch == 2:
@@ -791,6 +794,7 @@ class UpdateManager(QObject):
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor2_ch2_V = 0
                 elif self._locking:
+                    print("Accepted set failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor2_ch2_updated = True
         # Only get to this check if I am locking.
