@@ -161,7 +161,6 @@ class UpdateManager(QObject):
         # Start off the calibration process with voltages at first step
         self.starting_v[0] = self.calibration_voltages[0]
         self._r0 = np.array([0, 0, 0, 0])
-        self.ResourceManager = None
         return
 
     def connect_signals(self):
@@ -556,7 +555,7 @@ class UpdateManager(QObject):
                 if "MDT693B" in motor_to_connect:
                     self.motor1 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=1)
                 else:
-                    if self.ReourceManager is None:
+                    if self.ResourceManager is None:
                         import visa
                         self.ResourceManager = visa.ResourceManager()
                     self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=motor_to_connect,
@@ -585,10 +584,11 @@ class UpdateManager(QObject):
                 # Connect motor_1_thread.finished signal to a method to clean up when closing.
                 self.motor2_thread.finished.connect(lambda: self.accept_motor_thread_close(2))
                 # Instantiate a motor
+                print(motor_to_connect)
                 if "MDT693B" in motor_to_connect:
                     self.motor2 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=2)
                 else:
-                    if self.ReourceManager is None:
+                    if self.ResourceManager is None:
                         import visa
                         self.ResourceManager = visa.ResourceManager()
                     self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=motor_to_connect,
@@ -620,6 +620,8 @@ class UpdateManager(QObject):
                 if "MDT693B" in self.motor1_to_connect:
                     self.motor1 = MDT693B_Motor(str(self.motor1_to_connect[2:15]), motor_number=1)
                 else:
+                    if self.ResourceManager is None:
+                        self.ResourceManager = visa.ResourceManager()
                     self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=self.motor1_to_connect, ch1='X', ch2='Y')
                 # Connect all signals from the motors
                 self.connect_motor_signals(1)
@@ -633,6 +635,8 @@ class UpdateManager(QObject):
                 if "MDT693B" in self.motor2_to_connect:
                     self.motor2 = MDT693B_Motor(str(self.motor2_to_connect[2:15]), motor_number=2)
                 else:
+                    if self.ResourceManager is None:
+                        self.ResourceManager = visa.ResourceManager()
                     self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=self.motor2_to_connect,
                                                 ch1='X', ch2='Y')
                 # Connect all signals from the motors
