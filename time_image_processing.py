@@ -1,8 +1,7 @@
 import numpy as np
-import time
 import timeit
 import cv2
-from scipy import ndimage
+
 np.random.seed(22)
 img_size = [2048, 1536]
 num_images_to_process = 100
