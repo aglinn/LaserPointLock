@@ -1356,7 +1356,7 @@ class BlackflyS_EasyPySpin(Camera,EasyPySpin.VideoCapture):
         return
 
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 
 
 class BlackflyS_EasyPySpin_QObject(QObject):
@@ -1398,6 +1398,9 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.connect_signals()
         self._keep_capturing = True
         self._app_closing = False
+        self.timer = QTimer()
+        self.timer.setInterval(18)  # int in ms. Need to set this better based on current frame rate.
+        self.timer.timeout.connect(self.get_frame)
         return
 
     def connect_signals(self):
@@ -1426,7 +1429,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     def grab_frames_continuously(self):
         self.get_frame()
         if self._keep_capturing:
-            self.capture_img_signal.emit()
+            self.timer.start()
+            # self.capture_img_signal.emit()
         else:
             self.release_cap_signal.emit()
         return
