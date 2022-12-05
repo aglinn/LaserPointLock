@@ -24,12 +24,14 @@ def loop_process_image():
         _, _ = process_image(images[i])
 
 def process_image_cv(img):
-        ret, thresh = cv2.threshold(img, 0, 255, cv2.THRESH_TOZERO)
-        M = cv2.moments(thresh)
-        if M['m00'] != 0:
-            com_x = M["m01"]/M["m00"]
-            com_y = M["m10"]/M["m00"]
-            return com_x, com_y
+    img = np.multiply(img, 255).astype('uint8')
+    cv2.subtract(img, 0, img)
+    #ret, thresh = cv2.threshold(img, 0, 255, cv2.THRESH_TOZERO)
+    M = cv2.moments(img)
+    if M['m00'] != 0:
+        com_x = M["m01"]/M["m00"]
+        com_y = M["m10"]/M["m00"]
+        return com_x, com_y
 
 def loop_process_image_cv():
     global images
@@ -43,3 +45,6 @@ print("Time to process 1 frame with other is ", time/num_images_to_process)
 print("(CV_time minus other time)/time is ", (time_cv - time)/time)
 
 print("old_method ", process_image(images[0]), "new method ", process_image_cv(images[0]))
+
+test_img = np.array(images[0]*255).astype('uint8')
+print(np.min(cv2.subtract(test_img, 1000)))

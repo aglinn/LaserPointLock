@@ -726,7 +726,7 @@ class Window(QMainWindow, Ui_MainWindow):
     def connect_camera_signals(self, cam_number: int):
         if cam_number == 1:
             self.cam1.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(1, r0))
-            self.cam1.img_captured_signal.connect(lambda img: setattr(self.UpdateManager, 'cam_1_img', img))
+            self.cam1.img_captured_signal.connect(lambda img: self.UpdateManager.process_img(1, img))
             self.cam1.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(1, exp))
             self.cam1.gain_updated_signal.connect(lambda gain: self.update_cam_gain(1, gain))
             self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
@@ -736,7 +736,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
         elif cam_number == 2:
             self.cam2.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(2, r0))
-            self.cam2.img_captured_signal.connect(lambda img: setattr(self.UpdateManager, 'cam_2_img', img))
+            self.cam2.img_captured_signal.connect(lambda img: self.UpdateManager.process_img(2, img))
             self.cam2.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(2, exp))
             self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam_gain(2, gain))
             self.cam2.ROI_bounds_updated_signal.connect(self.apply_cam2_ROI)
@@ -922,7 +922,7 @@ class Window(QMainWindow, Ui_MainWindow):
             # Grab inputs from the GUI
             cam1_exp_time = float(self.le_cam1_exp_time.text())
             cam1_gain = float(self.le_cam1_gain.text())
-            cam1_threshold = float(self.le_cam1_threshold.text())
+            cam1_threshold = np.multiply(float(self.le_cam1_threshold.text()), 255).astype('uint8')
             self.UpdateManager.request_set_camera_threshold_signal.emit(1, cam1_threshold)
 
             # Apply all updates:
@@ -998,7 +998,7 @@ class Window(QMainWindow, Ui_MainWindow):
             # Grab inputs from the GUI
             cam2_exp_time = float(self.le_cam2_exp_time.text())
             cam2_gain = float(self.le_cam2_gain.text())
-            cam2_threshold = float(self.le_cam2_threshold.text())
+            cam2_threshold = np.multiply(float(self.le_cam2_threshold.text()), 255).astype('uint8')
             self.UpdateManager.request_set_camera_threshold_signal.emit(2, cam2_threshold)
 
             # Apply all updates:

@@ -1581,37 +1581,38 @@ class UpdateManager(QObject):
             return com_x, com_y
         return None, None
 
-    @pyqtSlot(int)
-    def process_img(self, cam_number: int):
+    @pyqtSlot(int, np.ndarray)
+    def process_img(self, cam_number: int, img: np.ndarray):
         """
         Given an image, self.cam_x_img, calculate the center of mass in pixel coordinates
         For now, just find COM, but in the future, do any preprocessing that I want.
         """
         if cam_number == 1:
-            ret, img_thresh = cv2.threshold(self.cam_1_img, self.img1_threshold, 255, cv2.THRESH_TOZERO)
-            com_x, com_y = self.find_com(img_thresh)
+            img = np.multiply(img, 255).astype('uint8')
+            cv2.subtract(img, self.img1_threshold, img)  # Because I am using uint, any negative result is set to 0
+            com_x, com_y = self.find_com(img)
             if com_x is not None:
                 com_x += self._r0[0]
                 com_y += self._r0[1]
                 self.cam_1_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(1, self.cam_1_com)
             if self._cam1_img_count >= self._update_GUI_images_every_n_images:
-                self.update_gui_img_signal.emit(1, np.asarray(img_thresh))
+                self.update_gui_img_signal.emit(1, np.asarray(img))
                 self._cam1_img_count = 0
             else:
                 self._cam1_img_count += 1
 
         elif cam_number == 2:
-            print("Inside processing of image 2.")
-            ret, img_thresh = cv2.threshold(self.cam_2_img, self.img2_threshold, 255, cv2.THRESH_TOZERO)
-            com_x, com_y = self.find_com(img_thresh)
+            img = np.multiply(img, 255).astype('uint8')
+            cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
+            com_x, com_y = self.find_com(img)
             if com_x is not None:
                 com_x += self._r0[2]
                 com_y += self._r0[3]
                 self.cam_2_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(2, self.cam_2_com)
             if self._cam2_img_count >= self._update_GUI_images_every_n_images:
-                self.update_gui_img_signal.emit(2, np.asarray(img_thresh))
+                self.update_gui_img_signal.emit(2, np.asarray(img))
                 self._cam2_img_count = 0
             else:
                 self._cam2_img_count += 1
@@ -1638,7 +1639,6 @@ class UpdateManager(QObject):
         """
         img from camera 2. Also inform threads that new img is received.
         """
-        print("Received an image from camera 2.")
         self._cam_2_img = img
         self.cam_img_received_signal.emit(2)
         return
