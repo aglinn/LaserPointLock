@@ -1399,7 +1399,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self._keep_capturing = True
         self._app_closing = False
         self.timer = QTimer()
-        self.timeout_time = 18
+        self.timeout_time = 100
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         self.timer.timeout.connect(self.get_frame)
         self.timer.setSingleShot(False)
