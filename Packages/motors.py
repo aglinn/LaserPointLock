@@ -7,6 +7,7 @@ from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 import numpy as np
 from abc import ABC,abstractmethod
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+import ctypes
 
 VisaResourceManager = NewType('VisaResourceManager', visa.ResourceManager)
 
@@ -376,8 +377,8 @@ class MDT693B_Motor(QObject):
 
         self._ch1 = ch1
         self._ch2 = ch2
-        self._ch1_v = np.array([0], dtype='d')
-        self._ch2_v = np.array([0], dtype='d')
+        self._ch1_v = ctypes.c_double
+        self._ch2_v = ctypes.c_double
         self._ch1_v = self.ch1_v
         self._ch2_v = self.ch2_v
         self.connect_signals()
@@ -431,30 +432,30 @@ class MDT693B_Motor(QObject):
     @property
     def ch1_v(self):
         if self.ch1 == 'X' or self.ch1 == 'x':
-            ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch1_v)
+            ret = mdt.mdtGetXAxisVoltage(self.handle, ctypes.byref(self._ch1_v))
         elif self.ch1 == 'Y' or self.ch1 == 'y':
-            ret = mdt.mdtGetYAxisVoltage(self.handle, self._ch1_v)
+            ret = mdt.mdtGetYAxisVoltage(self.handle, ctypes.byref(self._ch1_v))
         if ret < 0:
             print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not read correctly.")
             self.get_ch1V_failed_signal.emit(self.motor_number, 1)
         else:
             self.returning_ch1V_signal.emit(self.motor_number, 1, self._ch1_v)
-        return self._ch1_v[0]
+        return self._ch1_v
 
     @property
     def ch2_v(self):
         if self.ch2 == 'X' or self.ch2 == 'x':
-            ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch2_v)
+            ret = mdt.mdtGetXAxisVoltage(self.handle, ctypes.byref(self._ch2_v))
         elif self.ch2 == 'Y' or self.ch2 == 'y':
-            ret = mdt.mdtGetYAxisVoltage(self.handle, self._ch2_v)
+            ret = mdt.mdtGetYAxisVoltage(self.handle, ctypes.byref(self._ch2_v))
         if ret < 0:
             print("Warning: The voltage on ch2,", self.ch2, ", on motor with handle, ", self.handle,
                   ", and serial number,", self._serial_number, " was not read correctly.")
             self.get_ch2V_failed_signal.emit(self.motor_number, 2)
         else:
             self.returning_ch2V_signal.emit(self.motor_number, 2, self._ch2_v)
-        return self._ch2_v[0]
+        return self._ch2_v
 
     @ch1_v.setter
     def ch1_v(self, v: float):
