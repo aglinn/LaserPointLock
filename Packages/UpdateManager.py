@@ -204,7 +204,8 @@ class UpdateManager(QObject):
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                    voltage))
             self.motor1.set_ch1V_failed_signal.connect(self.receive_motor_set_V_failed_signal)
-            self.motor1.get_ch1V_failed_signal.connect(self.receive_V_failed_signal)
+            self.motor1.get_ch1V_failed_signal.connect(lambda motor_num, motor_ch:
+                                                       self.receive_V_failed_signal(motor_num, motor_ch))
             self.motor1.returning_ch1V_signal.connect(self.set_V_from_get)
             self.motor1.returning_ch1V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
@@ -216,7 +217,8 @@ class UpdateManager(QObject):
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                    voltage))
             self.motor1.set_ch2V_failed_signal.connect(self.receive_motor_set_V_failed_signal)
-            self.motor1.get_ch2V_failed_signal.connect(self.receive_V_failed_signal)
+            self.motor1.get_ch2V_failed_signal.connect(lambda motor_num, motor_ch:
+                                                       self.receive_V_failed_signal(motor_num, motor_ch))
             self.motor1.returning_ch2V_signal.connect(self.set_V_from_get)
             self.motor1.returning_ch2V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
@@ -232,7 +234,8 @@ class UpdateManager(QObject):
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                    voltage))
             self.motor2.set_ch1V_failed_signal.connect(self.receive_motor_set_V_failed_signal)
-            self.motor2.get_ch1V_failed_signal.connect(self.receive_V_failed_signal)
+            self.motor2.get_ch1V_failed_signal.connect(lambda motor_num, motor_ch:
+                                                       self.receive_V_failed_signal(motor_num, motor_ch))
             self.motor2.returning_ch1V_signal.connect(self.set_V_from_get)
             self.motor2.returning_ch1V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
@@ -244,7 +247,8 @@ class UpdateManager(QObject):
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                    voltage))
             self.motor2.set_ch2V_failed_signal.connect(self.receive_motor_set_V_failed_signal)
-            self.motor2.get_ch2V_failed_signal.connect(self.receive_V_failed_signal)
+            self.motor2.get_ch2V_failed_signal.connect(lambda motor_num, motor_ch:
+                                                       self.receive_V_failed_signal(motor_num, motor_ch))
             self.motor2.returning_ch2V_signal.connect(self.set_V_from_get)
             self.motor2.returning_ch2V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
