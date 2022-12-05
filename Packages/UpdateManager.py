@@ -804,6 +804,7 @@ class UpdateManager(QObject):
         This function is called by an uppdated COM signal, which is only emitted when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
+        print("Calling Update")
         if self._cam1_com_updated and self._cam2_com_updated:  # These both must be true to apply an update
             # reset all logic flags to indicate that nothing is updated since the present update.
             self._cam1_com_updated = False
