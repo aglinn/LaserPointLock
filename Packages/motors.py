@@ -387,10 +387,10 @@ class MDT693B_Motor(QObject):
 
     def connect_signals(self):
         self.request_close_signal.connect(self.close)
-        self.request_set_ch1V_signal.connect(lambda v: setattr(MDT693B_Motor, 'ch1_v', v))
-        self.request_get_ch1V_signal.connect(self.ch1_v)
-        self.request_set_ch2V_signal.connect(lambda v: setattr(MDT693B_Motor, 'ch2_v', v))
-        self.request_get_ch2V_signal.connect(self.ch2_v)
+        self.request_set_ch1V_signal.connect(lambda v: setattr(self, 'ch1_v', v))
+        self.request_get_ch1V_signal.connect(lambda: getattr(self, "ch1_v"))
+        self.request_set_ch2V_signal.connect(lambda v: setattr(self, 'ch2_v', v))
+        self.request_get_ch2V_signal.connect(lambda: getattr(self, "ch2_v"))
         return
 
     @pyqtSlot()
