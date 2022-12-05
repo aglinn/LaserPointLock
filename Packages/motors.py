@@ -377,8 +377,8 @@ class MDT693B_Motor(QObject):
 
         self._ch1 = ch1
         self._ch2 = ch2
-        self._ch1_v = ctypes.c_double
-        self._ch2_v = ctypes.c_double
+        self._ch1_v = ctypes.c_double()
+        self._ch2_v = ctypes.c_double()
         self._ch1_v = self.ch1_v
         self._ch2_v = self.ch2_v
         self.connect_signals()
