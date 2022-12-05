@@ -528,7 +528,7 @@ class Window(QMainWindow, Ui_MainWindow):
         elif data.size > maxSize:
             start_ind = data.size - maxSize + 1
             data = data[start_ind:]
-            data = data.np.append(data, point)
+            data = np.append(data, point)
         plot.setData(data)
         return data
 

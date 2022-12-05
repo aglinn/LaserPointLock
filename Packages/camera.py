@@ -1401,6 +1401,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timer = QTimer()
         self.timer.setInterval(18)  # int in ms. Need to set this better based on current frame rate.
         self.timer.timeout.connect(self.get_frame)
+        self.timer.setSingleShot(False)
+        self.timer.start()
         return
 
     def connect_signals(self):
@@ -1429,7 +1431,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     def grab_frames_continuously(self):
         self.get_frame()
         if self._keep_capturing:
-            self.timer.start()
+            # self.timer.start()
+            pass
             # self.capture_img_signal.emit()
         else:
             self.release_cap_signal.emit()
