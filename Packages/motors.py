@@ -286,6 +286,7 @@ class MDT693B_Motor(QObject):
 
     def __init__(self, serial_number, motor_number, ch1: str = 'X', ch2: str = 'Y'):
         """This constructor opens the motor, sets the appropriate voltage bounds, and sets the voltage increment."""
+        super().__init__()
         """Open the motor"""
         # Assign which motor number this motor is:
         self.motor_number = motor_number
