@@ -667,10 +667,10 @@ class UpdateManager(QObject):
         # flag, so set them true first, then check if all are true.
         if motor_number == 1:
             if motor_ch == 1:
-                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 self.num_attempts_set_motor1_ch1_V = 0
                 self.motor1_ch1_updated = True
+                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 0:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot1_x_voltage[self.voltage_step - 1 -
@@ -678,10 +678,10 @@ class UpdateManager(QObject):
                 elif self._locking:
                     self.V0[0] = set_V
             elif motor_ch == 2:
-                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 self.num_attempts_set_motor1_ch2_V = 0
                 self.motor1_ch2_updated = True
+                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 1:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot1_y_voltage[self.voltage_step - 1 -
@@ -690,10 +690,10 @@ class UpdateManager(QObject):
                     self.V0[1] = set_V
         elif motor_number == 2:
             if motor_ch == 1:
-                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 self.num_attempts_set_motor2_ch1_V = 0
                 self.motor2_ch1_updated = True
+                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 2:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot2_x_voltage[self.voltage_step - 1 -
@@ -701,10 +701,10 @@ class UpdateManager(QObject):
                 elif self._locking:
                     self.V0[2] = set_V
             elif motor_ch == 2:
-                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 self.num_attempts_set_motor2_ch2_V = 0
                 self.motor2_ch2_updated = True
+                print("received set correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 3:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot2_y_voltage[self.voltage_step - 1 -
