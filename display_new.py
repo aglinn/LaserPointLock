@@ -901,7 +901,6 @@ class Window(QMainWindow, Ui_MainWindow):
 
             # Update the pointing position plots:
             if not self.suppress_pointing_display:
-                print("Updating the camera 2 COM data.")
                 self.cam2_x = self.addToPlot(self.cam2_x, self.cam2_x_plot, cam_com[0],
                                              maxSize=int(self.le_num_points.text()))
                 self.cam2_y = self.addToPlot(self.cam2_y, self.cam2_y_plot, cam_com[1],

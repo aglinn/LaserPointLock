@@ -22,7 +22,7 @@ class UpdateManager(QObject):
     # The first ints in the signals below indicate which camera/motor 1 or 2, second int is motor_channel
 
     # Internal Signaling (from myself to myself)
-    cam_img_received_signal = pyqtSignal(int)
+    # cam_img_received_signal = pyqtSignal(int)
     # Internal signal for letting update manager know there is a new COM found post motor update
     # If anything external connects to this signal, I need to redo the lock, align, calibrate transitions.
     com_found_signal = pyqtSignal()
@@ -161,13 +161,14 @@ class UpdateManager(QObject):
         # Start off the calibration process with voltages at first step
         self.starting_v[0] = self.calibration_voltages[0]
         self._r0 = np.array([0, 0, 0, 0])
+        self.ResourceManager = None
         return
 
     def connect_signals(self):
         """
         Connect all update manager emmitted signals to appropriate slots.
         """
-        self.cam_img_received_signal.connect(self.process_img)
+        # self.cam_img_received_signal.connect(self.process_img)
         self.request_set_home_signal.connect(lambda v: setattr(self, 'set_pos', v))
         self.request_set_calibration_matrix.connect(lambda mat: setattr(self, 'calibration_matrix', mat))
         self.request_connect_motor_signal.connect(self.connect_motor)
