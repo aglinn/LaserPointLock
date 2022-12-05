@@ -283,27 +283,27 @@ class UpdateManager(QObject):
         if motor_number == 1:
             if motor_chanel == 1:
                 self.motor1_ch1_updated = False
-                print("requesting set 1,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                      self.motor2_ch2_updated)
+                # print("requesting set 1,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                #      self.motor2_ch2_updated)
                 self.motor1.request_set_ch1V_signal.emit(voltage)
                 self.num_attempts_set_motor1_ch1_V += 1
             elif motor_chanel == 2:
                 self.motor1_ch2_updated = False
-                print("requesting set 1,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                      self.motor2_ch2_updated)
+                # print("requesting set 1,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                #      self.motor2_ch2_updated)
                 self.motor1.request_set_ch2V_signal.emit(voltage)
                 self.num_attempts_set_motor1_ch2_V += 1
         elif motor_number == 2:
             if motor_chanel == 1:
                 self.motor2_ch1_updated = False
-                print("requesting set 2,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                      self.motor2_ch2_updated)
+                # print("requesting set 2,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                #       self.motor2_ch2_updated)
                 self.motor2.request_set_ch1V_signal.emit(voltage)
                 self.num_attempts_set_motor2_ch1_V += 1
             elif motor_chanel == 2:
                 self.motor2_ch2_updated = False
-                print("requesting set 2,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                      self.motor2_ch2_updated)
+                # print("requesting set 2,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
+                #       self.motor2_ch2_updated)
                 self.motor2.request_set_ch2V_signal.emit(voltage)
                 self.num_attempts_set_motor2_ch2_V += 1
         return
@@ -677,8 +677,8 @@ class UpdateManager(QObject):
             if motor_ch == 1:
                 self.num_attempts_set_motor1_ch1_V = 0
                 self.motor1_ch1_updated = True
-                print("received set 1,1, correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
+                # print("received set 1,1, correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                #      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 0:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot1_x_voltage[self.voltage_step - 1 -
@@ -688,8 +688,8 @@ class UpdateManager(QObject):
             elif motor_ch == 2:
                 self.num_attempts_set_motor1_ch2_V = 0
                 self.motor1_ch2_updated = True
-                print("received set 1,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
+                # print("received set 1,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 1:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot1_y_voltage[self.voltage_step - 1 -
@@ -700,8 +700,8 @@ class UpdateManager(QObject):
             if motor_ch == 1:
                 self.num_attempts_set_motor2_ch1_V = 0
                 self.motor2_ch1_updated = True
-                print("received set 2,1 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
+                # print("received set 2,1 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 2:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot2_x_voltage[self.voltage_step - 1 -
@@ -711,8 +711,8 @@ class UpdateManager(QObject):
             elif motor_ch == 2:
                 self.num_attempts_set_motor2_ch2_V = 0
                 self.motor2_ch2_updated = True
-                print("received set 2,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                      self.motor2_ch1_updated, self.motor2_ch2_updated)
+                # print("received set 2,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
+                #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 3:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot2_y_voltage[self.voltage_step - 1 -
@@ -760,7 +760,7 @@ class UpdateManager(QObject):
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor1_ch1_updated = True
-                    print("Accepted set 1,1 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+                    # print("Accepted set 1,1 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
             elif motor_ch == 2:
                 if self._calibrating:
                     if self.num_attempts_set_motor1_ch2_V <= self.max_setV_attempts_calib:
@@ -778,7 +778,7 @@ class UpdateManager(QObject):
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor1_ch2_updated = True
-                    print("Accepted set 1,2 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+                    # print("Accepted set 1,2 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
         elif motor_number == 2:
             if motor_ch == 1:
                 if self._calibrating:
@@ -797,7 +797,7 @@ class UpdateManager(QObject):
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor2_ch1_updated = True
-                    print("Accepted set 2,1 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+                    # print("Accepted set 2,1 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
             elif motor_ch == 2:
                 if self._calibrating:
                     if self.num_attempts_set_motor2_ch2_V <= self.max_setV_attempts_calib:
@@ -815,7 +815,7 @@ class UpdateManager(QObject):
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor2_ch2_updated = True
-                    print("Accepted set 2,2 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+                    # print("Accepted set 2,2 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
         # Only get to this check if I am locking.
         self.check_all_motors_updated()
         return
@@ -827,7 +827,7 @@ class UpdateManager(QObject):
         This function is called by an uppdated COM signal, which is only emitted when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
-        print("Calling Update")
+        # print("Calling Update")
         if self._cam1_com_updated and self._cam2_com_updated:  # These both must be true to apply an update
             # reset all logic flags to indicate that nothing is updated since the present update.
             self._cam1_com_updated = False
@@ -1714,8 +1714,9 @@ class UpdateManager(QObject):
             self._cam1_com_updated = True
             self.com_found_signal.emit()
         else:
-            print("motors not updated, ",
-                  self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+            pass
+            # print("motors not updated, ",
+            #       self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
         return
 
     @property
@@ -1732,8 +1733,9 @@ class UpdateManager(QObject):
             self._cam2_com_updated = True
             self.com_found_signal.emit()
         else:
-            print("motors not updated, ",
-                  self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+            pass
+            # print("motors not updated, ",
+            #       self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
         return
 
     def com(self):
