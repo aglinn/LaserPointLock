@@ -147,15 +147,15 @@ class UpdateManager(QObject):
         self.num_attempts_set_motor2_ch2_V = 0
         self.calibration_voltages = 5 * np.arange(31)
         self.num_steps_per_motor = len(self.calibration_voltages)
-        self.mot1_x_voltage, self.mot1_y_voltage, self.mot2_x_voltage, self.mot2_y_voltage = np.empty(
+        self.mot1_x_voltage, self.mot1_y_voltage, self.mot2_x_voltage, self.mot2_y_voltage = np.zeros(
             (4, len(self.calibration_voltages)))
-        self.mot1_x_cam1_x, self.mot1_x_cam1_y, self.mot1_x_cam2_x, self.mot1_x_cam2_y = np.empty(
+        self.mot1_x_cam1_x, self.mot1_x_cam1_y, self.mot1_x_cam2_x, self.mot1_x_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
-        self.mot1_y_cam1_x, self.mot1_y_cam1_y, self.mot1_y_cam2_x, self.mot1_y_cam2_y = np.empty(
+        self.mot1_y_cam1_x, self.mot1_y_cam1_y, self.mot1_y_cam2_x, self.mot1_y_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
-        self.mot2_x_cam1_x, self.mot2_x_cam1_y, self.mot2_x_cam2_x, self.mot2_x_cam2_y = np.empty(
+        self.mot2_x_cam1_x, self.mot2_x_cam1_y, self.mot2_x_cam2_x, self.mot2_x_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
-        self.mot2_y_cam1_x, self.mot2_y_cam1_y, self.mot2_y_cam2_x, self.mot2_y_cam2_y = np.empty(
+        self.mot2_y_cam1_x, self.mot2_y_cam1_y, self.mot2_y_cam2_x, self.mot2_y_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
         self.starting_v = 75.0 * np.ones(4)
         # Start off the calibration process with voltages at first step
@@ -682,7 +682,6 @@ class UpdateManager(QObject):
         if motor_number == 1:
             if motor_ch == 1:
                 self.num_attempts_set_motor1_ch1_V = 0
-                self.motor1_ch1_updated = True
                 # print("received set 1,1, correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
                 #      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 0:
@@ -691,9 +690,9 @@ class UpdateManager(QObject):
                                         self.num_calibration_points_dropped_current_sweep] = set_V
                 elif self._locking:
                     self.V0[0] = set_V
+                self.motor1_ch1_updated = True
             elif motor_ch == 2:
                 self.num_attempts_set_motor1_ch2_V = 0
-                self.motor1_ch2_updated = True
                 # print("received set 1,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
                 #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 1:
@@ -702,10 +701,10 @@ class UpdateManager(QObject):
                                         self.num_calibration_points_dropped_current_sweep] = set_V
                 elif self._locking:
                     self.V0[1] = set_V
+                self.motor1_ch2_updated = True
         elif motor_number == 2:
             if motor_ch == 1:
                 self.num_attempts_set_motor2_ch1_V = 0
-                self.motor2_ch1_updated = True
                 # print("received set 2,1 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
                 #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 2:
@@ -714,9 +713,9 @@ class UpdateManager(QObject):
                                         self.num_calibration_points_dropped_current_sweep] = set_V
                 elif self._locking:
                     self.V0[2] = set_V
+                self.motor2_ch1_updated = True
             elif motor_ch == 2:
                 self.num_attempts_set_motor2_ch2_V = 0
-                self.motor2_ch2_updated = True
                 # print("received set 2,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
                 #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 3:
@@ -725,6 +724,7 @@ class UpdateManager(QObject):
                                         self.num_calibration_points_dropped_current_sweep] = set_V
                 elif self._locking:
                     self.V0[3] = set_V
+                self.motor2_ch2_updated = True
 
         self.check_all_motors_updated()
         return
@@ -1159,17 +1159,17 @@ class UpdateManager(QObject):
                 if self.voltage_step < self.num_steps_per_motor:
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(1, 1, set_voltage)
                     self.voltage_step += 1
+                    self.request_set_motor(1, 1, set_voltage)
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
                     # Set motor 1 ch1 back to center voltage
+                    self.voltage_step += 1
                     self.request_set_motor(1, 1, 75.0)
                     self.request_set_motor(1, 2, set_voltage)
-                    self.voltage_step += 1
                 return
             elif self.calibration_sweep_index == 1:
                 # capture pointing from first motor, channel 2 sweep
@@ -1213,17 +1213,17 @@ class UpdateManager(QObject):
                 if self.voltage_step < self.num_steps_per_motor:
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(1, 2, set_voltage)
                     self.voltage_step += 1
+                    self.request_set_motor(1, 2, set_voltage)
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
                     # Set motor 1 ch2 back to center voltage
+                    self.voltage_step += 1
                     self.request_set_motor(1, 2, 75.0)
                     self.request_set_motor(2, 1, set_voltage)
-                    self.voltage_step += 1
                 return
             elif self.calibration_sweep_index == 2:
                 # capture pointing from second motor, channel 1 sweep
@@ -1267,17 +1267,17 @@ class UpdateManager(QObject):
                 if self.voltage_step < self.num_steps_per_motor:
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(2, 1, set_voltage)
                     self.voltage_step += 1
+                    self.request_set_motor(2, 1, set_voltage)
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
                     # Set motor 2 ch1 back to center voltage
+                    self.voltage_step += 1
                     self.request_set_motor(2, 1, 75.0)
                     self.request_set_motor(2, 2, set_voltage)
-                    self.voltage_step += 1
                 return
             elif self.calibration_sweep_index == 3:
                 # capture pointing from second motor, channel 2 sweep
@@ -1325,8 +1325,8 @@ class UpdateManager(QObject):
                 if self.voltage_step < self.num_steps_per_motor:
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(2, 2, set_voltage)
                     self.voltage_step += 1
+                    self.request_set_motor(2, 2, set_voltage)
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
@@ -1349,29 +1349,29 @@ class UpdateManager(QObject):
         """
         Calculate the calibration matrix. And plot the resulting fits to pointing changes vs. voltage changes
         """
-        print("motor 1 x : ", self.mot1_x_voltage)
-        print("motor 1 y : ", self.mot1_y_voltage)
-        print("motor 2 x : ", self.mot2_x_voltage)
-        print("motor 2 y : ", self.mot2_y_voltage)
-        print("motor 1 x voltage, cam1 x response: ", self.mot1_x_cam1_x)
-        print("motor 1 x voltage, cam1 y response: ", self.mot1_x_cam1_y)
-        print("motor 1 x voltage, cam2 x response: ", self.mot1_x_cam2_x)
-        print("motor 1 x voltage, cam2 y response: ", self.mot1_x_cam2_y)
+        print("motor 1 x : ", self.mot1_x_voltage, len(self.mot1_x_voltage))
+        print("motor 1 y : ", self.mot1_y_voltage, len(self.mot1_y_voltage))
+        print("motor 2 x : ", self.mot2_x_voltage, len(self.mot2_x_voltage))
+        print("motor 2 y : ", self.mot2_y_voltage, len(self.mot2_y_voltage))
+        print("motor 1 x voltage, cam1 x response: ", self.mot1_x_cam1_x, len(self.mot1_x_cam1_x))
+        print("motor 1 x voltage, cam1 y response: ", self.mot1_x_cam1_y, len(self.mot1_x_cam1_y))
+        print("motor 1 x voltage, cam2 x response: ", self.mot1_x_cam2_x, len(self.mot1_x_cam2_x))
+        print("motor 1 x voltage, cam2 y response: ", self.mot1_x_cam2_y, len(self.mot1_x_cam2_y))
 
-        print("motor 1 y voltage, cam1 x response: ", self.mot1_y_cam1_x)
-        print("motor 1 y voltage, cam1 y response: ", self.mot1_y_cam1_y)
-        print("motor 1 y voltage, cam2 x response: ", self.mot1_y_cam2_x)
-        print("motor 1 y voltage, cam2 y response: ", self.mot1_y_cam2_y)
+        print("motor 1 y voltage, cam1 x response: ", self.mot1_y_cam1_x, " with len ", len(self.mot1_y_cam1_x))
+        print("motor 1 y voltage, cam1 y response: ", self.mot1_y_cam1_y, " with len ", len(self.mot1_y_cam1_y))
+        print("motor 1 y voltage, cam2 x response: ", self.mot1_y_cam2_x, " with len ", len(self.mot1_y_cam2_x))
+        print("motor 1 y voltage, cam2 y response: ", self.mot1_y_cam2_y, " with len ", len(self.mot1_y_cam2_y))
 
-        print("motor 2 x voltage, cam1 x response: ", self.mot2_x_cam1_x)
-        print("motor 2 x voltage, cam1 y response: ", self.mot2_x_cam1_y)
-        print("motor 2 x voltage, cam2 x response: ", self.mot2_x_cam2_x)
-        print("motor 2 x voltage, cam2 y response: ", self.mot2_x_cam2_y)
+        print("motor 2 x voltage, cam1 x response: ", self.mot2_x_cam1_x, " with len ", len(self.mot2_x_cam1_x))
+        print("motor 2 x voltage, cam1 y response: ", self.mot2_x_cam1_y, " with len ", len(self.mot2_x_cam1_y))
+        print("motor 2 x voltage, cam2 x response: ", self.mot2_x_cam2_x, " with len ", len(self.mot2_x_cam2_x))
+        print("motor 2 x voltage, cam2 y response: ", self.mot2_x_cam2_y, " with len ", len(self.mot2_x_cam2_y))
 
-        print("motor 2 y voltage, cam1 x response: ", self.mot2_y_cam1_x)
-        print("motor 2 y voltage, cam1 y response: ", self.mot2_y_cam1_y)
-        print("motor 2 y voltage, cam2 x response: ", self.mot2_y_cam2_x)
-        print("motor 2 y voltage, cam2 y response: ", self.mot2_y_cam2_y)
+        print("motor 2 y voltage, cam1 x response: ", self.mot2_y_cam1_x, " with len ", len(self.mot2_y_cam1_x))
+        print("motor 2 y voltage, cam1 y response: ", self.mot2_y_cam1_y, " with len ", len(self.mot2_y_cam1_y))
+        print("motor 2 y voltage, cam2 x response: ", self.mot2_y_cam2_x, " with len ", len(self.mot2_y_cam2_x))
+        print("motor 2 y voltage, cam2 y response: ", self.mot2_y_cam2_y, " with len ", len(self.mot2_y_cam2_y))
         # calculate slopes by fitting lines
         p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam1_x, deg=1)
         p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_x, deg=1)
