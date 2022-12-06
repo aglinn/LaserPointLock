@@ -1634,7 +1634,7 @@ class UpdateManager(QObject):
                 com_x += self._r0[0]
                 com_y += self._r0[1]
                 self.cam_1_com = np.asarray([com_x, com_y])
-                self.update_gui_cam_com_signal.emit(1, self.cam_1_com)
+                self.update_gui_cam_com_signal.emit(1, np.asarray([com_x, com_y]))
             if self._cam1_img_count >= self._update_GUI_images_every_n_images:
                 self.update_gui_img_signal.emit(1, np.asarray(img))
                 self._cam1_img_count = 0
@@ -1649,7 +1649,7 @@ class UpdateManager(QObject):
                 com_x += self._r0[2]
                 com_y += self._r0[3]
                 self.cam_2_com = np.asarray([com_x, com_y])
-                self.update_gui_cam_com_signal.emit(2, self.cam_2_com)
+                self.update_gui_cam_com_signal.emit(2, np.asarray([com_x, com_y]))
             if self._cam2_img_count >= self._update_GUI_images_every_n_images:
                 self.update_gui_img_signal.emit(2, np.asarray(img))
                 self._cam2_img_count = 0
