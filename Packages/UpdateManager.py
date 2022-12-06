@@ -162,8 +162,8 @@ class UpdateManager(QObject):
         self.starting_v[0] = self.calibration_voltages[0]
         self._r0 = np.array([0, 0, 0, 0])
         self.num_frames_to_average_during_calibrate = 10
-        self.cam1_com_avg_num = 0
-        self.cam2_com_avg_num = 0
+        self.cam1_com_avg_num = 1
+        self.cam2_com_avg_num = 1
         return
 
     def connect_signals(self):
@@ -284,8 +284,8 @@ class UpdateManager(QObject):
         self._cam1_com_updated = False
         self._cam2_com_updated = False
         if self._calibrating:
-            self.cam1_com_avg_num = 0
-            self.cam1_com_avg_num = 0
+            self.cam1_com_avg_num = 1
+            self.cam1_com_avg_num = 1
         if motor_number == 1:
             if motor_chanel == 1:
                 self.motor1_ch1_updated = False
@@ -1720,12 +1720,13 @@ class UpdateManager(QObject):
             if self._locking:
                 self._cam_1_com = vector
             elif self._calibrating:
-                self.cam1_com_avg_num += 1
                 if self.cam1_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector/self.num_frames_to_average_during_calibrate
+                    self.cam1_com_avg_num += 1
                     return
                 elif self.cam1_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector / self.num_frames_to_average_during_calibrate
+                    self.cam1_com_avg_num += 1
                     print("Made it to nth frame. Cam 1.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
@@ -1752,12 +1753,13 @@ class UpdateManager(QObject):
             if self._locking:
                 self._cam_2_com = vector
             elif self._calibrating:
-                self.cam2_com_avg_num += 1
                 if self.cam2_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
+                    self.cam2_com_avg_num += 1
                     return
                 elif self.cam2_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
+                    self.cam2_com_avg_num += 1
                     print("Made it to nth frame.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
