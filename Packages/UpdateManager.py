@@ -1119,21 +1119,6 @@ class UpdateManager(QObject):
             # Keep updating motors and storing positions
             if self.calibration_sweep_index == 0:
                 # capture pointing from first motor, channel 1 sweep
-                # Go ahead and get the motor to start updating to the next set point
-                if self.voltage_step < self.num_steps_per_motor:
-                    # Set the next voltage step on motor current motor
-                    set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(1, 1, set_voltage)
-                    self.voltage_step += 1
-                elif self.voltage_step == self.num_steps_per_motor:
-                    # Finished voltage steps on the last motor, now start the next motor moving.
-                    # But I still need pointing info from the last motor set position.
-                    self.voltage_step = 0
-                    set_voltage = self.calibration_voltages[self.voltage_step]
-                    # Set motor 1 ch1 back to center voltage
-                    self.request_set_motor(1, 1, 75.0)
-                    self.request_set_motor(1, 2, set_voltage)
-                    self.voltage_step += 1
                 # Now capture the pointing information from the last voltage step.
                 # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
                 # received by an event, and the event loop is not being processed during this blocking function.
@@ -1170,24 +1155,24 @@ class UpdateManager(QObject):
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
-                return
-            elif self.calibration_sweep_index == 1:
-                # capture pointing from first motor, channel 2 sweep
                 # Go ahead and get the motor to start updating to the next set point
                 if self.voltage_step < self.num_steps_per_motor:
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(1, 2, set_voltage)
+                    self.request_set_motor(1, 1, set_voltage)
                     self.voltage_step += 1
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    # Set motor 1 ch2 back to center voltage
-                    self.request_set_motor(1, 2, 75.0)
-                    self.request_set_motor(2, 1, set_voltage)
+                    # Set motor 1 ch1 back to center voltage
+                    self.request_set_motor(1, 1, 75.0)
+                    self.request_set_motor(1, 2, set_voltage)
                     self.voltage_step += 1
+                return
+            elif self.calibration_sweep_index == 1:
+                # capture pointing from first motor, channel 2 sweep
                 # Now capture the pointing information from the last voltage step.
                 # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
                 # received by an event, and the event loop is not being processed during this blocking function.
@@ -1224,24 +1209,24 @@ class UpdateManager(QObject):
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
-                return
-            elif self.calibration_sweep_index == 2:
-                # capture pointing from second motor, channel 1 sweep
                 # Go ahead and get the motor to start updating to the next set point
                 if self.voltage_step < self.num_steps_per_motor:
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(2, 1, set_voltage)
+                    self.request_set_motor(1, 2, set_voltage)
                     self.voltage_step += 1
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
                     self.voltage_step = 0
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    # Set motor 2 ch1 back to center voltage
-                    self.request_set_motor(2, 1, 75.0)
-                    self.request_set_motor(2, 2, set_voltage)
+                    # Set motor 1 ch2 back to center voltage
+                    self.request_set_motor(1, 2, 75.0)
+                    self.request_set_motor(2, 1, set_voltage)
                     self.voltage_step += 1
+                return
+            elif self.calibration_sweep_index == 2:
+                # capture pointing from second motor, channel 1 sweep
                 # Now capture the pointing information from the last voltage step.
                 # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
                 # received by an event, and the event loop is not being processed during this blocking function.
@@ -1278,21 +1263,24 @@ class UpdateManager(QObject):
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
-                return
-            elif self.calibration_sweep_index == 3:
-                # capture pointing from second motor, channel 2 sweep
                 # Go ahead and get the motor to start updating to the next set point
                 if self.voltage_step < self.num_steps_per_motor:
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
-                    self.request_set_motor(2, 2, set_voltage)
+                    self.request_set_motor(2, 1, set_voltage)
                     self.voltage_step += 1
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
-                    self.voltage_step = 1
-                    # Set motor 2 ch2 back to center voltage
-                    self.request_set_motor(2, 2, 75.0)
+                    self.voltage_step = 0
+                    set_voltage = self.calibration_voltages[self.voltage_step]
+                    # Set motor 2 ch1 back to center voltage
+                    self.request_set_motor(2, 1, 75.0)
+                    self.request_set_motor(2, 2, set_voltage)
+                    self.voltage_step += 1
+                return
+            elif self.calibration_sweep_index == 3:
+                # capture pointing from second motor, channel 2 sweep
 
                 # Now capture the pointing information from the last voltage step.
                 # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
@@ -1333,6 +1321,21 @@ class UpdateManager(QObject):
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
+                # Go ahead and get the motor to start updating to the next set point
+                if self.voltage_step < self.num_steps_per_motor:
+                    # Set the next voltage step on motor current motor
+                    set_voltage = self.calibration_voltages[self.voltage_step]
+                    self.request_set_motor(2, 2, set_voltage)
+                    self.voltage_step += 1
+                elif self.voltage_step == self.num_steps_per_motor:
+                    # Finished voltage steps on the last motor, now start the next motor moving.
+                    # But I still need pointing info from the last motor set position.
+                    self.voltage_step = 1
+                    # Set motor 2 ch2 back to center voltage
+                    self.request_set_motor(2, 2, 75.0)
+                if self.calibration_sweep_index == 4:
+                    # Return from a calibration process always to a non-locking state of the update manager.
+                    self.request_toggle_lock_signal.emit(False)
                 return
             elif self.calibration_pointing_index == 4:
                 # If I am getting here, I am already done sweeping the motors anyway, so just do nothing.
@@ -1481,8 +1484,6 @@ class UpdateManager(QObject):
         self.calibration_matrix = calib_mat
         # Let the GUI thread know that calibration is done so it can update GUI information accordingly.
         self.update_gui_new_calibration_matrix_signal.emit(calib_mat)
-        # Return from a calibration process always to a non-locking state of the update manager.
-        self.request_toggle_lock_signal.emit(False)
         return
 
     # Analysis/convenience methods.
