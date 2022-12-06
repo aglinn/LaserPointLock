@@ -1328,11 +1328,11 @@ class UpdateManager(QObject):
                     # step to next step sweep calibration, here this just ensures I do not accidentally overwrite
                     # anything if this function gets called again.
                     self.calibration_sweep_index += 1
+                    # Tell update manager to calculate the calibration matrix now that the sweeps are done.
+                    self.request_calculate_calibration_matrix_signal.emit()
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
-                # Tell update manager to calculate the calibration matrix now that the sweeps are done.
-                self.request_calculate_calibration_matrix_signal.emit()
                 return
             elif self.calibration_pointing_index == 4:
                 # If I am getting here, I am already done sweeping the motors anyway, so just do nothing.
@@ -1351,6 +1351,24 @@ class UpdateManager(QObject):
         print("motor 2 x : ", self.mot2_x_voltage)
         print("motor 2 y : ", self.mot2_y_voltage)
         print("motor 1 x voltage, cam1 x response: ", self.mot1_x_cam1_x)
+        print("motor 1 x voltage, cam1 y response: ", self.mot1_x_cam1_y)
+        print("motor 1 x voltage, cam2 x response: ", self.mot1_x_cam2_x)
+        print("motor 1 x voltage, cam2 y response: ", self.mot1_x_cam2_y)
+
+        print("motor 1 y voltage, cam1 x response: ", self.mot1_y_cam1_x)
+        print("motor 1 y voltage, cam1 y response: ", self.mot1_y_cam1_y)
+        print("motor 1 y voltage, cam2 x response: ", self.mot1_y_cam2_x)
+        print("motor 1 y voltage, cam2 y response: ", self.mot1_y_cam2_y)
+
+        print("motor 2 x voltage, cam1 x response: ", self.mot2_x_cam1_x)
+        print("motor 2 x voltage, cam1 y response: ", self.mot2_x_cam1_y)
+        print("motor 2 x voltage, cam2 x response: ", self.mot2_x_cam2_x)
+        print("motor 2 x voltage, cam2 y response: ", self.mot2_x_cam2_y)
+
+        print("motor 2 y voltage, cam1 x response: ", self.mot2_y_cam1_x)
+        print("motor 2 y voltage, cam1 y response: ", self.mot2_y_cam1_y)
+        print("motor 2 y voltage, cam2 x response: ", self.mot2_y_cam2_x)
+        print("motor 2 y voltage, cam2 y response: ", self.mot2_y_cam2_y)
         # calculate slopes by fitting lines
         p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam1_x, deg=1)
         p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_x, deg=1)
