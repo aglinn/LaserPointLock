@@ -1113,6 +1113,7 @@ class UpdateManager(QObject):
         Receieves the COM update signal. Once both are updated, add them to pointing array for later use. Apply next
         voltage in calibration series. Once all voltages are swept through, request to calculate the calibration_matrix.
         """
+        print("Called run calibration.", self.calibration_sweep_index, self.calibration_pointing_index)
         if self._cam1_com_updated and self._cam2_com_updated:
             # I have updated COM coordinates to store.
             # Reset com acquired flags to false:
@@ -1725,9 +1726,11 @@ class UpdateManager(QObject):
                     return
                 elif self.cam1_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector / self.num_frames_to_average_during_calibrate
+                    print("Made it to nth frame. Cam 1.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
                     return
+            print("Cam 1 COM Updated firing.")
             self._cam1_com_updated = True
             self.com_found_signal.emit()
         else:
@@ -1755,9 +1758,11 @@ class UpdateManager(QObject):
                     return
                 elif self.cam2_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
+                    print("Made it to nth frame.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
                     return
+            print("Cam 2 COM Updated firing.")
             self._cam2_com_updated = True
             self.com_found_signal.emit()
         else:
