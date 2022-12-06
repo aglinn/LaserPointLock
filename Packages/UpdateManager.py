@@ -285,7 +285,7 @@ class UpdateManager(QObject):
         self._cam2_com_updated = False
         if self._calibrating:
             self.cam1_com_avg_num = 1
-            self.cam1_com_avg_num = 1
+            self.cam2_com_avg_num = 1
         if motor_number == 1:
             if motor_chanel == 1:
                 self.motor1_ch1_updated = False
@@ -1763,7 +1763,7 @@ class UpdateManager(QObject):
                     print("Made it to nth frame.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
-                    print("cam 2 setting COM with n>num frames, ", self.cam1_com_avg_num)
+                    print("cam 2 setting COM with n>num frames, ", self.cam2_com_avg_num)
                     return
             print("Cam 2 COM Updated firing.")
             self._cam2_com_updated = True
