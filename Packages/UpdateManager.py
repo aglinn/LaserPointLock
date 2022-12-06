@@ -291,27 +291,27 @@ class UpdateManager(QObject):
                 self.motor1_ch1_updated = False
                 # print("requesting set 1,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #      self.motor2_ch2_updated)
-                self.motor1.request_set_ch1V_signal.emit(voltage)
                 self.num_attempts_set_motor1_ch1_V += 1
+                self.motor1.request_set_ch1V_signal.emit(voltage)
             elif motor_chanel == 2:
                 self.motor1_ch2_updated = False
                 # print("requesting set 1,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #      self.motor2_ch2_updated)
-                self.motor1.request_set_ch2V_signal.emit(voltage)
                 self.num_attempts_set_motor1_ch2_V += 1
+                self.motor1.request_set_ch2V_signal.emit(voltage)
         elif motor_number == 2:
             if motor_chanel == 1:
                 self.motor2_ch1_updated = False
                 # print("requesting set 2,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #       self.motor2_ch2_updated)
-                self.motor2.request_set_ch1V_signal.emit(voltage)
                 self.num_attempts_set_motor2_ch1_V += 1
+                self.motor2.request_set_ch1V_signal.emit(voltage)
             elif motor_chanel == 2:
                 self.motor2_ch2_updated = False
                 # print("requesting set 2,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #       self.motor2_ch2_updated)
-                self.motor2.request_set_ch2V_signal.emit(voltage)
                 self.num_attempts_set_motor2_ch2_V += 1
+                self.motor2.request_set_ch2V_signal.emit(voltage)
         return
 
     @pyqtSlot(int, int)
@@ -1116,9 +1116,6 @@ class UpdateManager(QObject):
         print("Called run calibration.", self.calibration_sweep_index, self.calibration_pointing_index)
         if self._cam1_com_updated and self._cam2_com_updated:
             # I have updated COM coordinates to store.
-            # Reset com acquired flags to false:
-            self._cam1_com_updated = False
-            self._cam2_com_updated = False
             # Keep updating motors and storing positions
             if self.calibration_sweep_index == 0:
                 # capture pointing from first motor, channel 1 sweep
@@ -1723,6 +1720,7 @@ class UpdateManager(QObject):
                 if self.cam1_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector/self.num_frames_to_average_during_calibrate
                     self.cam1_com_avg_num += 1
+                    print("Storing new frames COM Cam 1.")
                     return
                 elif self.cam1_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector / self.num_frames_to_average_during_calibrate
@@ -1730,6 +1728,7 @@ class UpdateManager(QObject):
                     print("Made it to nth frame. Cam 1.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
+                    print("setting COM with n>num frames, ", self.cam1_com_avg_num)
                     return
             print("Cam 1 COM Updated firing.")
             self._cam1_com_updated = True
@@ -1756,6 +1755,7 @@ class UpdateManager(QObject):
                 if self.cam2_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
                     self.cam2_com_avg_num += 1
+                    print("Storing new frames COM Cam 2.")
                     return
                 elif self.cam2_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
@@ -1763,6 +1763,7 @@ class UpdateManager(QObject):
                     print("Made it to nth frame.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
+                    print("cam 2 setting COM with n>num frames, ", self.cam1_com_avg_num)
                     return
             print("Cam 2 COM Updated firing.")
             self._cam2_com_updated = True
