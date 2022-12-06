@@ -1346,6 +1346,11 @@ class UpdateManager(QObject):
         """
         Calculate the calibration matrix. And plot the resulting fits to pointing changes vs. voltage changes
         """
+        print("motor 1 x : ", self.mot1_x_voltage)
+        print("motor 1 y : ", self.mot1_y_voltage)
+        print("motor 2 x : ", self.mot2_x_voltage)
+        print("motor 2 y : ", self.mot2_y_voltage)
+        print("motor 1 x voltage, cam1 x response: ", self.mot1_x_cam1_x)
         # calculate slopes by fitting lines
         p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam1_x, deg=1)
         p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_x, deg=1)
@@ -1720,17 +1725,13 @@ class UpdateManager(QObject):
                 if self.cam1_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector/self.num_frames_to_average_during_calibrate
                     self.cam1_com_avg_num += 1
-                    print("Storing new frames COM Cam 1.")
                     return
                 elif self.cam1_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector / self.num_frames_to_average_during_calibrate
                     self.cam1_com_avg_num += 1
-                    print("Made it to nth frame. Cam 1.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
-                    print("setting COM with n>num frames, ", self.cam1_com_avg_num)
                     return
-            print("Cam 1 COM Updated firing.")
             self._cam1_com_updated = True
             self.com_found_signal.emit()
         else:
@@ -1755,17 +1756,13 @@ class UpdateManager(QObject):
                 if self.cam2_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
                     self.cam2_com_avg_num += 1
-                    print("Storing new frames COM Cam 2.")
                     return
                 elif self.cam2_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
                     self.cam2_com_avg_num += 1
-                    print("Made it to nth frame.")
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
-                    print("cam 2 setting COM with n>num frames, ", self.cam2_com_avg_num)
                     return
-            print("Cam 2 COM Updated firing.")
             self._cam2_com_updated = True
             self.com_found_signal.emit()
         else:
