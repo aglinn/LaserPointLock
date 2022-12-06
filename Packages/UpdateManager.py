@@ -583,10 +583,10 @@ class UpdateManager(QObject):
                     self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=motor_to_connect,
                                                 ch1='X',
                                                 ch2='Y')
-                # Connect all signals from the motors
-                self.connect_motor_signals(1)
                 # Move the motor to its thread
                 self.motor1.moveToThread(self.motor1_thread)
+                # Connect all signals from the motors
+                self.connect_motor_signals(1)
                 # Start the thread
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 # Set priority as time critical! As soon as I want to apply an update, tell the motors and apply ASAP!
@@ -614,10 +614,10 @@ class UpdateManager(QObject):
                         self.ResourceManager = visa.ResourceManager()
                     self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=motor_to_connect,
                                                 ch1='X', ch2='Y')
-                # Connect all signals from the motors
-                self.connect_motor_signals(2)
                 # Move the motor to its thread
                 self.motor2.moveToThread(self.motor2_thread)
+                # Connect all signals from the motors
+                self.connect_motor_signals(2)
                 # Start the thread
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 # Set priority as time critical! As soon as I want to apply an update, tell the motors and apply ASAP!
@@ -644,10 +644,10 @@ class UpdateManager(QObject):
                     if self.ResourceManager is None:
                         self.ResourceManager = visa.ResourceManager()
                     self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=self.motor1_to_connect, ch1='X', ch2='Y')
-                # Connect all signals from the motors
-                self.connect_motor_signals(1)
                 # Move the motor to its thread
                 self.motor1.moveToThread(self.motor1_thread)
+                # Connect all signals from the motors
+                self.connect_motor_signals(1)
                 # Reset motor1_to_connect to None, because it is being connected now.
                 self.motor1_to_connect = None
         elif motor_number == 2:
@@ -660,10 +660,10 @@ class UpdateManager(QObject):
                         self.ResourceManager = visa.ResourceManager()
                     self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=self.motor2_to_connect,
                                                 ch1='X', ch2='Y')
-                # Connect all signals from the motors
-                self.connect_motor_signals(2)
                 # Move the motor to its thread
                 self.motor2.moveToThread(self.motor2_thread)
+                # Connect all signals from the motors
+                self.connect_motor_signals(2)
                 # Reset motor2_to_connect to None, because it is being connected now.
                 self.motor2_to_connect = None
         return
@@ -1349,7 +1349,7 @@ class UpdateManager(QObject):
         """
         Calculate the calibration matrix. And plot the resulting fits to pointing changes vs. voltage changes
         """
-        print("motor 1 x : ", self.mot1_x_voltage, len(self.mot1_x_voltage))
+        """print("motor 1 x : ", self.mot1_x_voltage, len(self.mot1_x_voltage))
         print("motor 1 y : ", self.mot1_y_voltage, len(self.mot1_y_voltage))
         print("motor 2 x : ", self.mot2_x_voltage, len(self.mot2_x_voltage))
         print("motor 2 y : ", self.mot2_y_voltage, len(self.mot2_y_voltage))
@@ -1371,7 +1371,7 @@ class UpdateManager(QObject):
         print("motor 2 y voltage, cam1 x response: ", self.mot2_y_cam1_x, " with len ", len(self.mot2_y_cam1_x))
         print("motor 2 y voltage, cam1 y response: ", self.mot2_y_cam1_y, " with len ", len(self.mot2_y_cam1_y))
         print("motor 2 y voltage, cam2 x response: ", self.mot2_y_cam2_x, " with len ", len(self.mot2_y_cam2_x))
-        print("motor 2 y voltage, cam2 y response: ", self.mot2_y_cam2_y, " with len ", len(self.mot2_y_cam2_y))
+        print("motor 2 y voltage, cam2 y response: ", self.mot2_y_cam2_y, " with len ", len(self.mot2_y_cam2_y))"""
         # calculate slopes by fitting lines
         p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam1_x, deg=1)
         p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_x, deg=1)
@@ -1389,6 +1389,7 @@ class UpdateManager(QObject):
         p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam2_x, deg=1)
         p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam1_y, deg=1)
         p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam2_y, deg=1)
+        print("Finished Polyfit.")
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
         if True:  # This just lets me collapse the below code
             import matplotlib.pyplot as plt
@@ -1465,6 +1466,7 @@ class UpdateManager(QObject):
             ax[2, 3].tick_params(axis='both', which='major', labelsize=6)
             ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
             # Show the figure
+            print("Called show fig.")
             plt.show()
         '''
         construct calibration matrix:
@@ -1484,6 +1486,7 @@ class UpdateManager(QObject):
         self.calibration_matrix = calib_mat
         # Let the GUI thread know that calibration is done so it can update GUI information accordingly.
         self.update_gui_new_calibration_matrix_signal.emit(calib_mat)
+        print("Finished calculating calibration matrix.")
         return
 
     # Analysis/convenience methods.

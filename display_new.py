@@ -90,10 +90,10 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager_thread.finished.connect(lambda: print("Update Manager Thread has finished."))
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
-        # Connect signals related to update manager.
-        self.connect_UpdateManager_signals()
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
+        # Connect signals related to update manager.
+        self.connect_UpdateManager_signals()
         # Start the thread
         # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
         # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
@@ -771,14 +771,14 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
-                # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.connect_camera_signals(1)
                 # Apply the settings directly before starting thread and thread event loop
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.cam1.set_gain(self.cam1_settings_to_set['gain'])
                 self.cam1.set_exposure_time(self.cam1_settings_to_set['exposure'])
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(1)
                 # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
@@ -797,14 +797,14 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
-                # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.connect_camera_signals(2)
                 # Apply the settings directly before starting thread and thread event loop
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.cam2.set_gain(self.cam2_settings_to_set['gain'])
                 self.cam2.set_exposure_time(self.cam2_settings_to_set['exposure'])
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(2)
                 # Setup camera view.
                 self.cam2_reset = True
                 self.resetHist(self.gv_camera2)
