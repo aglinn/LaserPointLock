@@ -224,6 +224,7 @@ from PyQt5.QtCore import QObject
 import time
 from flirpy.camera.boson import Boson
 
+
 lock = QtCore.QReadWriteLock()
 
 
@@ -1393,16 +1394,19 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.cap.set_pyspin_value("GammaEnable", False)
         print("Gamma is ", self.cap.get(cv2.CAP_PROP_GAMMA))
         self._exposure_time = 'Auto'
-        self.ROI_full_bounds = [0, 100000, 0, 100000] #This is static and only ever called by the GUI thread.
+        self.ROI_full_bounds = [0, 100000, 0, 100000] # This is static and only ever called by the GUI thread.
         self._gain = 1
         self.connect_signals()
         self._keep_capturing = True
         self._app_closing = False
         self.timer = QTimer()
-        self.timeout_time = 18
+        self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
+        self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
+        self.timeout_time = int(self.timeout_time)
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         self.timer.timeout.connect(self.get_frame)
         self.timer.setSingleShot(False)
+        self.timer.destroyed.connect(self.new_timer)
         return
 
     def connect_signals(self):
@@ -1440,14 +1444,43 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         return
 
     @pyqtSlot(float)
-    def set_exposure_time(self, time):
+    def set_exposure_time(self, t):
         """
         Not implemented because auto exposure loop on camera is probably better than manually setting.
         """
-        time *= 1000 #Convert from ms to us
-        self.cap.set(cv2.CAP_PROP_EXPOSURE, time)
-        self._exposure_time = self.cap.get(cv2.CAP_PROP_EXPOSURE)/1000.0 # Convert back to ms
+        t *= 1000  # Convert from ms to us
+        self.cap.set(cv2.CAP_PROP_EXPOSURE, t)
+        self._exposure_time = self.cap.get(cv2.CAP_PROP_EXPOSURE)/1000.0  # Convert back to ms
+        # Update the timer interval as needed.
+        frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
+        if self.frame_rate != frame_rate:
+            self.frame_rate = frame_rate
+            self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
+            self.timeout_time = int(self.timeout_time)
+            if self.timer.isActive():
+                print("Destroying timer.")
+                self.timer.timeout.disconnect()
+                self.timer.stop()
+                self.timer.deleteLater()
+            else:
+                print("Timeout time set to ", self.timeout_time)
+                self.timer.setInterval(self.timeout_time)
         self.exposure_updated_signal.emit(self.exposure_time)
+        return
+
+    @pyqtSlot()
+    def new_timer(self):
+        """
+        Create a new timer object and start it.
+        """
+        print("New timer")
+        print("Timeout time set to ", self.timeout_time)
+        self.timer = QTimer()
+        self.timer.setSingleShot(False)
+        self.timer.setInterval(self.timeout_time)
+        self.timer.timeout.connect(self.get_frame)
+        self.timer.destroyed.connect(self.new_timer)
+        self.timer.start()
         return
 
     def set_resolution(self, res):
@@ -1697,21 +1730,21 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         return
 
     @property
-    def time(self):
+    def t(self):
         """
         time that the image was acquired at in ms.
         """
         return self._time
 
-    @time.setter
-    def time(self, value):
+    @t.setter
+    def t(self, value):
         self._time = self._time_offset + value
         return
 
     @pyqtSlot()
     def apply_ROI(self):
         if self.ROI_bounds is not None:
-
+            self.timer.stop()
             # Get parameters to apply to the ROI settings of Camera
             width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
             height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
@@ -1733,7 +1766,14 @@ class BlackflyS_EasyPySpin_QObject(QObject):
             self.cap.cam.BeginAcquisition()
             self._ready_to_acquire = True
             self.ROI_applied.emit(True)
-            return
+            frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
+            if frame_rate != self.frame_rate:
+                self.frame_rate = frame_rate
+                self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
+                self.timeout_time = int(self.timeout_time)
+                self.timer.setInterval(self.timeout_time)
+            self.timer.start()
+        return
 
     @property
     def ROI_bounds(self):
