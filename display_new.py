@@ -44,7 +44,7 @@ import pickle as pkl
 import gc
 import matplotlib.pyplot as plt
 from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
-
+from matplotlib.pyplot import Axes
 pg.setConfigOptions(imageAxisOrder='row-major')
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
@@ -93,6 +93,7 @@ class Window(QMainWindow, Ui_MainWindow):
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
         # Connect signals related to update manager.
+        self.UpdateManager.connect_signals()
         self.connect_UpdateManager_signals()
         # Start the thread
         # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
@@ -280,6 +281,18 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.update_gui_locked_state.connect(self.confirm_lock_state)
         self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
         self.UpdateManager.update_gui_ping.connect(self.report_UpdateManager_ping)
+        self.UpdateManager.request_gui_plot_calibrate_fits(self.plot_calibration_fits)
+        return
+
+    @pyqtSlot(Axes)
+    def plot_calibration_fits(self, ax: Axes):
+        """
+        Just show the axes in the main thread so that it displays properly.
+        """
+        fig = plt.figure(dpi=200)
+        fig.add_axes(ax)
+        plt.sca(ax)
+        fig.show()
         return
 
     @pyqtSlot(dict)
@@ -778,6 +791,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.cam1.connect_signals()
                 self.connect_camera_signals(1)
                 # Setup camera view.
                 self.cam1_reset = True
@@ -804,6 +818,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.cam2.connect_signals()
                 self.connect_camera_signals(2)
                 # Setup camera view.
                 self.cam2_reset = True
@@ -946,6 +961,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.cam1.connect_signals()
                 self.connect_camera_signals(1)
                 # Apply the settings directly before starting thread and thread event loop
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
@@ -1022,6 +1038,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.cam2.connect_signals()
                 self.connect_camera_signals(2)
                 # Apply the settings directly before starting thread and thread event loop
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.

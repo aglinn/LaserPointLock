@@ -17,6 +17,7 @@ class InsufficientInformation(Exception):
 
     pass
 
+from matplotlib.pyplot import Axes
 
 class UpdateManager(QObject):
     # The first ints in the signals below indicate which camera/motor 1 or 2, second int is motor_channel
@@ -54,6 +55,7 @@ class UpdateManager(QObject):
     update_gui_cam_com_signal = pyqtSignal(int, np.ndarray)
     update_gui_new_calibration_matrix_signal = pyqtSignal(np.ndarray)  # send this to GUI for GUI thread to save
     update_gui_ping = pyqtSignal(float)
+    request_gui_plot_calibrate_fits = pyqtSignal(Axes)
 
     # TODO: Implement timing synchronization?
     # TODO: Implement triggering of cameras?
@@ -108,8 +110,6 @@ class UpdateManager(QObject):
         self._cam2_img_count = self._update_GUI_images_every_n_images
         self.img1_threshold = 0
         self.img2_threshold = 0
-        # connect signals
-        self.connect_signals()
         # Initialize Threading variables:
         self.motor1_thread = None
         self.motor2_thread = None
@@ -197,6 +197,7 @@ class UpdateManager(QObject):
         Connect  all motor signals emitted to appropraite update manager slots and emit update gui signals.
         """
         if motor_number == 1:
+            self.motor1.connect_signals()
             self.motor1.destroyed.connect(lambda args: self.reconnect_motor(1))
             self.motor1.close_complete_signal.connect(self.accept_motor_close)
             self.motor1.close_fail_signal.connect(self.close_motor_again)
@@ -227,6 +228,7 @@ class UpdateManager(QObject):
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
         elif motor_number == 2:
+            self.motor2.connect_signals()
             self.motor2.destroyed.connect(lambda args: self.reconnect_motor(2))
             self.motor2.close_complete_signal.connect(self.accept_motor_close)
             self.motor2.close_fail_signal.connect(self.close_motor_again)
@@ -1466,8 +1468,7 @@ class UpdateManager(QObject):
             ax[2, 3].tick_params(axis='both', which='major', labelsize=6)
             ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
             # Show the figure
-            print("Called show fig.")
-            plt.show()
+            self.request_gui_plot_calibrate_fits(ax)
         '''
         construct calibration matrix:
         Understand that this matrix is dV_i/dx_j where ij indexes like a normal matrix, i.e. row column. 

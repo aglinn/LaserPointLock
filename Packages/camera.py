@@ -1396,7 +1396,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self._exposure_time = 'Auto'
         self.ROI_full_bounds = [0, 100000, 0, 100000] # This is static and only ever called by the GUI thread.
         self._gain = 1
-        self.connect_signals()
         self._keep_capturing = True
         self._app_closing = False
         self.timer = QTimer()
@@ -1404,9 +1403,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
         self.timeout_time = int(self.timeout_time)
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
-        self.timer.timeout.connect(self.get_frame)
         self.timer.setSingleShot(False)
-        self.timer.destroyed.connect(self.new_timer)
+
         return
 
     def connect_signals(self):
@@ -1422,6 +1420,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.ROI_bounds_set_signal.connect(lambda v: setattr(self, 'ROI_bounds', v))
         self.release_cap_signal.connect(self.close)
         self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
+        self.timer.destroyed.connect(self.new_timer)
+        self.timer.timeout.connect(self.get_frame)
         return
 
     def update_frame(self):
