@@ -88,8 +88,8 @@ class UpdateManager(QObject):
         self.set_pos = None
         self.dV = None
         self.update_voltage = None
-        self._cam_1_com = None
-        self._cam_2_com = None
+        self._cam_1_com = np.array([0, 0])
+        self._cam_2_com = np.array([0, 0])
         self._cam_1_img = None
         self._cam_2_img = None
         self.img1_X_mesh = np.zeros([2, 2])
