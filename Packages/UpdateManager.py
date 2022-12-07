@@ -2,7 +2,7 @@ import numpy as np
 import nfft
 import time
 from lmfit import Parameters, minimize
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer
 from Packages.motors import MDT693B_Motor, MDT693A_Motor
 from datetime import datetime
 import cv2
@@ -164,6 +164,16 @@ class UpdateManager(QObject):
         self.num_frames_to_average_during_calibrate = 10
         self.cam1_com_avg_num = 1
         self.cam2_com_avg_num = 1
+        self._cam1_dx = []
+        self._cam2_dx = []
+        self.cam1_time_motors_updated = None
+        self.cam2_time_motors_updated = None
+        self.update_dx = None  # Effective dx to use when finding update voltages.
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.time_out_interval = 1000.0/55.0  # TODO: Need to set this dynamically.
+        self.block_timer = False
+        self.is_PID = False
         return
 
     def connect_signals(self):
@@ -184,6 +194,7 @@ class UpdateManager(QObject):
         self.request_set_camera_threshold_signal.connect(self.update_img_thresholds)
         self.request_close.connect(self.close)
         self.request_ping.connect(self.return_ping)
+        self.timer.timeout.connect(self.apply_update)
         return
 
     @pyqtSlot(float)
@@ -285,6 +296,9 @@ class UpdateManager(QObject):
         self._motors_updated = False
         self._cam1_com_updated = False
         self._cam2_com_updated = False
+        self.cam1_time_motors_updated = None
+        self.cam2_time_motors_updated = None
+        self.block_timer = False
         if self._calibrating:
             self.cam1_com_avg_num = 1
             self.cam2_com_avg_num = 1
@@ -830,52 +844,56 @@ class UpdateManager(QObject):
 
     # Locking related methods
     @pyqtSlot()
+    def time_delay_update(self):
+        # print("Calling Update")
+        if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
+            self.block_timer = True
+            self.timer.start(self.time_out_interval)
+        return
+
+    @pyqtSlot()
     def apply_update(self):
         """
-        This function is called by an uppdated COM signal, which is only emitted when no motors are currently being
+        This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
         # print("Calling Update")
-        if self._cam1_com_updated and self._cam2_com_updated:  # These both must be true to apply an update
-            # reset all logic flags to indicate that nothing is updated since the present update.
-            self._cam1_com_updated = False
-            self._cam2_com_updated = False
-            try:
-                # Try getting the update voltage
-                self.get_update()
-            except update_out_of_bounds:
-                """"
-                This section of code keeps the update voltage in bounds by finding a voltage that minizes dx while in
-                staying in bounds.
-                Additionally, it tracks the number of times that the voltages went out of bounds in less than 1 minute 
-                since the last out of bounds (i.e. if it goes out of bounds once but then comes back in bounds for more 
-                than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than 10 times in a row 
-                in less than a minute each time, then the code unlocks and returns to measuring state.
-                """
-                # Fit the best update we can, given we cannot restore pointing
-                self.fit_update()
-                # Track unlocking.
-                self.report_unlock()
-                # Check if I am allowed to continue attempting to lock
-                if self._force_unlock:
-                    if self.time_continually_unlocked > self.max_time_allowed_unlocked:
-                        self.num_out_of_voltage_range = 1
-                        self.time_last_unlock = 0
-                        # Set all voltages back to 75V
-                        self.request_motors_to_75V_signal.emit()
-                        successful_lock_time = time.monotonic() - self.lock_time_start
-                        print("Successfully locked pointing for", successful_lock_time)
-                        # Tell myself to stop locking.
-                        self._locking = False
-                        self.request_toggle_lock_signal.emit(False)
-                        print("System has unlocked!")
-                        return
+        try:
+            # Try getting the update voltage
+            self.get_update()
+        except update_out_of_bounds:
+            """"
+            This section of code keeps the update voltage in bounds by finding a voltage that minizes dx while in
+            staying in bounds.
+            Additionally, it tracks the number of times that the voltages went out of bounds in less than 1 minute 
+            since the last out of bounds (i.e. if it goes out of bounds once but then comes back in bounds for more 
+            than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than 10 times in a row 
+            in less than a minute each time, then the code unlocks and returns to measuring state.
+            """
+            # Fit the best update we can, given we cannot restore pointing
+            self.fit_update()
+            # Track unlocking.
+            self.report_unlock()
+            # Check if I am allowed to continue attempting to lock
+            if self._force_unlock:
+                if self.time_continually_unlocked > self.max_time_allowed_unlocked:
+                    self.num_out_of_voltage_range = 1
+                    self.time_last_unlock = 0
+                    # Set all voltages back to 75V
+                    self.request_motors_to_75V_signal.emit()
+                    successful_lock_time = time.monotonic() - self.lock_time_start
+                    print("Successfully locked pointing for", successful_lock_time)
+                    # Tell myself to stop locking.
+                    self._locking = False
+                    self.request_toggle_lock_signal.emit(False)
+                    print("System has unlocked!")
+                    return
 
-            # Apply all update voltages
-            self.request_set_motor(1, 1, self.update_voltage[0])
-            self.request_set_motor(2, 1, self.update_voltage[2])
-            self.request_set_motor(1, 2, self.update_voltage[1])
-            self.request_set_motor(2, 2, self.update_voltage[3])
+        # Apply all update voltages
+        self.request_set_motor(1, 1, self.update_voltage[0])
+        self.request_set_motor(2, 1, self.update_voltage[2])
+        self.request_set_motor(1, 2, self.update_voltage[1])
+        self.request_set_motor(2, 2, self.update_voltage[3])
         return
 
     def report_unlock(self):
@@ -954,14 +972,18 @@ class UpdateManager(QObject):
             # Make sure no handler is connected to com_found_signal
             if self.com_found_signal_handler is not None:
                 # Disconnect unwanted connections.
-                if self.com_found_signal_handler == 'apply_update':
+                if self.com_found_signal_handler == 'time_delay_update':
                     # Already connected to the right handler
                     pass
                 else:
                     self.com_found_signal.disconnect() # Disconnects from all slots! So far only using 1 slot.
-            # when locking, the COM found signal should trigger the apply update function.
-            self.com_found_signal.connect(self.apply_update)
-            self.com_found_signal_handler = 'apply_update'
+                    # when locking, the COM found signal should trigger the time delay update function.
+                    self.com_found_signal.connect(self.time_delay_update)
+                    self.com_found_signal_handler = 'time_delay_update'
+            else:
+                # when locking, the COM found signal should trigger the time delay update function.
+                self.com_found_signal.connect(self.time_delay_update)
+                self.com_found_signal_handler = 'time_delay_update'
             self._locking = True
             # Get starting voltage for V0, manually set motor updated flags to false and reset to true when gets
             # complete. This ensures I know starting V0 before an attempted update is made.
@@ -1000,17 +1022,28 @@ class UpdateManager(QObject):
         self.max_time_allowed_unlocked = max_time_allowed_unlocked
         return
 
+    def calc_update_dx(self):
+        """
+        Find the effective dx to use when calculating the update voltages. In this case just average all values since
+        last motor update.
+        """
+        inds_post_motor_update = np.where(self.t1 >= self.cam1_time_motors_updated)
+        dx_cam1_avg = np.average(self.cam1_dx[inds_post_motor_update], axis=0)
+        inds_post_motor_update = np.where(self.t2 >= self.cam2_time_motors_updated)
+        dx_cam2_avg = np.average(self.cam2_dx[inds_post_motor_update], axis=0)
+        self.update_dx = np.concatenate((dx_cam1_avg, dx_cam2_avg), axis=0)
+        return
+
     def get_update(self):
         """
         This code finds the next voltages to apply to the piezo.
         """
-        # Calculate dX
-        # The convention here is how much has the position on the camera changed from the set point.
-        self.dx = self.com()-self.set_pos
+        # The convention with dx is how much has the position on the camera changed from the set point.
+        self.calc_update_dx()
 
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
         # in the change observed in dX
-        dV = np.matmul(self.calibration_matrix, self.dx[-1, :])
+        dV = np.matmul(self.calibration_matrix, self.update_dx)
         self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
         # voltage to be set on the motors
@@ -1042,7 +1075,7 @@ class UpdateManager(QObject):
         P.add('dv_1', 0, min=-self.V0[1], max=150.0 - self.V0[1])
         P.add('dv_2', 0, min=-self.V0[2], max=150.0 - self.V0[2])
         P.add('dv_3', 0, min=-self.V0[3], max=150.0 - self.V0[3])
-        res = minimize(self.residual, P, args=(self.dx[-1], self.inv_calibration_matrix))
+        res = minimize(self.residual, P, args=(self.update_dx, self.inv_calibration_matrix))
         dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
                             res.params['dv_3'].value])
         self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
@@ -1070,13 +1103,6 @@ class UpdateManager(QObject):
         dx_induced = np.matmul(inv_calibration_matrix, dV)
         return np.square(dx+dx_induced)
 
-    def calc_dx(self):
-        """
-        calculate the displacement vector from set pos to com.
-        """
-        self.dx = self.com()-self.set_pos
-        return
-
     # Calibration related methods.
     @pyqtSlot()
     def begin_calibration(self):
@@ -1098,8 +1124,11 @@ class UpdateManager(QObject):
                 pass
             else:
                 self.com_found_signal.disconnect()  # Disconnects from all slots! So far only using 1 slot.
-        self.com_found_signal.connect(self.run_calibration)
-        self.com_found_signal_handler = 'run_calibration'
+                self.com_found_signal.connect(self.run_calibration)
+                self.com_found_signal_handler = 'run_calibration'
+        else:
+            self.com_found_signal.connect(self.run_calibration)
+            self.com_found_signal_handler = 'run_calibration'
         self._locking = False
         self.calibration_pointing_index = 0
         self.calibration_sweep_index = 0
@@ -1827,6 +1856,8 @@ class UpdateManager(QObject):
             if com_x is not None:
                 com_x += self._r0[0]
                 com_y += self._r0[1]
+                self.cam1_dx = np.asarray([com_x, com_y]) - self.set_pos[0:2]
+                self.t1 = timestamp
                 self.cam_1_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(1, np.asarray([com_x, com_y]))
             if self._cam1_img_count >= self._update_GUI_images_every_n_images:
@@ -1834,13 +1865,14 @@ class UpdateManager(QObject):
                 self._cam1_img_count = 0
             else:
                 self._cam1_img_count += 1
-            self.t1 = timestamp
         elif cam_number == 2:
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
             if com_x is not None:
                 com_x += self._r0[2]
                 com_y += self._r0[3]
+                self.cam2_dx = np.asarray([com_x, com_y]) - self.set_pos[2:]
+                self.t2 = timestamp
                 self.cam_2_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(2, np.asarray([com_x, com_y]))
             if self._cam2_img_count >= self._update_GUI_images_every_n_images:
@@ -1848,7 +1880,6 @@ class UpdateManager(QObject):
                 self._cam2_img_count = 0
             else:
                 self._cam2_img_count += 1
-            self.t2 = timestamp
         return
 
     @pyqtSlot(int)
@@ -1910,9 +1941,9 @@ class UpdateManager(QObject):
         vector is a row vector (row position, column position) of COM on cam 1
         """
         if self._motors_updated:
-            if self._locking:
-                self._cam_1_com = vector
-            elif self._calibrating:
+            if self.cam1_time_motors_updated is None:
+                self.cam1_time_motors_updated = self.t1[-1]
+            if self._calibrating:
                 if self.cam1_com_avg_num == 1:
                     self._cam_1_com = vector/self.num_frames_to_average_during_calibrate
                     self.cam1_com_avg_num += 1
@@ -1948,9 +1979,9 @@ class UpdateManager(QObject):
         vector is a row vector (row position, column position) of COM on cam 2
         """
         if self._motors_updated:
-            if self._locking:
-                self._cam_2_com = vector
-            elif self._calibrating:
+            if self.cam2_time_motors_updated is None:
+                self.cam2_time_motors_updated = self.t2[-1]
+            if self._calibrating:
                 if self.cam2_com_avg_num == 1:
                     self._cam_2_com = vector / self.num_frames_to_average_during_calibrate
                     self.cam2_com_avg_num += 1
@@ -1978,6 +2009,30 @@ class UpdateManager(QObject):
 
     def com(self):
         return np.concatenate((self.cam_1_com, self.cam_2_com), axis=0)
+
+    @property
+    def cam1_dx(self):
+        return np.asarray(self._cam1_dx)
+
+    @cam1_dx.setter
+    def cam1_dx(self, vector):
+        # [row, column]
+        self._cam1_dx.append(vector)
+        if len(self._cam1_dx) > 100:
+            del self._cam1_dx[0]
+        return
+
+    @property
+    def cam2_dx(self):
+        return np.asarray(self._cam2_dx)
+
+    @cam2_dx.setter
+    def cam2_dx(self, vector):
+        # [row, column]
+        self._cam2_dx.append(vector)
+        if len(self._cam2_dx) > 100:
+            del self._cam2_dx[0]
+        return
 
     # Misc. properties
     @property
@@ -2010,20 +2065,7 @@ class UpdateManager(QObject):
         Returns dx as a matrix, where row number corresponds to t, and columns to positions as defined in the
         setter method below.
         """
-        return np.asarray(self._dx)
-
-    @dx.setter
-    def dx(self, vector):
-        """
-        vector defines the current displacement vector.
-        vector has 4 float elements and is a row vector. This is a displacement vector along the dimensions listed below
-        The convention for the vector will vector = (camera 1 row position, camera 1 column position,
-        camera 2 row position, camera 2 column position).
-        """
-        self._dx.append(vector)
-        if len(self._dx) > 100:
-            del self._dx[0]
-        return
+        return np.concatenate((self.cam1_dx, self.cam2_dx), axis=1)
 
     @property
     def V0(self):
@@ -2101,56 +2143,63 @@ class UpdateManager(QObject):
 
 class PIDUpdateManager(UpdateManager):
 
+    request_update_cam_exposure_time = pyqtSignal(int, float)
+    request_update_pid_settings = pyqtSignal(float, float, float)
+
     def __init__(self):
         super().__init__()
         self._dt = None
         self._integral_ti = np.zeros(4)
         self._P = 0.5
-        self._TI = 0.1
-        self._TD = 0
+        self._I = 0.1
+        self._D = 0
+        self.is_PID = True
         self._use_PID = True
+        self.cam1_exp_time = None
+        self.cam2_exp_time = None
+        self.cam1_time_last_found_int = 0
+        self.cam2_time_last_found_int = 0
 
-    def get_update(self):
+    def connect_signals(self):
+        super().connect_signals()
+        self.request_update_cam_exposure_time.connect(self.set_cam_exp_time)
+        self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "P", P))
+        self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "I", I))
+        self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "D", D))
+
+    @pyqtSlot(bool)
+    def lock_pointing(self, lock: bool):
         """
-        This code finds the next voltages to apply to the piezo.
+        Additionally, need to clear integral_ti if starting to lock again.
         """
-        # Calculate dX
-        # The convention here is how much has the position on the camera changed from the set point.
-        self.dx = self.com()-self.set_pos
-        if len(self.t1) > 1 and self._use_PID:  # PID only makes sense if there are at least 2 data points. If only one, just do P.
-            derivative = self.calc_derivative()
-            self.calc_integral()
-            # Find dX weighted total from PID.
-            dx = self.P*self.dx[-1, :] + self.I*self.integral_ti + self.D*derivative
-            #print(self.integral_ti)
-            #print(dx, self.dx[-1, :])
-        else:
-            dx = self.P*self.dx[-1, :]
-        # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
-        # in the change observed in dX
-        dV = np.matmul(self.calibration_matrix, dx)
-        self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
-        #print(dV, self.dV)
-        # place.
-        # voltage to be set on the motors
-        # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
-        # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
-        # so we subtract that dV restoring us to the old position.
-        update_voltage = self.V0 - self.dV
-        if np.any(update_voltage > 150) or np.any(update_voltage < 0):
-            exception_message = ''
-            self._use_PID = False
+        if lock:
             self.integral_ti = np.zeros(4)
-            for i in range(4):
-                if update_voltage[i] < 0:
-                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) + ' '
-                if update_voltage[i] > 150:
-                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) + ' '
-            raise update_out_of_bounds(exception_message)
+        super().lock_pointing(lock)
+        return
+
+    def calc_update_dx(self):
+        """
+        Find the effective dx to use when calculating the update voltages. Here is where we turn this into a PID
+        controller by making the update_dx a sum of a P, I, and D term.
+        """
+        # PID only makes sense if there are at least 2 data points. If only one, just do P.
+        if len(self.t1) > 1 and self._use_PID:
+            super().calc_update_dx()  # Averages all dx, since the motors were updated.
+            self.update_dx *= self.P
+            # prep for I and D terms:
+            derivatives = self.calc_derivative()
+            self.calc_integral()
+            # Add the I term:
+            self.update_dx += self.I*self.integral_ti
+            # Add the D term:
+            self.update_dx += self.D*derivatives
+            # Find dX weighted total from PID.
+            return
         else:
-            self._use_PID = True
-            self.update_voltage = update_voltage
-            return self.update_voltage
+            super().calc_update_dx()
+            self.update_dx *= self.P
+            return
+        return
 
     def fit_update(self):
         """
@@ -2161,85 +2210,38 @@ class PIDUpdateManager(UpdateManager):
         SO, maybe in the future, I can try moving the target set point such that the voltages are in range but the
         set point is as close as possible. Then, maybe the updates can be stable... But not today!
         """
-        #print(self.dx[-1], np.matmul(self.inv_calibration_matrix, dV_start))
-        P = Parameters()
-        P.add('dv_0', -self.dV[0], min=-self.V0[0], max=150.0 - self.V0[0])
-        P.add('dv_1', -self.dV[1], min=-self.V0[1], max=150.0 - self.V0[1])
-        P.add('dv_2', -self.dV[2], min=-self.V0[2], max=150.0 - self.V0[2])
-        P.add('dv_3', -self.dV[3], min=-self.V0[3], max=150.0 - self.V0[3])
-
-        #print(np.matmul(self.inv_calibration_matrix, np.array([P['dv_0'].value])))
-        # print('Begin FIT')
-        if len(self.t1) > 1:
-            derivative = self.calc_derivative()
-            # Bypass minimizing the PID method, i.e. False below...
-            res = minimize(self.residual, P, args=(self.dx[-1], self.inv_calibration_matrix, False, derivative,
-                                                   self.integral_ti, self.P, self.TI, self.TD, self.dt), max_nfev=500)
-        else:
-            res = minimize(self.residual, P, args=(self.dx[-1], self.inv_calibration_matrix, False), max_nfev=500)
-        dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
-                            res.params['dv_3'].value])
-        # the below line should be removed if miniimizing PID is done. Right now, just minimizing P term; so apply P as
-        # a gain term to the found dV
-        dV *= self.P
-        # print(dV)
-        self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
-        # place.
-
-        # print(self.dx[-1], np.matmul(self.inv_calibration_matrix, self.dV))
-
-        # print(res.nfev)
-
-        # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
-        # hopefully induces a dx to undo the measured dx, up to constraints on voltages.
-        self.update_voltage = self.V0 + self.dV
-        return self.update_voltage
-
-    @staticmethod
-    def residual(params, dx, inv_calibration_matrix, PID_true, derivative=None, integral=None, P=None, TI=None,
-                 TD=None, dt=None):
-        """
-        This returns the difference between the current measured dx and the hypothetical dx induced by a voltage
-        change to the piezzos where the dx in both cases are put through the PID formula.
-        """
-        dV = np.array([params['dv_0'].value, params['dv_1'].value, params['dv_2'].value, params['dv_3'].value])
-        if PID_true:  # PID only makes sense if there are at least 2 data points. If only one, just do P.
-            # Find dX weighted total from PID.
-            dx_pid = P*(dx + integral/TI + TD*derivative)
-            # Get the induced dx unweighted by PID
-            dx_induced = np.matmul(inv_calibration_matrix, dV)
-            # Find induced integral term
-            increment_cam1 = dt[0] * dx_induced[0:2]  # units of pixels*s
-            increment_cam2 = dt[1] * dx_induced[2:4]
-            integral_induced = integral + np.concatenate([increment_cam1, increment_cam2], axis=0)
-            # Find induced derivative term
-            derivative_cam1 = (dx_induced[0:2] - dx[0:2]) / dt[0]
-            derivative_cam2 = (dx_induced[2:4] - dx[2:4]) / dt[1]
-            derivative_induced = np.concatenate([derivative_cam1, derivative_cam2], axis=0)
-            # Finally, find the PID weighted dx that would be induced
-            dx_pid_induced = P*(dx_induced + integral_induced/TI + TD*derivative_induced)
-        else:
-            dx_pid = dx
-            dx_pid_induced = np.matmul(inv_calibration_matrix, dV)
-        return np.square(dx_pid + dx_pid_induced)
+        super().fit_update()
+        self.update_voltage *= self.P
+        return
 
     def calc_integral(self):
-        increment_cam1 = self.dt[0]*self.dx[-1, 0:2]  # units of pixels*s
-        increment_cam2 = self.dt[1]*self.dx[-1, 2:4]
-        self._integral_ti += np.concatenate([increment_cam1, increment_cam2], axis=0)  # Currently using the most
-        # simplistic numerical integral, may want to improve
+        # Currently using the most simplistic numerical integral, may want to improve
+        inds_to_update_integral_with = np.where(self.t1 > self.cam1_time_last_found_int)
+        self.cam1_time_last_found_int = self.t1[-1]
+        # units of pixels*ms
+        increment_cam1 = np.sum(self.cam1_exp_time*self.cam1_dx[inds_to_update_integral_with], axis=0)
+        inds_to_update_integral_with = np.where(self.t2 > self.cam2_time_last_found_int)
+        self.cam2_time_last_found_int = self.t2[-1]
+        # units of pixels*ms
+        increment_cam2 = np.sum(self.cam2_exp_time * self.cam2_dx[inds_to_update_integral_with], axis=0)
+        self._integral_ti += np.concatenate([increment_cam1, increment_cam2], axis=0)
         return
 
     def calc_derivative(self):
-        derivative_cam1 = (self.dx[-1, 0:2] - self.dx[-2, 0:2]) / self.dt[0]
-        derivative_cam2 = (self.dx[-1, 2:4] - self.dx[-2, 2:4]) / self.dt[1]
-        return np.concatenate([derivative_cam1, derivative_cam2], axis=0)
-
-    def calc_dt(self):
-        dt1 = (self.t1[-1] - self.t1[-2])/1000  # Put this in s from ms
-        dt2 = (self.t2[-1] - self.t2[-2])/1000
-        self.dt = np.array([dt1, dt2])
-        return
+        # TODO: I need at least two frames post update motors.
+        inds_post_motor_update = np.where(self.t1 >= self.cam1_time_motors_updated)
+        del inds_post_motor_update[-1]
+        dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update+1] -
+                                             self.cam1_dx[inds_post_motor_update]) /
+                                            (self.t1[inds_post_motor_update+1] - self.t1[inds_post_motor_update]),
+                                            axis=0)
+        inds_post_motor_update = np.where(self.t2 >= self.cam2_time_motors_updated)
+        del inds_post_motor_update[-1]
+        dx_derivative_cam2_avg = np.average((self.cam2_dx[inds_post_motor_update + 1] -
+                                             self.cam2_dx[inds_post_motor_update]) /
+                                            (self.t2[inds_post_motor_update + 1] - self.t2[inds_post_motor_update]),
+                                            axis=0)
+        return np.concatenate([dx_derivative_cam1_avg, dx_derivative_cam2_avg], axis=0)
 
     @property
     def integral_ti(self):
@@ -2250,16 +2252,12 @@ class PIDUpdateManager(UpdateManager):
         self._integral_ti = vector
         return
 
-    @property
-    def dt(self):
-        return self._dt
-
-    @dt.setter
-    def dt(self, vector):
-        """
-        [cam1_exp, cam2_exp]
-        """
-        self._dt = vector
+    @pyqtSlot(int, float)
+    def set_cam_exp_time(self, cam_num: int, cam_exp: float):
+        if cam_num == 1:
+            self.cam1_exp_time = cam_exp
+        elif cam_num == 2:
+            self.cam2_exp_time = cam_exp
         return
 
     @property
@@ -2273,18 +2271,18 @@ class PIDUpdateManager(UpdateManager):
 
     @property
     def I(self):
-        return self._TI
+        return self._I
 
     @I.setter
     def I(self, value):
-        self._TI = value
+        self._I = value
         return
 
     @property
     def D(self):
-        return self._TD
+        return self._D
 
     @D.setter
     def D(self, value):
-        self._TD = value
+        self._D = value
         return

@@ -90,6 +90,8 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager_thread.finished.connect(lambda: print("Update Manager Thread has finished."))
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
+        if self.UpdateManager.is_PID:
+            self.PID = {'P': 0.5, 'Ti': 0.1, 'Td': 0}
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
         # Connect signals related to update manager.
@@ -389,15 +391,14 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def Update_GUI_PID(self):
         # Update the GUI with the numbers from the UpdateManager settings
-        # TODO: NEED TO IMPLEMENT PID
-        """try:
-           self.le_P.setText('%.2f' % (self.UpdateManager.P))
-           self.le_Ti.setText('%.2f' % (self.UpdateManager.TI))
-           self.le_Td.setText('%.2f' % (self.UpdateManager.TD))
-        except AttributeError:
-           self.le_P.setText('%.2f' % (1.0))
-           self.le_Ti.setText('N/A not PID')
-           self.le_Td.setText('N/A not PID')"""
+        if self.UpdateManager.is_PID:
+            self.le_P.setText('%.2f' % (self.PID['P']))
+            self.le_Ti.setText('%.2f' % (self.PID['Ti']))
+            self.le_Td.setText('%.2f' % (self.PID['Td']))
+        else:
+            self.le_P.setText('%.2f' % (1))
+            self.le_Ti.setText('N/A not PID')
+            self.le_Td.setText('N/A not PID')
         return
 
     def find_motors(self):
@@ -746,6 +747,10 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
             self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
+            if self.UpdateManager.is_PID:
+                self.cam1.exposure_updated_signal.connect(lambda exp:
+                                                          self.UpdateManager.
+                                                          request_update_cam_exposure_time.connect(1, exp))
         elif cam_number == 2:
             self.cam2.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(2, r0))
             self.cam2.img_captured_signal.connect(lambda img, time_stamp: self.UpdateManager.process_img(2, img,
@@ -757,6 +762,10 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam2.destroyed.connect(lambda args: self.reconnect_cameras(2))
             self.cam2.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
+            if self.UpdateManager.is_PID:
+                self.cam2.exposure_updated_signal.connect(lambda exp:
+                                                          self.UpdateManager.
+                                                          request_update_cam_exposure_time.connect(2, exp))
         return
 
     @pyqtSlot(int)
@@ -963,13 +972,12 @@ class Window(QMainWindow, Ui_MainWindow):
                 # Now, connect GUI related camera signals to appropriate GUI slots.
                 self.cam1.connect_signals()
                 self.connect_camera_signals(1)
-                # Apply the settings directly before starting thread and thread event loop
-                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam1.set_gain(cam1_gain)
-                self.cam1.set_exposure_time(cam1_exp_time)
                 # Start the threads event loop
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 self.cam1_thread.start(priority=4)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam1.gain_set_signal.emit(cam1_gain)
+                self.cam1.exposure_set_signal.emit(cam1_exp_time)
                 # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
@@ -1041,13 +1049,12 @@ class Window(QMainWindow, Ui_MainWindow):
                 # Now, connect GUI related camera signals to appropriate GUI slots.
                 self.cam2.connect_signals()
                 self.connect_camera_signals(2)
-                # Apply the settings directly before starting thread and thread event loop
-                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam2.set_gain(cam2_gain)
-                self.cam2.set_exposure_time(cam2_exp_time)
                 # Start the threads event loop
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 self.cam2_thread.start(priority=4)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.cam2.gain_set_signal.emit(cam2_gain)
+                self.cam2.exposure_set_signal.emit(cam2_exp_time)
                 # Setup camera view.
                 self.cam2_reset = True
                 self.resetHist(self.gv_camera2)
@@ -1525,16 +1532,17 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot()
     def update_PID(self):
-        # TODO: Do this
-        """# Update the PID settings with numbers from the GUI
-        self.UpdateManager.P = float(self.le_P.text())
-        self.UpdateManager.TI = float(self.le_Ti.text())
-        self.UpdateManager.TD = float(self.le_Td.text())
-        self.PID = {'P': self.UpdateManager.P, 'Ti': self.UpdateManager.TI, 'Td': self.UpdateManager.TD}
-
-        # Update the GUI with the numbers from the UpdateManager settings
-        self.Update_GUI_PID()"""
-        pass
+        """ Update the PID settings with numbers from the GUI """
+        if self.UpdateManager.is_PID:
+            P = float(self.le_P.text())
+            I = float(self.le_Ti.text())
+            D = float(self.le_Td.text())
+            self.UpdateManager.request_update_pid_settings.emit(P, I, D)
+            self.PID = {'P': P, 'Ti': I, 'Td': D}
+            # Update the GUI with the numbers from the UpdateManager settings
+            self.Update_GUI_PID()
+        else:
+            print("You are not using a PID Update Manager. Import and use PIDUpdateManager instead!")
         return
 
     @pyqtSlot()
