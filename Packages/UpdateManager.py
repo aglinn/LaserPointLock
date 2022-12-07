@@ -1397,6 +1397,46 @@ class UpdateManager(QObject):
         p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_y[1:-1], deg=1)
         p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_y[1:-1], deg=1)
         print("Finished Polyfit.")
+        # Try thresholding the slopes that are small to 0, since we anticipate that many of the degrees of freedom are
+        # uncoupled:
+        # if the full range of the piezo only moves this dimension by <5 pixels, m=0
+        min_pixels_change_over_full_voltage_range = 5
+        if p_mot1_x_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_x_cam1_x[0] = 0
+        if p_mot1_x_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_x_cam1_y[0] = 0
+        if p_mot1_x_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_x_cam2_x[0] = 0
+        if p_mot1_x_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_x_cam2_y[0] = 0
+
+        if p_mot1_y_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_y_cam1_x[0] = 0
+        if p_mot1_y_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_y_cam1_y[0] = 0
+        if p_mot1_y_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_y_cam2_x[0] = 0
+        if p_mot1_y_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot1_y_cam2_y[0] = 0
+
+        if p_mot2_x_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_x_cam1_x[0] = 0
+        if p_mot2_x_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_x_cam1_y[0] = 0
+        if p_mot2_x_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_x_cam2_x[0] = 0
+        if p_mot2_x_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_x_cam2_y[0] = 0
+
+        if p_mot2_y_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_y_cam1_x[0] = 0
+        if p_mot2_y_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_y_cam1_y[0] = 0
+        if p_mot2_y_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_y_cam2_x[0] = 0
+        if p_mot2_y_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+            p_mot2_y_cam2_y[0] = 0
+
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
         if True:  # This just lets me collapse the below code
             import matplotlib.pyplot as plt
