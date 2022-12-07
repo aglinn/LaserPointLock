@@ -1400,56 +1400,40 @@ class UpdateManager(QObject):
         # Try thresholding the slopes that are small to 0, since we anticipate that many of the degrees of freedom are
         # uncoupled:
         # if the full range of the piezo only moves this dimension by <5 pixels, m=0
-        min_pixels_change_over_full_voltage_range = 1
-        print("mot1_x full range,", p_mot1_x_cam1_x[0]*150)
+        min_pixels_change_over_full_voltage_range = 5
         if np.abs(p_mot1_x_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam1_x[0] = 0
-        print("mot1_x full range,", p_mot1_x_cam1_y[0]*150)
         if np.abs(p_mot1_x_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam1_y[0] = 0
-        print("mot1_x full range,", p_mot1_x_cam2_x[0]*150)
         if np.abs(p_mot1_x_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam2_x[0] = 0
-        print("mot1_x full range,", p_mot1_x_cam2_y[0]*150)
         if np.abs(p_mot1_x_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam2_y[0] = 0
 
-        print("mot1_y full range,", p_mot1_y_cam1_x[0]*150)
         if np.abs(p_mot1_y_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam1_x[0] = 0
-        print("mot1_y full range,", p_mot1_y_cam1_y[0]*150)
         if np.abs(p_mot1_y_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam1_y[0] = 0
-        print("mot1_y full range,", p_mot1_y_cam2_x[0]*150)
         if np.abs(p_mot1_y_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam2_x[0] = 0
-        print("mot1_y full range,", p_mot1_y_cam2_y[0]*150)
         if np.abs(p_mot1_y_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam2_y[0] = 0
 
-        print("mot2_x full range,", p_mot2_x_cam1_x[0]*150)
         if np.abs(p_mot2_x_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam1_x[0] = 0
-        print("mot2_x full range,", p_mot2_x_cam1_y[0]*150)
         if np.abs(p_mot2_x_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam1_y[0] = 0
-        print("mot2_x full range,", p_mot2_x_cam2_x[0]*150)
         if np.abs(p_mot2_x_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam2_x[0] = 0
-        print("mot2_x full range,", p_mot2_x_cam2_y[0]*150)
         if np.abs(p_mot2_x_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam2_y[0] = 0
 
-        print("mot2_y full range,", p_mot2_y_cam1_x[0]*150)
         if np.abs(p_mot2_y_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam1_x[0] = 0
-        print("mot2_y full range,", p_mot2_y_cam1_y[0]*150)
         if np.abs(p_mot2_y_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam1_y[0] = 0
-        print("mot2_y full range,", p_mot2_y_cam2_x[0]*150)
         if np.abs(p_mot2_y_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam2_x[0] = 0
-        print("mot2_y full range,", p_mot2_y_cam2_y[0]*150)
         if np.abs(p_mot2_y_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam2_y[0] = 0
 
@@ -1536,9 +1520,6 @@ class UpdateManager(QObject):
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
                               [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])
         calib_mat = np.linalg.inv(inv_calib_mat)
-        # Confrim that the inverse of this matrix times itself produces the identity matrix as it should!
-        identity = np.matmul(calib_mat, inv_calib_mat)
-        print("This should be the identity matrix, ", identity)
         # Set the calibration matrix
         self.calibration_matrix = calib_mat
         # Run some checks: see if I can reconstruct known voltage changes from dx's induced by the known voltage change.
