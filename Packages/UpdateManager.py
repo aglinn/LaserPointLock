@@ -169,8 +169,6 @@ class UpdateManager(QObject):
         self.cam1_time_motors_updated = None
         self.cam2_time_motors_updated = None
         self.update_dx = None  # Effective dx to use when finding update voltages.
-        self.timer = QTimer()
-        self.timer.setSingleShot(True)
         self.time_out_interval = 1000.0/55.0  # TODO: Need to set this dynamically.
         self.block_timer = False
         self.is_PID = False
@@ -194,6 +192,9 @@ class UpdateManager(QObject):
         self.request_set_camera_threshold_signal.connect(self.update_img_thresholds)
         self.request_close.connect(self.close)
         self.request_ping.connect(self.return_ping)
+        # Just putting this here so that QTimer is created once this object is in its own thread.
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
         return
 
     @pyqtSlot(float)
@@ -850,8 +851,8 @@ class UpdateManager(QObject):
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
             print("starting timer")
-            self.timer.timeout.connect(self.apply_update)
             self.timer.start(self.time_out_interval)
+            self.timer.timeout.connect(self.apply_update)
         return
 
     @pyqtSlot()
