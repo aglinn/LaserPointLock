@@ -974,7 +974,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1.moveToThread(self.cam1_thread)
                 self.cam1.timer.moveToThread(self.cam1_thread)
                 print("Camera 1 lives in thread: ", self.cam1.thread())
-                print("Camera 2 timer lives in thread, ", self.cam1.timer.thread())
+                print("Camera 1 timer lives in thread, ", self.cam1.timer.thread())
                 # Now, connect GUI related camera signals to appropriate GUI slots.
                 self.cam1.connect_signals()
                 self.connect_camera_signals(1)

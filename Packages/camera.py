@@ -220,7 +220,7 @@ class MightexEngine:
         self.resolution[serial_no] = res
 
 from PyQt5 import QtCore
-from PyQt5.QtCore import QObject
+from PyQt5.QtCore import QObject, QThread
 import time
 from flirpy.camera.boson import Boson
 
@@ -1427,6 +1427,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot()
     def start_timer(self):
         self.timer.start()
+        print("Starting camera timer from thread: ", QThread.currentThread())
+        return
 
     def update_frame(self):
         pass
