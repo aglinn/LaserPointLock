@@ -1402,55 +1402,55 @@ class UpdateManager(QObject):
         # if the full range of the piezo only moves this dimension by <5 pixels, m=0
         min_pixels_change_over_full_voltage_range = 1
         print("mot1_x full range,", p_mot1_x_cam1_x[0]*150)
-        if p_mot1_x_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_x_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam1_x[0] = 0
         print("mot1_x full range,", p_mot1_x_cam1_y[0]*150)
-        if p_mot1_x_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_x_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam1_y[0] = 0
         print("mot1_x full range,", p_mot1_x_cam2_x[0]*150)
-        if p_mot1_x_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_x_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam2_x[0] = 0
         print("mot1_x full range,", p_mot1_x_cam2_y[0]*150)
-        if p_mot1_x_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_x_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam2_y[0] = 0
 
         print("mot1_y full range,", p_mot1_y_cam1_x[0]*150)
-        if p_mot1_y_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_y_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam1_x[0] = 0
         print("mot1_y full range,", p_mot1_y_cam1_y[0]*150)
-        if p_mot1_y_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_y_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam1_y[0] = 0
         print("mot1_y full range,", p_mot1_y_cam2_x[0]*150)
-        if p_mot1_y_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_y_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam2_x[0] = 0
         print("mot1_y full range,", p_mot1_y_cam2_y[0]*150)
-        if p_mot1_y_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot1_y_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam2_y[0] = 0
 
         print("mot2_x full range,", p_mot2_x_cam1_x[0]*150)
-        if p_mot2_x_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_x_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam1_x[0] = 0
         print("mot2_x full range,", p_mot2_x_cam1_y[0]*150)
-        if p_mot2_x_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_x_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam1_y[0] = 0
         print("mot2_x full range,", p_mot2_x_cam2_x[0]*150)
-        if p_mot2_x_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_x_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam2_x[0] = 0
         print("mot2_x full range,", p_mot2_x_cam2_y[0]*150)
-        if p_mot2_x_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_x_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam2_y[0] = 0
 
         print("mot2_y full range,", p_mot2_y_cam1_x[0]*150)
-        if p_mot2_y_cam1_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_y_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam1_x[0] = 0
         print("mot2_y full range,", p_mot2_y_cam1_y[0]*150)
-        if p_mot2_y_cam1_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_y_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam1_y[0] = 0
         print("mot2_y full range,", p_mot2_y_cam2_x[0]*150)
-        if p_mot2_y_cam2_x[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_y_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam2_x[0] = 0
         print("mot2_y full range,", p_mot2_y_cam2_y[0]*150)
-        if p_mot2_y_cam2_y[0]*150 < min_pixels_change_over_full_voltage_range:
+        if np.abs(p_mot2_y_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam2_y[0] = 0
 
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
