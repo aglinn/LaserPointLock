@@ -1426,6 +1426,12 @@ class BlackflyS_EasyPySpin_QObject(QObject):
 
     @pyqtSlot()
     def start_timer(self):
+        self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
+        self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
+        self.timeout_time = int(self.timeout_time)
+        self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
+        print("Timer interval is ", self.timeout_time)
+        self.timer.setSingleShot(False)
         self.timer.start()
         print("Starting camera timer from thread: ", QThread.currentThread())
         return
