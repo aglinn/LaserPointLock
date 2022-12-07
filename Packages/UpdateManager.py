@@ -173,7 +173,6 @@ class UpdateManager(QObject):
         self.block_timer = False
         self.is_PID = False
         self.timer = QTimer()
-        print("Timer lives in ", self.timer.thread())
         self.timer.setSingleShot(True)
         return
 
