@@ -860,7 +860,7 @@ class UpdateManager(QObject):
         This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
-        # print("Calling Update")
+        print("Calling apply_update")
         try:
             # Try getting the update voltage
             self.get_update()
