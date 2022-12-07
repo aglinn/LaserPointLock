@@ -1400,7 +1400,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self._app_closing = False
         self.timer = QTimer()
         self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
+        self.timeout_time = np.ceil((1 / self.frame_rate)*1000) # in ms
         self.timeout_time = int(self.timeout_time)
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         self.timer.setSingleShot(False)
@@ -1427,7 +1427,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot()
     def start_timer(self):
         self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
+        self.timeout_time = np.ceil((1 / self.frame_rate) * 1000)  # in ms
         self.timeout_time = int(self.timeout_time)
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         print("Timer interval is ", self.timeout_time)
@@ -1470,7 +1470,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
         if self.frame_rate != frame_rate:
             self.frame_rate = frame_rate
-            self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
+            self.timeout_time = np.ceil((1 / self.frame_rate) * 1000)  # in ms
             self.timeout_time = int(self.timeout_time)
             if self.timer.isActive():
                 print("Destroying timer.")
@@ -1788,7 +1788,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
             frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
             if frame_rate != self.frame_rate:
                 self.frame_rate = frame_rate
-                self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
+                self.timeout_time = np.ceil((1 / self.frame_rate)*1000) # in ms
                 self.timeout_time = int(self.timeout_time)
                 self.timer.setInterval(self.timeout_time)
             self.timer.start()
