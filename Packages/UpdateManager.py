@@ -1011,13 +1011,15 @@ class UpdateManager(QObject):
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
         # in the change observed in dX
         dV = np.matmul(self.calibration_matrix, self.dx[-1, :])
-        self.dV = np.round(dV,decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
         # voltage to be set on the motors
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
         # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
         # so we subtract that dV restoring us to the old position.
+        print("Shape of V0 and dV, respectively", self.V0.shape, self.dV.shape)
         update_voltage = self.V0 - self.dV
+        print("shape of update voltage, ", update_voltage.shape)
         if np.any(update_voltage > 150) or np.any(update_voltage < 0):
             exception_message = ''
             for i in range(4):
@@ -1472,29 +1474,151 @@ class UpdateManager(QObject):
             ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
             # Show the figure
             self.request_gui_plot_calibrate_fits.emit(fig)
-        '''
-        construct calibration matrix:
-        Understand that this matrix is dV_i/dx_j where ij indexes like a normal matrix, i.e. row column. 
-        Therefore, dV = calib_mat * dx where dx is a column vector, [d_cam1_x, d_cam1_y, d_cam2_x, d_cam2_y].Transpose,
-        where, for example, d_cam1_x is the difference in the desired position of cam1_x and the calculated COM x_coordinate of cam 1.
-        and dV is a column vector, [d_mot1_x, d_mot1_y, d_mot2_x, d_mot2_y,].Transpose, i.e. the change in voltage
-         on each motor to bring the COM coordinates to desired position.
-        Therefore, this matrix can be used to update the motor voltages as New_V = Old_V - calib_mat*dx 
-        '''
-        calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
+
+        inv_calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
                               [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
                               [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])
-        calib_mat = np.linalg.inv(calib_mat)
-        """calib_mat = np.array([[1/p_mot1_x_cam1_x[0], 1/p_mot1_x_cam1_y[0], 1/p_mot1_x_cam2_x[0], 1/p_mot1_x_cam2_y[0]],
-                              [1/p_mot1_y_cam1_x[0], 1/p_mot1_y_cam1_y[0], 1/p_mot1_y_cam2_x[0], 1/p_mot1_y_cam2_y[0]],
-                              [1/p_mot2_x_cam1_x[0], 1/p_mot2_x_cam1_y[0], 1/p_mot2_x_cam2_x[0], 1/p_mot2_x_cam2_y[0]],
-                              [1/p_mot2_y_cam1_x[0], 1/p_mot2_y_cam1_y[0], 1/p_mot2_y_cam2_x[0], 1/p_mot2_y_cam2_y[0]]])"""
+        calib_mat = np.linalg.inv(inv_calib_mat)
+        # Confrim that the inverse of this matrix times itself produces the identity matrix as it should!
+        identity = np.matmul(calib_mat, inv_calib_mat)
+        print("This should be the identity matrix, ", identity)
         # Set the calibration matrix
         self.calibration_matrix = calib_mat
-        # Let the GUI thread know that calibration is done so it can update GUI information accordingly.
+        # Run some checks: see if I can reconstruct known voltage changes from dx's induced by the known voltage change.
+        self.test_calibration_matrix()
+        # Let the GUI thread know that calibration is done so that it can update GUI information accordingly.
         self.update_gui_new_calibration_matrix_signal.emit(calib_mat)
         print("Finished calculating calibration matrix.")
+        return
+
+    def test_calibration_matrix(self):
+        """
+        Test if the calibration matrix makes sense, reproduces known voltage changes from known dx's in calibration
+        itself.
+        """
+        # First check pairs of points as dx's
+        # mot1_x
+        for i in range(5):
+            ind_1 = np.random.randint(0, len(self.mot1_x_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot1_x_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot1_x_cam1_x[ind_2] - self.mot1_x_cam1_x[ind_1],
+                                self.mot1_x_cam1_y[ind_2] - self.mot1_x_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot1_x_cam2_x[ind_2] - self.mot1_x_cam2_x[ind_1],
+                                self.mot1_x_cam2_y[ind_2] - self.mot1_x_cam2_y[ind_1]])
+            dx = np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find dV from dx:
+            dV = np.matmul(self.calibration_matrix, dx)
+            # Find what dV was to cause this dx:
+            dV_known = np.array([self.mot1_x_voltage[ind_2] - self.mot1_x_voltage[ind_1], 0, 0, 0])
+            # Check if they are the same:
+            if np.any(np.abs(dV-dV_known) > 0.1):  # Check if any are off my more than 0.1 V
+                print("Failed on motor1_X move alone. Anticipated dV ", dV_known, "calculated dV ", dV)
+        # mot1_y
+        for i in range(5):
+            ind_1 = np.random.randint(0, len(self.mot1_y_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot1_y_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot1_y_cam1_x[ind_2] - self.mot1_y_cam1_x[ind_1],
+                                self.mot1_y_cam1_y[ind_2] - self.mot1_y_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot1_y_cam2_x[ind_2] - self.mot1_y_cam2_x[ind_1],
+                                self.mot1_y_cam2_y[ind_2] - self.mot1_y_cam2_y[ind_1]])
+            dx = np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find dV from dx:
+            dV = np.matmul(self.calibration_matrix, dx)
+            # Find what dV was to cause this dx:
+            dV_known = np.array([0, self.mot1_y_voltage[ind_2] - self.mot1_y_voltage[ind_1], 0, 0])
+            # Check if they are the same:
+            if np.any(np.abs(dV - dV_known) > 0.1):  # Check if any are off my more than 0.1 V
+                print("Failed on motor1_Y move alone. Anticipated dV ", dV_known, "calculated dV ", dV)
+        # mot2_x
+        for i in range(5):
+            ind_1 = np.random.randint(0, len(self.mot2_x_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot2_x_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot2_x_cam1_x[ind_2] - self.mot2_x_cam1_x[ind_1],
+                                self.mot2_x_cam1_y[ind_2] - self.mot2_x_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot2_x_cam2_x[ind_2] - self.mot2_x_cam2_x[ind_1],
+                                self.mot2_x_cam2_y[ind_2] - self.mot2_x_cam2_y[ind_1]])
+            dx = np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find dV from dx:
+            dV = np.matmul(self.calibration_matrix, dx)
+            # Find what dV was to cause this dx:
+            dV_known = np.array([0, 0, self.mot2_x_voltage[ind_2] - self.mot2_x_voltage[ind_1], 0])
+            # Check if they are the same:
+            if np.any(np.abs(dV - dV_known) > 0.1):  # Check if any are off my more than 0.1 V
+                print("Failed on motor2_X move alone. Anticipated dV ", dV_known, "calculated dV ", dV)
+        # mot2_y
+        for i in range(5):
+            ind_1 = np.random.randint(0, len(self.mot2_y_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot2_y_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot2_y_cam1_x[ind_2] - self.mot2_y_cam1_x[ind_1],
+                                self.mot2_y_cam1_y[ind_2] - self.mot2_y_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot2_y_cam2_x[ind_2] - self.mot2_y_cam2_x[ind_1],
+                                self.mot2_y_cam2_y[ind_2] - self.mot2_y_cam2_y[ind_1]])
+            dx = np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find dV from dx:
+            dV = np.matmul(self.calibration_matrix, dx)
+            # Find what dV was to cause this dx:
+            dV_known = np.array([0, 0, 0, self.mot2_y_voltage[ind_2] - self.mot2_y_voltage[ind_1]])
+            # Check if they are the same:
+            if np.any(np.abs(dV - dV_known) > 0.1):  # Check if any are off my more than 0.1 V
+                print("Failed on motor2_Y move alone. Anticipated dV ", dV_known, "calculated dV ", dV)
+
+        # check linear combinations of all motors changing.
+        for i in range(5):
+            # mot1_x
+            ind_1 = np.random.randint(0, len(self.mot1_x_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot1_x_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot1_x_cam1_x[ind_2] - self.mot1_x_cam1_x[ind_1],
+                                self.mot1_x_cam1_y[ind_2] - self.mot1_x_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot1_x_cam2_x[ind_2] - self.mot1_x_cam2_x[ind_1],
+                                self.mot1_x_cam2_y[ind_2] - self.mot1_x_cam2_y[ind_1]])
+            dx = np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find what dV was to cause this dx:
+            dV_known = np.array([self.mot1_x_voltage[ind_2] - self.mot1_x_voltage[ind_1], 0, 0, 0])
+            # mot1_y
+            ind_1 = np.random.randint(0, len(self.mot1_y_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot1_y_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot1_y_cam1_x[ind_2] - self.mot1_y_cam1_x[ind_1],
+                                self.mot1_y_cam1_y[ind_2] - self.mot1_y_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot1_y_cam2_x[ind_2] - self.mot1_y_cam2_x[ind_1],
+                                self.mot1_y_cam2_y[ind_2] - self.mot1_y_cam2_y[ind_1]])
+            dx += np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find what dV was to cause this dx:
+            dV_known += np.array([0, self.mot1_y_voltage[ind_2] - self.mot1_y_voltage[ind_1], 0, 0])
+            # mot2_x
+            ind_1 = np.random.randint(0, len(self.mot2_x_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot2_x_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot2_x_cam1_x[ind_2] - self.mot2_x_cam1_x[ind_1],
+                                self.mot2_x_cam1_y[ind_2] - self.mot2_x_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot2_x_cam2_x[ind_2] - self.mot2_x_cam2_x[ind_1],
+                                self.mot2_x_cam2_y[ind_2] - self.mot2_x_cam2_y[ind_1]])
+            dx += np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find what dV was to cause this dx:
+            dV_known += np.array([0, 0, self.mot2_x_voltage[ind_2] - self.mot2_x_voltage[ind_1], 0])
+            # mot2_y
+            ind_1 = np.random.randint(0, len(self.mot2_y_cam1_x))
+            ind_2 = np.random.randint(0, len(self.mot2_y_cam1_x))
+            # Construct a dx as my code does, from a known voltage change.
+            dx_cam1 = np.array([self.mot2_y_cam1_x[ind_2] - self.mot2_y_cam1_x[ind_1],
+                                self.mot2_y_cam1_y[ind_2] - self.mot2_y_cam1_y[ind_1]])
+            dx_cam2 = np.array([self.mot2_y_cam2_x[ind_2] - self.mot2_y_cam2_x[ind_1],
+                                self.mot2_y_cam2_y[ind_2] - self.mot2_y_cam2_y[ind_1]])
+            dx += np.concatenate((dx_cam1, dx_cam2), axis=0)
+            # Find what dV was to cause this dx:
+            dV_known += np.array([0, 0, 0, self.mot2_y_voltage[ind_2] - self.mot2_y_voltage[ind_1]])
+
+            # Find dV from overall dx:
+            dV = np.matmul(self.calibration_matrix, dx)
+            if np.any(np.abs(dV - dV_known) > 0.1):  # Check if any are off my more than 0.1 V
+                print("Failed on linear combination of dx. Anticipated dV ", dV_known, "calculated dV ", dV)
+
         return
 
     # Analysis/convenience methods.
