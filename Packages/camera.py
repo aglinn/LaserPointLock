@@ -1420,7 +1420,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.release_cap_signal.connect(self.close)
         self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
         self.timer.destroyed.connect(self.new_timer)
-        self.timer.timeout.connect(self.get_frame)
+        self.timer.timeout.connect(self.get_frame, type=Qt.QueuedConnection)
         self.request_start_timer.connect(self.start_timer)
         return
 
