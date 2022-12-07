@@ -1745,12 +1745,19 @@ class UpdateManager(QObject):
             if self._locking:
                 self._cam_1_com = vector
             elif self._calibrating:
-                if self.cam1_com_avg_num < self.num_frames_to_average_during_calibrate:
+                if self.cam1_com_avg_num == 1:
+                    self._cam_1_com = vector/self.num_frames_to_average_during_calibrate
+                    self.cam1_com_avg_num += 1
+                    return
+                elif self.cam1_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector/self.num_frames_to_average_during_calibrate
                     self.cam1_com_avg_num += 1
                     return
                 elif self.cam1_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_1_com += vector / self.num_frames_to_average_during_calibrate
+                    check = np.sum(np.sqrt(np.square(self._cam_1_com-vector)))
+                    if check > 4:
+                        print("Averaged com - current com magnitude is ", check)
                     self.cam1_com_avg_num += 1
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
@@ -1776,12 +1783,19 @@ class UpdateManager(QObject):
             if self._locking:
                 self._cam_2_com = vector
             elif self._calibrating:
-                if self.cam2_com_avg_num < self.num_frames_to_average_during_calibrate:
+                if self.cam2_com_avg_num == 1:
+                    self._cam_2_com = vector / self.num_frames_to_average_during_calibrate
+                    self.cam2_com_avg_num += 1
+                    return
+                elif self.cam2_com_avg_num < self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
                     self.cam2_com_avg_num += 1
                     return
                 elif self.cam2_com_avg_num == self.num_frames_to_average_during_calibrate:
                     self._cam_2_com += vector / self.num_frames_to_average_during_calibrate
+                    check = np.sum(np.sqrt(np.square(self._cam_2_com - vector)))
+                    if check > 4:
+                        print("Averaged com - current com magnitude is ", check)
                     self.cam2_com_avg_num += 1
                 else:
                     # Do not allow the num_frames... + 1th frame to be included. Always only num_frames...
