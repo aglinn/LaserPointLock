@@ -1432,7 +1432,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timeout_time = int(self.timeout_time+1)
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         print("Timer interval is ", self.timeout_time, self.timer.interval())
-        self.timer.setSingleShot(True)
+        self.timer.setSingleShot(False)
         self.timer.start()
         print("Starting camera timer from thread: ", QThread.currentThread())
         return
@@ -1490,7 +1490,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         """
         Create a new timer object and start it.
         """
-        print("New timer")
+        pass
+        """print("New timer")
         print("Timeout time set to ", self.timeout_time)
         self.timer = QTimer()
         self.timer.setSingleShot(False)
@@ -1501,7 +1502,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         # Now reconnect.
         self.timer.timeout.connect(self.get_frame)
         self.timer.destroyed.connect(self.new_timer)
-        self.timer.start()
+        self.timer.start()"""
         return
 
     def set_resolution(self, res):
