@@ -1011,7 +1011,7 @@ class UpdateManager(QObject):
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
         # in the change observed in dX
         dV = np.matmul(self.calibration_matrix, self.dx[-1, :])
-        self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        self.dV = np.round(dV,decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
         # voltage to be set on the motors
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
@@ -1379,14 +1379,17 @@ class UpdateManager(QObject):
         p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_x, deg=1)
         p_mot1_x_cam1_y = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam1_y, deg=1)
         p_mot1_x_cam2_y = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_y, deg=1)
+
         p_mot1_y_cam1_x = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam1_x, deg=1)
         p_mot1_y_cam2_x = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam2_x, deg=1)
         p_mot1_y_cam1_y = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam1_y, deg=1)
         p_mot1_y_cam2_y = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam2_y, deg=1)
+
         p_mot2_x_cam1_x = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam1_x, deg=1)
         p_mot2_x_cam2_x = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam2_x, deg=1)
         p_mot2_x_cam1_y = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam1_y, deg=1)
         p_mot2_x_cam2_y = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam2_y, deg=1)
+
         p_mot2_y_cam1_x = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam1_x, deg=1)
         p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam2_x, deg=1)
         p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam1_y, deg=1)
@@ -1478,11 +1481,15 @@ class UpdateManager(QObject):
          on each motor to bring the COM coordinates to desired position.
         Therefore, this matrix can be used to update the motor voltages as New_V = Old_V - calib_mat*dx 
         '''
-        calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
+        """calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
                               [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
                               [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])
-        calib_mat = np.linalg.inv(calib_mat)
+        calib_mat = np.linalg.inv(calib_mat)"""
+        calib_mat = np.array([[1/p_mot1_x_cam1_x[0], 1/p_mot1_x_cam1_y[0], 1/p_mot1_x_cam2_x[0], 1/p_mot1_x_cam2_y[0]],
+                              [1/p_mot1_y_cam1_x[0], 1/p_mot1_y_cam1_y[0], 1/p_mot1_y_cam2_x[0], 1/p_mot1_y_cam2_y[0]],
+                              [1/p_mot2_x_cam1_x[0], 1/p_mot2_x_cam1_y[0], 1/p_mot2_x_cam2_x[0], 1/p_mot2_x_cam2_y[0]],
+                              [1/p_mot2_y_cam1_x[0], 1/p_mot2_y_cam1_y[0], 1/p_mot2_y_cam2_x[0], 1/p_mot2_y_cam2_y[0]]])
         # Set the calibration matrix
         self.calibration_matrix = calib_mat
         # Let the GUI thread know that calibration is done so it can update GUI information accordingly.
@@ -1665,7 +1672,6 @@ class UpdateManager(QObject):
                 self._cam1_img_count = 0
             else:
                 self._cam1_img_count += 1
-
         elif cam_number == 2:
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
