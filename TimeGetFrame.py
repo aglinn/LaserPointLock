@@ -29,6 +29,9 @@ class Logger(QObject):
 app = QApplication(sys.argv)
 logger = Logger()
 c = camera(1)
+_, frame = c.cap.read()
+print(frame.dtype)
+print(np.max(frame))
 c.img_captured_signal.connect(logger.finished)
 num = 1000
 num_frames_acquired = 0
