@@ -94,6 +94,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.PID = {'P': 0.5, 'Ti': 0.1, 'Td': 0}
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
+        print("Update manager lives in thread, ", self.UpdateManager.thread())
         # Connect signals related to update manager.
         self.UpdateManager.connect_signals()
         self.connect_UpdateManager_signals()
@@ -1682,5 +1683,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     win = Window()
     win.show()
+    print("main thread is ", win.thread())
     app.aboutToQuit.connect(win.manual_close)
     sys.exit(app.exec())
