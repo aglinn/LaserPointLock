@@ -972,6 +972,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
+                self.cam1.timer.moveToThread(self.cam1_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
                 self.cam1.connect_signals()
                 self.connect_camera_signals(1)
@@ -981,11 +982,11 @@ class Window(QMainWindow, Ui_MainWindow):
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.cam1.gain_set_signal.emit(cam1_gain)
                 self.cam1.exposure_set_signal.emit(cam1_exp_time)
+                # start the infinite event loop around acquiring images:
+                self.cam1.request_start_timer.emit()
                 # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
-                # start the infinite event loop around acquiring images:
-                self.cam1.timer.start()
             else:  # Update settings once cam1 exists and cam1_thread is running
                 key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
                 self.cam1_settings_to_set = {'exposure': cam1_exp_time, 'gain': cam1_gain}

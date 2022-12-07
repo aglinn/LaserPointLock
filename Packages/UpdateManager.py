@@ -194,6 +194,7 @@ class UpdateManager(QObject):
         self.request_set_camera_threshold_signal.connect(self.update_img_thresholds)
         self.request_close.connect(self.close)
         self.request_ping.connect(self.return_ping)
+        self.timer.timeout.connect(self.apply_update)
         return
 
     @pyqtSlot(float)
@@ -846,12 +847,9 @@ class UpdateManager(QObject):
     @pyqtSlot()
     def time_delay_update(self):
         # print("Calling Update")
-        print("Called delay update, ", self._cam1_com_updated, self._cam2_com_updated, self.block_timer)
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
-            print("starting timer")
             self.timer.start(self.time_out_interval)
-            self.timer.timeout.connect(self.apply_update)
         return
 
     @pyqtSlot()
@@ -860,7 +858,6 @@ class UpdateManager(QObject):
         This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
-        print("Calling apply_update")
         try:
             # Try getting the update voltage
             self.get_update()

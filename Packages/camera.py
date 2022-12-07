@@ -1376,7 +1376,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     release_cap_signal = pyqtSignal()
     r0_updated_signal = pyqtSignal(np.ndarray)
     ROI_bounds_set_full_view_signal = pyqtSignal()
-
+    request_start_timer = pyqtSignal()
 
     def __init__(self, dev_id: int):
         super().__init__()
@@ -1404,7 +1404,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timeout_time = int(self.timeout_time)
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         self.timer.setSingleShot(False)
-
         return
 
     def connect_signals(self):
@@ -1422,7 +1421,12 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
         self.timer.destroyed.connect(self.new_timer)
         self.timer.timeout.connect(self.get_frame)
+        self.request_start_timer.connect(self.start_timer)
         return
+
+    @pyqtSlot()
+    def start_timer(self):
+        self.timer.start()
 
     def update_frame(self):
         pass
@@ -1480,6 +1484,10 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timer = QTimer()
         self.timer.setSingleShot(False)
         self.timer.setInterval(self.timeout_time)
+        # Make sure no connections
+        self.timer.timeout.disconnect()
+        self.timer.destroyed.disconnect()
+        # Now reconnect.
         self.timer.timeout.connect(self.get_frame)
         self.timer.destroyed.connect(self.new_timer)
         self.timer.start()
