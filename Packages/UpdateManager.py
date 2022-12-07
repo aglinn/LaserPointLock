@@ -298,6 +298,7 @@ class UpdateManager(QObject):
         self.cam1_time_motors_updated = None
         self.cam2_time_motors_updated = None
         self.block_timer = False
+        print("update requested.", self.block_timer)
         if self._calibrating:
             self.cam1_com_avg_num = 1
             self.cam2_com_avg_num = 1
