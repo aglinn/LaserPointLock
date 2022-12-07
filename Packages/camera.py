@@ -1390,7 +1390,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.cap.set(cv2.CAP_PROP_GAIN, -1)  # -1 sets gain to auto
         self._ready_to_acquire = True
         self.serial_no = str(dev_id)
-        self._startXY = [0,0]
+        self._startXY = [0, 0]
         self.cap.set_pyspin_value("GammaEnable", False)
         print("Gamma is ", self.cap.get(cv2.CAP_PROP_GAMMA))
         self._exposure_time = 'Auto'
@@ -1420,7 +1420,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.release_cap_signal.connect(self.close)
         self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
         self.timer.destroyed.connect(self.new_timer)
-        self.timer.timeout.connect(self.grab_frames_continuously)
+        self.timer.timeout.connect(self.get_frame)
         self.request_start_timer.connect(self.start_timer)
         return
 
@@ -1454,7 +1454,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot()
     def grab_frames_continuously(self):
         self.get_frame()
-        self.timer.start()
         if not self._keep_capturing:
             self.timer.stop()
             self.release_cap_signal.emit()
@@ -1490,8 +1489,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         """
         Create a new timer object and start it.
         """
-        pass
-        """print("New timer")
+        print("New timer")
         print("Timeout time set to ", self.timeout_time)
         self.timer = QTimer()
         self.timer.setSingleShot(False)
@@ -1502,7 +1500,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         # Now reconnect.
         self.timer.timeout.connect(self.get_frame)
         self.timer.destroyed.connect(self.new_timer)
-        self.timer.start()"""
+        self.timer.start()
         return
 
     def set_resolution(self, res):
@@ -1744,6 +1742,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
 
     @pyqtSlot()
     def close(self):
+        if self.timer is not None:
+            self.timer.stop()
         self.cap.release()
         if not self._app_closing:
             # So far only calling like this to disconnect the camera in an effort to reconnect another. So, delete this
