@@ -172,7 +172,9 @@ class UpdateManager(QObject):
         self.time_out_interval = 1000.0/55.0  # TODO: Need to set this dynamically.
         self.block_timer = False
         self.is_PID = False
-        self.timer = None
+        self.timer = QTimer()
+        print("Timer lives in ", self.timer.thread())
+        self.timer.setSingleShot(True)
         return
 
     def connect_signals(self):
@@ -193,10 +195,6 @@ class UpdateManager(QObject):
         self.request_set_camera_threshold_signal.connect(self.update_img_thresholds)
         self.request_close.connect(self.close)
         self.request_ping.connect(self.return_ping)
-        # Just putting this here so that QTimer is created once this object is in its own thread.
-        self.timer = QTimer()
-        print("Timer lives in ", self.timer.thread())
-        self.timer.setSingleShot(True)
         return
 
     @pyqtSlot(float)
