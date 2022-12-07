@@ -845,6 +845,7 @@ class UpdateManager(QObject):
     @pyqtSlot()
     def time_delay_update(self):
         # print("Calling Update")
+        print("Called delay update, ", self._cam1_com_updated, self._cam2_com_updated, self.block_timer)
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
             print("starting timer")
