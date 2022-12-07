@@ -1375,25 +1375,25 @@ class UpdateManager(QObject):
         print("motor 2 y voltage, cam2 x response: ", self.mot2_y_cam2_x, " with len ", len(self.mot2_y_cam2_x))
         print("motor 2 y voltage, cam2 y response: ", self.mot2_y_cam2_y, " with len ", len(self.mot2_y_cam2_y))"""
         # calculate slopes by fitting lines
-        p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam1_x, deg=1)
-        p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_x, deg=1)
-        p_mot1_x_cam1_y = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam1_y, deg=1)
-        p_mot1_x_cam2_y = np.polyfit(self.mot1_x_voltage, self.mot1_x_cam2_y, deg=1)
+        p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_x[1:-1], deg=1)
+        p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_x[1:-1], deg=1)
+        p_mot1_x_cam1_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_y[1:-1], deg=1)
+        p_mot1_x_cam2_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_y[1:-1], deg=1)
 
-        p_mot1_y_cam1_x = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam1_x, deg=1)
-        p_mot1_y_cam2_x = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam2_x, deg=1)
-        p_mot1_y_cam1_y = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam1_y, deg=1)
-        p_mot1_y_cam2_y = np.polyfit(self.mot1_y_voltage, self.mot1_y_cam2_y, deg=1)
+        p_mot1_y_cam1_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_x[1:-1], deg=1)
+        p_mot1_y_cam2_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_x[1:-1], deg=1)
+        p_mot1_y_cam1_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_y[1:-1], deg=1)
+        p_mot1_y_cam2_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_y[1:-1], deg=1)
 
-        p_mot2_x_cam1_x = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam1_x, deg=1)
-        p_mot2_x_cam2_x = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam2_x, deg=1)
-        p_mot2_x_cam1_y = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam1_y, deg=1)
-        p_mot2_x_cam2_y = np.polyfit(self.mot2_x_voltage, self.mot2_x_cam2_y, deg=1)
+        p_mot2_x_cam1_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_x[1:-1], deg=1)
+        p_mot2_x_cam2_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_x[1:-1], deg=1)
+        p_mot2_x_cam1_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_y[1:-1], deg=1)
+        p_mot2_x_cam2_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_y[1:-1], deg=1)
 
-        p_mot2_y_cam1_x = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam1_x, deg=1)
-        p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam2_x, deg=1)
-        p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam1_y, deg=1)
-        p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage, self.mot2_y_cam2_y, deg=1)
+        p_mot2_y_cam1_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_x[1:-1], deg=1)
+        p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_x[1:-1], deg=1)
+        p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_y[1:-1], deg=1)
+        p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_y[1:-1], deg=1)
         print("Finished Polyfit.")
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
         if True:  # This just lets me collapse the below code
@@ -1481,15 +1481,15 @@ class UpdateManager(QObject):
          on each motor to bring the COM coordinates to desired position.
         Therefore, this matrix can be used to update the motor voltages as New_V = Old_V - calib_mat*dx 
         '''
-        """calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
+        calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
                               [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
                               [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])
-        calib_mat = np.linalg.inv(calib_mat)"""
-        calib_mat = np.array([[1/p_mot1_x_cam1_x[0], 1/p_mot1_x_cam1_y[0], 1/p_mot1_x_cam2_x[0], 1/p_mot1_x_cam2_y[0]],
+        calib_mat = np.linalg.inv(calib_mat)
+        """calib_mat = np.array([[1/p_mot1_x_cam1_x[0], 1/p_mot1_x_cam1_y[0], 1/p_mot1_x_cam2_x[0], 1/p_mot1_x_cam2_y[0]],
                               [1/p_mot1_y_cam1_x[0], 1/p_mot1_y_cam1_y[0], 1/p_mot1_y_cam2_x[0], 1/p_mot1_y_cam2_y[0]],
                               [1/p_mot2_x_cam1_x[0], 1/p_mot2_x_cam1_y[0], 1/p_mot2_x_cam2_x[0], 1/p_mot2_x_cam2_y[0]],
-                              [1/p_mot2_y_cam1_x[0], 1/p_mot2_y_cam1_y[0], 1/p_mot2_y_cam2_x[0], 1/p_mot2_y_cam2_y[0]]])
+                              [1/p_mot2_y_cam1_x[0], 1/p_mot2_y_cam1_y[0], 1/p_mot2_y_cam2_x[0], 1/p_mot2_y_cam2_y[0]]])"""
         # Set the calibration matrix
         self.calibration_matrix = calib_mat
         # Let the GUI thread know that calibration is done so it can update GUI information accordingly.
