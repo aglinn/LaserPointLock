@@ -5,7 +5,8 @@ import cv2
 np.random.seed(22)
 img_size = [2048, 1536]
 num_images_to_process = 100
-images = np.random.rand(num_images_to_process, img_size[0], img_size[1])
+images = np.random.randint(0,255, size=[num_images_to_process, img_size[0], img_size[1]], dtype='uint8')
+
 
 def process_image(img):
     Nx, Ny = img.shape
@@ -23,7 +24,6 @@ def loop_process_image():
         _, _ = process_image(images[i])
 
 def process_image_cv(img):
-    img = np.multiply(img, 255).astype('uint8')
     cv2.subtract(img, 0, img)
     #ret, thresh = cv2.threshold(img, 0, 255, cv2.THRESH_TOZERO)
     M = cv2.moments(img)
@@ -47,3 +47,4 @@ print("old_method ", process_image(images[0]), "new method ", process_image_cv(i
 
 test_img = np.array(images[0]*255).astype('uint8')
 print(np.min(cv2.subtract(test_img, 1000)))
+print(np.max(cv2.subtract(test_img, 10)))

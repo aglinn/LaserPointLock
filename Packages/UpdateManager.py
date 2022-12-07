@@ -1653,7 +1653,6 @@ class UpdateManager(QObject):
         For now, just find COM, but in the future, do any preprocessing that I want.
         """
         if cam_number == 1:
-            img = np.multiply(img, 255).astype('uint8')
             cv2.subtract(img, self.img1_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
             if com_x is not None:
@@ -1668,7 +1667,6 @@ class UpdateManager(QObject):
                 self._cam1_img_count += 1
 
         elif cam_number == 2:
-            img = np.multiply(img, 255).astype('uint8')
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
             if com_x is not None:
