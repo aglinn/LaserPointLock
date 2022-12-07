@@ -281,7 +281,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.update_gui_locked_state.connect(self.confirm_lock_state)
         self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
         self.UpdateManager.update_gui_ping.connect(self.report_UpdateManager_ping)
-        self.UpdateManager.request_gui_plot_calibrate_fits(self.plot_calibration_fits)
+        self.UpdateManager.request_gui_plot_calibrate_fits.connect(self.plot_calibration_fits)
         return
 
     @pyqtSlot(Figure)
