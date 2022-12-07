@@ -847,6 +847,7 @@ class UpdateManager(QObject):
         # print("Calling Update")
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
+            print("starting timer")
             self.timer.timeout.connect(self.apply_update)
             self.timer.start(self.time_out_interval)
         return
