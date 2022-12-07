@@ -1420,7 +1420,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.release_cap_signal.connect(self.close)
         self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
         self.timer.destroyed.connect(self.new_timer)
-        self.timer.timeout.connect(self.get_frame, type=Qt.QueuedConnection)
+        self.timer.timeout.connect(self.grab_frames_continuously)
         self.request_start_timer.connect(self.start_timer)
         return
 
@@ -1431,7 +1431,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timeout_time = int(self.timeout_time)
         self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
         print("Timer interval is ", self.timeout_time)
-        self.timer.setSingleShot(False)
+        self.timer.setSingleShot(True)
         self.timer.start()
         print("Starting camera timer from thread: ", QThread.currentThread())
         return
@@ -1453,6 +1453,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot()
     def grab_frames_continuously(self):
         self.get_frame()
+        self.timer.start()
         if not self._keep_capturing:
             self.timer.stop()
             self.release_cap_signal.emit()
