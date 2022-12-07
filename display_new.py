@@ -90,6 +90,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager_thread.finished.connect(lambda: print("Update Manager Thread has finished."))
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
+        print("Thread that objects created by Window object live in: ", self.UpdateManager.thread())
         if self.UpdateManager.is_PID:
             self.PID = {'P': 0.5, 'Ti': 0.1, 'Td': 0}
         # move update manager to its own thread.
