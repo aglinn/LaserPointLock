@@ -1442,6 +1442,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
 
     @pyqtSlot()
     def get_frame(self):
+        print("Getting frame from thread ", QThread.currentThread())
         ret, frame, time_stamp = self.cap.read()
         if ret:
             # Timestamp in ns as int convert to ms as float int-->floaot automatic.
