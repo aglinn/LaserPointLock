@@ -1350,6 +1350,7 @@ class UpdateManager(QObject):
 
     @pyqtSlot()
     def calculate_calibration_matrix(self):
+        # TODO: The calibration process seems bad in that the tests of the calibration fails, produces dVs way off!
         """
         Calculate the calibration matrix. And plot the resulting fits to pointing changes vs. voltage changes
         """
@@ -1400,7 +1401,7 @@ class UpdateManager(QObject):
         # Try thresholding the slopes that are small to 0, since we anticipate that many of the degrees of freedom are
         # uncoupled:
         # if the full range of the piezo only moves this dimension by <5 pixels, m=0
-        min_pixels_change_over_full_voltage_range = 5
+        min_pixels_change_over_full_voltage_range = 0
         if np.abs(p_mot1_x_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam1_x[0] = 0
         if np.abs(p_mot1_x_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
@@ -1814,8 +1815,8 @@ class UpdateManager(QObject):
             return com_x, com_y
         return None, None
 
-    @pyqtSlot(int, np.ndarray)
-    def process_img(self, cam_number: int, img: np.ndarray):
+    @pyqtSlot(int, np.ndarray, float)
+    def process_img(self, cam_number: int, img: np.ndarray, timestamp: float):
         """
         Given an image, self.cam_x_img, calculate the center of mass in pixel coordinates
         For now, just find COM, but in the future, do any preprocessing that I want.
@@ -1833,6 +1834,7 @@ class UpdateManager(QObject):
                 self._cam1_img_count = 0
             else:
                 self._cam1_img_count += 1
+            self.t1 = timestamp
         elif cam_number == 2:
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
@@ -1846,6 +1848,7 @@ class UpdateManager(QObject):
                 self._cam2_img_count = 0
             else:
                 self._cam2_img_count += 1
+            self.t2 = timestamp
         return
 
     @pyqtSlot(int)
@@ -1874,7 +1877,7 @@ class UpdateManager(QObject):
         return
 
     @property
-    def t1(self, index=None):
+    def t1(self):
         """Camera 1 image timestamp units of ms."""
         return np.asarray(self._t1)
 
@@ -2096,7 +2099,6 @@ class UpdateManager(QObject):
             del self.motor2_thread
         return
 
-
 class PIDUpdateManager(UpdateManager):
 
     def __init__(self):
@@ -2112,21 +2114,14 @@ class PIDUpdateManager(UpdateManager):
         """
         This code finds the next voltages to apply to the piezo.
         """
-        if self.calibration_matrix is None or self.set_pos is None:
-            raise InsufficientInformation("You must first provide a calibration matrix and a set position.")
-
         # Calculate dX
         # The convention here is how much has the position on the camera changed from the set point.
         self.dx = self.com()-self.set_pos
         if len(self.t1) > 1 and self._use_PID:  # PID only makes sense if there are at least 2 data points. If only one, just do P.
-            # Calculate dt
-            self.calc_dt()
             derivative = self.calc_derivative()
             self.calc_integral()
-            #print(self.integral_ti, derivative)
-
             # Find dX weighted total from PID.
-            dx = self.P*(self.dx[-1, :] + self.integral_ti/self.TI + self.TD*derivative)
+            dx = self.P*self.dx[-1, :] + self.I*self.integral_ti + self.D*derivative
             #print(self.integral_ti)
             #print(dx, self.dx[-1, :])
         else:
@@ -2261,6 +2256,9 @@ class PIDUpdateManager(UpdateManager):
 
     @dt.setter
     def dt(self, vector):
+        """
+        [cam1_exp, cam2_exp]
+        """
         self._dt = vector
         return
 
@@ -2274,19 +2272,19 @@ class PIDUpdateManager(UpdateManager):
         return
 
     @property
-    def TI(self):
+    def I(self):
         return self._TI
 
-    @TI.setter
-    def TI(self, value):
+    @I.setter
+    def I(self, value):
         self._TI = value
         return
 
     @property
-    def TD(self):
+    def D(self):
         return self._TD
 
-    @TD.setter
-    def TD(self, value):
+    @D.setter
+    def D(self, value):
         self._TD = value
         return

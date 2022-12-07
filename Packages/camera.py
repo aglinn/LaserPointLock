@@ -1362,7 +1362,7 @@ from PyQt5.QtCore import Qt, QTimer
 
 class BlackflyS_EasyPySpin_QObject(QObject):
     # signals needed to run Blackfly S camera object on its own thread.
-    img_captured_signal = pyqtSignal(np.ndarray)
+    img_captured_signal = pyqtSignal(np.ndarray, float)
     capture_img_signal = pyqtSignal()
     exposure_updated_signal = pyqtSignal(float)
     exposure_set_signal = pyqtSignal(float)
@@ -1430,9 +1430,11 @@ class BlackflyS_EasyPySpin_QObject(QObject):
 
     @pyqtSlot()
     def get_frame(self):
-        ret, frame = self.cap.read()
+        ret, frame, time_stamp = self.cap.read()
         if ret:
-            self.img_captured_signal.emit(frame)
+            # Timestamp in ns as int convert to ms as float int-->floaot automatic.
+            time_stamp = time_stamp*10**-6
+            self.img_captured_signal.emit(frame, time_stamp)
         return
 
     @pyqtSlot()
