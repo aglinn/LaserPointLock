@@ -17,7 +17,7 @@ class InsufficientInformation(Exception):
 
     pass
 
-from matplotlib.pyplot import Axes
+from matplotlib.pyplot import Figure
 
 class UpdateManager(QObject):
     # The first ints in the signals below indicate which camera/motor 1 or 2, second int is motor_channel
@@ -55,7 +55,7 @@ class UpdateManager(QObject):
     update_gui_cam_com_signal = pyqtSignal(int, np.ndarray)
     update_gui_new_calibration_matrix_signal = pyqtSignal(np.ndarray)  # send this to GUI for GUI thread to save
     update_gui_ping = pyqtSignal(float)
-    request_gui_plot_calibrate_fits = pyqtSignal(Axes)
+    request_gui_plot_calibrate_fits = pyqtSignal(Figure)
 
     # TODO: Implement timing synchronization?
     # TODO: Implement triggering of cameras?
@@ -1468,7 +1468,7 @@ class UpdateManager(QObject):
             ax[2, 3].tick_params(axis='both', which='major', labelsize=6)
             ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
             # Show the figure
-            self.request_gui_plot_calibrate_fits(ax)
+            self.request_gui_plot_calibrate_fits(fig)
         '''
         construct calibration matrix:
         Understand that this matrix is dV_i/dx_j where ij indexes like a normal matrix, i.e. row column. 

@@ -4,7 +4,7 @@ import numpy as np
 x = np.linspace(0,np.pi,100)
 y = np.sin(x)
 
-fig, ax = plt.subplots(4,4,dpi=200, gridspec_kw={"hspace":0.5, "wspace":0.3})
+fig, ax = plt.subplots(4, 4, dpi=200, gridspec_kw={"hspace": 0.5, "wspace": 0.3})
 
 ax[0,0].plot(x, y)
 ax[1,0].plot(x, y)
@@ -60,8 +60,17 @@ ax[1,3].tick_params(axis='both', which='major', labelsize=6)
 ax[2,3].tick_params(axis='both', which='major', labelsize=6)
 ax[3,3].tick_params(axis='both', which='major', labelsize=6)
 
-
-
-
-
 plt.show()
+
+fig2, ax2 = plt.subplots(4, 4, dpi=200, gridspec_kw={"hspace": 0.5, "wspace": 0.3})
+i = 0
+j = 0
+for n in range(ax.size):
+    ax2[i,j] = ax[i,j]
+    i+=1
+    if i == ax.shape[0]:
+        i=0
+        j+=1
+
+fig2.show()
+from matplotlib.pyplot import Figure

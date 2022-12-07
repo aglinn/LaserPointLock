@@ -44,7 +44,7 @@ import pickle as pkl
 import gc
 import matplotlib.pyplot as plt
 from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
-from matplotlib.pyplot import Axes
+from matplotlib.pyplot import Figure
 pg.setConfigOptions(imageAxisOrder='row-major')
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
@@ -284,14 +284,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.request_gui_plot_calibrate_fits(self.plot_calibration_fits)
         return
 
-    @pyqtSlot(Axes)
-    def plot_calibration_fits(self, ax: Axes):
+    @pyqtSlot(Figure)
+    def plot_calibration_fits(self, fig: Figure):
         """
         Just show the axes in the main thread so that it displays properly.
         """
-        fig = plt.figure(dpi=200)
-        fig.add_axes(ax)
-        plt.sca(ax)
         fig.show()
         return
 
