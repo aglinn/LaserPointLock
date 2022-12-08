@@ -309,7 +309,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.list_unlock_report.clicked.connect(self.display_unlock_report)
         self.cb_suppress_image_update.clicked.connect(self.toggle_img_display)
         self.cb_suppress_pointing_updat.clicked.connect(self.toggle_pointing_display)
-        self.btn_Align.clicked.connect(self.motors_to_75V_signal.emit())
+        self.btn_Align.clicked.connect(self.motors_to_75V_signal.emit)
         return
 
     def connect_UpdateManager_signals(self):
@@ -1065,7 +1065,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 self.cam1_thread.start(priority=4)
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.set_cam1_gain_signall.emit(cam1_gain)
+                self.set_cam1_gain_signal.emit(cam1_gain)
                 # Setting exposure begins frame grabbing.
                 self.set_cam1_exposure_signal.emit(cam1_exp_time)
                 # Setup camera view.
