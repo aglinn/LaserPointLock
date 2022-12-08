@@ -211,15 +211,20 @@ class UpdateManager(QObject):
                 self.cam1_timer.stop()
             self.cam1_timer.setInterval(interval_time)
             print("cam 1 timer starting")
-            self.cam1_timer.timeout.connect(lambda: print("cam 1 timer times out"))
+            self.cam1_timer.timeout.connect(self.check)
             self.cam1_timer.start()
         elif cam_num == 2:
             if self.cam2_timer.isActive():
                 self.cam2_timer.stop()
             self.cam2_timer.setInterval(interval_time)
-            self.cam2_timer.timeout.connect(lambda: print("cam 2 timer times out"))
+            self.cam2_timer.timeout.connect(self.check)
             self.cam2_timer.start()
             print("cam 2 timer starting")
+        return
+
+    @pyqtSlot()
+    def check(self):
+        print("timer is timing out.")
         return
 
     @pyqtSlot(float)
