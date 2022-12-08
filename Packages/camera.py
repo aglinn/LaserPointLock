@@ -1699,8 +1699,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
 
     @pyqtSlot()
     def close(self):
-        if self.timer is not None:
-            self.timer.stop()
         self.cap.release()
         self.release_cap_signal.emit()
         if not self._app_closing:
