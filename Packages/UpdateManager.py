@@ -2,10 +2,11 @@ import numpy as np
 import nfft
 import time
 from lmfit import Parameters, minimize
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer, QMetaObject, Qt, Q_ARG
 from Packages.motors import MDT693B_Motor, MDT693A_Motor
 from datetime import datetime
 import cv2
+from matplotlib.pyplot import Figure
 
 
 class update_out_of_bounds(Exception):
@@ -17,50 +18,42 @@ class InsufficientInformation(Exception):
 
     pass
 
-from matplotlib.pyplot import Figure
 
 class UpdateManager(QObject):
     # The first ints in the signals below indicate which camera/motor 1 or 2, second int is motor_channel
 
-    # Internal Signaling (from myself to myself)
-    # cam_img_received_signal = pyqtSignal(int)
     # Internal signal for letting update manager know there is a new COM found post motor update
     # If anything external connects to this signal, I need to redo the lock, align, calibrate transitions.
+    # Use a signal instead of just a call, because I want to change which slot is  called.
     com_found_signal = pyqtSignal()
-    request_calculate_calibration_matrix_signal = pyqtSignal()
 
-    # emitted by GUI and also sometimes Update Manager to Update Manager
-    request_toggle_lock_signal = pyqtSignal(bool)
-    request_motors_to_75V_signal = pyqtSignal()
-
-    # emitted by the GUI to the Update Manager signals:
-    request_calibrate_signal = pyqtSignal()
-    request_update_r0_signal = pyqtSignal(int, np.ndarray)
-    request_connect_motor_signal = pyqtSignal(int, str)
-    request_set_home_signal = pyqtSignal(np.ndarray)
-    request_set_calibration_matrix = pyqtSignal(np.ndarray)
-    request_update_num_cameras_connected_signal = pyqtSignal(int) # This int is +1 for adding and -1 for removing
-    request_create_timers = pyqtSignal()
-    # bool flags whether to force an unlock or keep trying.
-    update_locking_out_of_bounds_params_signal = pyqtSignal(bool, float)
-    request_set_camera_threshold_signal = pyqtSignal(int, float)
-    request_close = pyqtSignal()
-    request_ping = pyqtSignal(float)
+    # Motor signals
+    # Motor 1
+    close_motor1_signal = pyqtSignal()
+    set_motor1_ch1V_signal = pyqtSignal(float)
+    get_motor1_ch1V_signal = pyqtSignal()
+    set_motor1_ch2V_signal = pyqtSignal(float)
+    get_motor1_ch2V_signal = pyqtSignal()
+    # Motor 2
+    close_motor2_signal = pyqtSignal()
+    set_motor2_ch1V_signal = pyqtSignal(float)
+    get_motor2_ch1V_signal = pyqtSignal()
+    set_motor2_ch2V_signal = pyqtSignal(float)
+    get_motor2_ch2V_signal = pyqtSignal()
 
     # Signals emitted by Update Manager to the GUI
-    update_gui_piezo_voltage_signal = pyqtSignal(int, int, float)
     update_gui_img_signal = pyqtSignal(int, np.ndarray)
-    update_gui_locked_state = pyqtSignal(bool)
-    update_gui_locking_update_out_of_bounds_signal = pyqtSignal(dict)
     # This reports all COM found regardless of motor status to GUI.
     update_gui_cam_com_signal = pyqtSignal(int, np.ndarray)
     update_gui_new_calibration_matrix_signal = pyqtSignal(np.ndarray)  # send this to GUI for GUI thread to save
+    update_gui_piezo_voltage_signal = pyqtSignal(int, int, float)
+    update_gui_locked_state = pyqtSignal(bool)
+    update_gui_locking_update_out_of_bounds_signal = pyqtSignal(dict)
     update_gui_ping = pyqtSignal(float)
     request_gui_plot_calibrate_fits = pyqtSignal(Figure)
 
     # TODO: Implement timing synchronization?
     # TODO: Implement triggering of cameras?
-    # TODO: Handle back log of COM captured instead of overwriting, including allowing averaging over multiple images.
 
     def __init__(self):
         # Init QObject
@@ -178,27 +171,6 @@ class UpdateManager(QObject):
         self.cam2_timer = None
         return
 
-    def connect_signals(self):
-        """
-        Connect all update manager emmitted signals to appropriate slots.
-        """
-        # self.cam_img_received_signal.connect(self.process_img)
-        self.request_set_home_signal.connect(lambda v: setattr(self, 'set_pos', v))
-        self.request_set_calibration_matrix.connect(lambda mat: setattr(self, 'calibration_matrix', mat))
-        self.request_connect_motor_signal.connect(self.connect_motor)
-        self.update_locking_out_of_bounds_params_signal.connect(self.update_lock_parameters)
-        self.request_toggle_lock_signal.connect(self.lock_pointing)
-        self.request_calibrate_signal.connect(self.begin_calibration)
-        self.request_update_num_cameras_connected_signal.connect(self.update_num_cameras_connected)
-        self.request_calculate_calibration_matrix_signal.connect(self.calculate_calibration_matrix)
-        self.request_motors_to_75V_signal.connect(self.motors_to_75V)
-        self.request_update_r0_signal.connect(self.update_r0)
-        self.request_set_camera_threshold_signal.connect(self.update_img_thresholds)
-        self.request_close.connect(self.close)
-        self.request_ping.connect(self.return_ping)
-        self.request_create_timers.connect(self.create_timers)
-        return
-
     @pyqtSlot()
     def create_timers(self):
         self.timer = QTimer(self)
@@ -215,7 +187,7 @@ class UpdateManager(QObject):
     @pyqtSlot(int, float)
     def update_cam_timer_interval(self, cam_num: int, interval_time: float):
         """
-        Update camera interval at which frames are grabbedd
+        Update camera interval at which frames are grabbed
         """
         print("starting timer from Thread, ", QThread.currentThread())
         if cam_num == 1:
@@ -250,7 +222,13 @@ class UpdateManager(QObject):
         Connect  all motor signals emitted to appropraite update manager slots and emit update gui signals.
         """
         if motor_number == 1:
-            self.motor1.connect_signals()
+            # Update manager to motor signals.
+            self.close_motor1_signal.connect(self.motor1.close)
+            self.set_motor1_ch1V_signal.connect(self.motor1.set_ch1_v)
+            self.get_motor1_ch1V_signal.connect(self.motor1.ch1_v)
+            self.set_motor1_ch2V_signal.connect(self.motor1.set_ch2_v)
+            self.get_motor1_ch2V_signal.connect(self.motor1.ch1_v)
+            # Motor1 signals to Update Manager
             self.motor1.destroyed.connect(lambda args: self.reconnect_motor(1))
             self.motor1.close_complete_signal.connect(self.accept_motor_close)
             self.motor1.close_fail_signal.connect(self.close_motor_again)
@@ -281,7 +259,13 @@ class UpdateManager(QObject):
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
         elif motor_number == 2:
-            self.motor2.connect_signals()
+            # Update Manager signals to Motor 2
+            self.close_motor2_signal.connect(self.motor2.close)
+            self.set_motor2_ch1V_signal.connect(self.motor2.set_ch1_v)
+            self.get_motor2_ch1V_signal.connect(self.motor2.ch1_v)
+            self.set_moto2_ch2V_signal.connect(self.motor2.set_ch2_v)
+            self.get_motor2_ch2V_signal.connect(self.motor2.ch1_v)
+            # Motor1 signals to Update Manager
             self.motor2.destroyed.connect(lambda args: self.reconnect_motor(2))
             self.motor2.close_complete_signal.connect(self.accept_motor_close)
             self.motor2.close_fail_signal.connect(self.close_motor_again)
@@ -311,7 +295,6 @@ class UpdateManager(QObject):
             self.motor2.returning_ch2V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
-        # self.request_update_motor_connections_signal.emit(motor_number)
         return
 
     @pyqtSlot()
@@ -922,12 +905,12 @@ class UpdateManager(QObject):
                     self.num_out_of_voltage_range = 1
                     self.time_last_unlock = 0
                     # Set all voltages back to 75V
-                    self.request_motors_to_75V_signal.emit()
+                    self.motors_to_75V()
                     successful_lock_time = time.monotonic() - self.lock_time_start
                     print("Successfully locked pointing for", successful_lock_time)
                     # Tell myself to stop locking.
                     self._locking = False
-                    self.request_toggle_lock_signal.emit(False)
+                    self.lock_pointing(False)
                     print("System has unlocked!")
                     return
 
@@ -1392,7 +1375,7 @@ class UpdateManager(QObject):
                     # anything if this function gets called again.
                     self.calibration_sweep_index += 1
                     # Tell update manager to calculate the calibration matrix now that the sweeps are done.
-                    self.request_calculate_calibration_matrix_signal.emit()
+                    self.calculate_calibration_matrix()
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
@@ -1410,7 +1393,7 @@ class UpdateManager(QObject):
                     self.request_set_motor(2, 2, 75.0)
                 if self.calibration_sweep_index == 4:
                     # Return from a calibration process always to a non-locking state of the update manager.
-                    self.request_toggle_lock_signal.emit(False)
+                    self.lock_pointing(False)
                 return
             elif self.calibration_pointing_index == 4:
                 # If I am getting here, I am already done sweeping the motors anyway, so just do nothing.
@@ -2135,7 +2118,14 @@ class UpdateManager(QObject):
          on each motor to bring the COM coordinates to desired position.
         Therefore, this matrix can be used to update the motor voltages as New_V = Old_V - calib_mat*dx
         """
-        # TODO: Are my vecotrs making sense? Row vs Column?
+        self._calibration_matrix = matrix
+        return
+
+    @pyqtSlot(np.ndarray)
+    def set_calibration_matrix(self, matrix):
+        """
+        Way to set the calibration matrix as a slot.
+        """
         self._calibration_matrix = matrix
         return
 
@@ -2145,6 +2135,14 @@ class UpdateManager(QObject):
 
     @set_pos.setter
     def set_pos(self, vector):
+        """
+        Desired laser pointing—target to move towards.
+        """
+        self._set_pos = vector
+        return
+
+    @pyqtSlot(np.ndarray)
+    def set_set_pos(self, vector: np.ndarray):
         """
         Desired laser pointing—target to move towards.
         """
@@ -2183,6 +2181,7 @@ class UpdateManager(QObject):
             del self.motor2_thread
         return
 
+
 class PIDUpdateManager(UpdateManager):
 
     request_update_cam_exposure_time = pyqtSignal(int, float)
@@ -2203,7 +2202,6 @@ class PIDUpdateManager(UpdateManager):
         self.cam2_time_last_found_int = 0
 
     def connect_signals(self):
-        super().connect_signals()
         self.request_update_cam_exposure_time.connect(self.set_cam_exp_time)
         self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "P", P))
         self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "I", I))

@@ -77,6 +77,38 @@ class Window(QMainWindow, Ui_MainWindow):
     ]
     cmap = pg.ColorMap(pos=np.linspace(0.0, 1.0, 12), color=colors)
 
+    # Signals:
+    # Camera related
+    # Cam 1
+    set_cam1_full_view_signal = pyqtSignal()
+    set_cam1_exposure_signal = pyqtSignal(float)
+    set_cam1_gain_signal = pyqtSignal(float)
+    close_cam1_signal = pyqtSignal(bool)
+    set_cam1_ROI_bounds_signal = pyqtSignal(list)
+    # Cam 2
+    set_cam2_full_view_signal = pyqtSignal()
+    set_cam2_exposure_signal = pyqtSignal(float)
+    set_cam2_gain_signal = pyqtSignal(float)
+    close_cam2_signal = pyqtSignal(bool)
+    set_cam2_ROI_bounds_signal = pyqtSignal(list)
+
+    # Update Manager signals:
+    toggle_UpdateManager_lock_signal = pyqtSignal(bool)
+    motors_to_75V_signal = pyqtSignal()
+    close_UpdateManager = pyqtSignal()
+    calibrate_signal = pyqtSignal()
+    set_UpdateManager_r0_signal = pyqtSignal(int, np.ndarray)
+    connect_motor_signal = pyqtSignal(int, str)
+    set_UpdateManager_home_signal = pyqtSignal(np.ndarray)
+    set_UpdateManager_calibration_matrix = pyqtSignal(np.ndarray)
+    # This int is +1 for adding and -1 for removing
+    update_UpdateManager_num_cameras_connected_signal = pyqtSignal(int)
+    create_UpdateManager_timers = pyqtSignal()
+    # bool flags whether to force an unlock or keep trying.
+    set_UpdateManager_locking_out_of_bounds_params_signal = pyqtSignal(bool, float)
+    set_UpdateManager_camera_threshold_signal = pyqtSignal(int, float)
+    request_UpdateManager_ping = pyqtSignal(float)
+
     def __init__(self):
         super().__init__()
         #Call the setupUI function
@@ -95,13 +127,12 @@ class Window(QMainWindow, Ui_MainWindow):
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
         # Connect signals related to update manager.
-        self.UpdateManager.connect_signals()
         self.connect_UpdateManager_signals()
         # Start the thread
         # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
         # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
         self.UpdateManager_thread.start(priority=4)
-        self.UpdateManager.request_create_timers.emit()
+        self.create_UpdateManager_timers.emit()
         print("Window thread is ", self.UpdateManager_thread.thread())
         print("Update manager is on thread ", self.UpdateManager.thread())
         time.sleep(0.1)
@@ -242,7 +273,7 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Queue an event on the update manager and see how long they take to respond.
         """
-        self.UpdateManager.request_ping.emit(time.monotonic())
+        self.request_UpdateManager_ping.emit(time.monotonic())
         return
 
     @pyqtSlot(float)
@@ -253,7 +284,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def connectSignalsSlots(self):
         """
-        Connect all Qt signals and slots
+        Connect all GUI emitted Signals to slots.
         """
         self.btn_cam1_update.clicked.connect(self.update_cam1_settings)
         self.btn_cam2_update.clicked.connect(self.update_cam2_settings)
@@ -278,9 +309,29 @@ class Window(QMainWindow, Ui_MainWindow):
         self.list_unlock_report.clicked.connect(self.display_unlock_report)
         self.cb_suppress_image_update.clicked.connect(self.toggle_img_display)
         self.cb_suppress_pointing_updat.clicked.connect(self.toggle_pointing_display)
+        self.btn_Align.clicked.connect(self.motors_to_75V_signal.emit())
         return
 
     def connect_UpdateManager_signals(self):
+        """
+        Connect all update manager signals to appropriate slots.
+        """
+        # TO update manager
+        self.motors_to_75V_signal.connect(self.UpdateManager.motors_to_75V)
+        self.set_UpdateManager_home_signal.connect(self.UpdateManager.set_set_pos)
+        self.set_UpdateManager_calibration_matrix.connect(self.UpdateManager.set_calibration_matrix)
+        self.connect_motor_signal.connect(self.UpdateManager.connect_motor)
+        self.set_UpdateManager_locking_out_of_bounds_params_signal.connect(self.UpdateManager.update_lock_parameters)
+        self.toggle_UpdateManager_lock_signal.connect(self.UpdateManager.lock_pointing)
+        self.calibrate_signal.connect(self.UpdateManager.begin_calibration)
+        self.update_UpdateManager_num_cameras_connected_signal.connect(self.UpdateManager.update_num_cameras_connected)
+        self.request_calculate_calibration_matrix_signal.connect(self.UpdateManager.calculate_calibration_matrix)
+        self.set_UpdateManager_r0_signal.connect(self.UpdateManager.update_r0)
+        self.set_UpdateManager_camera_threshold_signal.connect(self.UpdateManager.update_img_thresholds)
+        self.close_UpdateManager.connect(self.UpdateManager.close)
+        self.request_UpdateManager_ping.connect(self.UpdateManager.return_ping)
+        self.create_UpdateManager_timers.connect(self.UpdateManager.create_timers)
+        # Back to GUI from Update Manager.
         self.UpdateManager.update_gui_img_signal.connect(self.update_cam_img)
         self.UpdateManager.update_gui_cam_com_signal.connect(self.update_cam_com_display)
         self.UpdateManager.update_gui_new_calibration_matrix_signal.connect(self.handle_calibration_matrix_update)
@@ -662,7 +713,7 @@ class Window(QMainWindow, Ui_MainWindow):
             # Load the Most Recent Home Position:
             try:
                 HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
-                self.UpdateManager.request_set_home_signal.emit(np.asarray(HomePosition))
+                self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
                 self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
                 self.set_home_marker()
             except OSError:
@@ -676,7 +727,7 @@ class Window(QMainWindow, Ui_MainWindow):
             # Load the Most Recent Home Position:
             try:
                 HomePosition = np.loadtxt('Most_Recent_Home_IR.txt', dtype=float)
-                self.UpdateManager.request_set_home_signal.emit(np.asarray(HomePosition))
+                self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
                 self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
                 self.set_home_marker()
             except OSError:
@@ -693,14 +744,14 @@ class Window(QMainWindow, Ui_MainWindow):
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             # Load Most Recent Calibration Matrix:
             try:
-                self.UpdateManager.request_set_calibration_matrix.emit(np.asarray(np.loadtxt(
+                self.set_UpdateManager_calibration_matrix.emit(np.asarray(np.loadtxt(
                     'Most_Recent_Calibration.txt', dtype=float)))
             except OSError:
                 print("Hmm there seems to be no saved calibration, run calibration.")
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             # Load Most Recent Calibration Matrix:
             try:
-                self.UpdateManager.request_set_calibration_matrix.emit(
+                self.set_UpdateManager_calibration_matrix.emit(
                     np.asarray(np.loadtxt('Most_Recent_Calibration_IR.txt', dtype=float)))
             except OSError:
                 print("Hmm there seems to be no saved calibration, run calibration.")
@@ -741,44 +792,69 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     def connect_camera_signals(self, cam_number: int):
+        """
+        Connect all Camera related signals.
+        """
         if cam_number == 1:
-            self.cam1.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(1, r0))
-            self.cam1.img_captured_signal.connect(lambda img, time_stamp: self.UpdateManager.process_img(1, img,
-                                                                                                         time_stamp))
-            self.cam1.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(1, exp))
-            self.cam1.gain_updated_signal.connect(lambda gain: self.update_cam_gain(1, gain))
-            self.cam1.ROI_bounds_updated_signal.connect(self.apply_cam1_ROI)
-            self.cam1.r0_updated_signal.connect(lambda r0: self.set_cam_r0(1, r0))
-            self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
-            self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
-            self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
-            """self.cam1.request_update_timer_interval_signal.connect(self.UpdateManager.update_cam_timer_interval)"""
-            self.cam1.request_update_timer_interval_signal.connect(
-                lambda interval: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
-                                                          Qt.QueuedConnection, Q_ARG(int, 1), Q_ARG(float, interval)))
+            # To camera From Update Manager
             self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
+                #TODO: WRONG
                 self.cam1.exposure_updated_signal.connect(lambda exp:
                                                           self.UpdateManager.
                                                           request_update_cam_exposure_time.connect(1, exp))
+            # To Camera From GUI:
+            self.set_cam1_exposure_signal.connect(self.cam1.set_exposure_time)
+            self.set_cam1_gain_signal.connect(self.cam1.set_gain)
+            self.close_cam1_signal.connect(self.cam1.stop_capturing)
+            self.set_cam1_ROI_bounds_signal.connect(self.cam1.set_ROI_bounds)
+            self.set_cam1_full_view_signal.connect(self.cam1.ensure_full_view)
+            # From Camera:
+            self.cam1.r0_updated_signal.connect(lambda r0: self.set_UpdateManager_r0_signal.emit(1, r0))
+            self.cam1.r0_updated_signal.connect(lambda r0: self.set_cam_r0(1, r0))
+            self.cam1.img_captured_signal.connect(lambda img, time_stamp:
+                                                  QMetaObject.invokeMethod(self.UpdateManager, 'process_img',
+                                                                           Qt.QueuedConnection, Q_ARG(int, 1),
+                                                                           Q_ARG(np.ndarray, img),
+                                                                           Q_ARG(float, time_stamp)))
+            self.cam1.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(1, exp))
+            self.cam1.gain_updated_signal.connect(lambda gain: self.update_cam_gain(1, gain))
+            self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
+            self.cam1.destroyed.connect(lambda args: self.update_UpdateManager_num_cameras_connected_signal.emit(-1))
+            self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
+            self.cam1.request_update_timer_interval_signal.connect(
+                lambda interval: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
+                                                          Qt.QueuedConnection, Q_ARG(int, 1), Q_ARG(float, interval)))
         elif cam_number == 2:
-            self.cam2.r0_updated_signal.connect(lambda r0: self.UpdateManager.request_update_r0_signal.emit(2, r0))
-            self.cam2.img_captured_signal.connect(lambda img, time_stamp: self.UpdateManager.process_img(2, img,
-                                                                                                         time_stamp))
-            self.cam2.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(2, exp))
-            self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam_gain(2, gain))
-            self.cam2.ROI_bounds_updated_signal.connect(self.apply_cam2_ROI)
-            self.cam2.r0_updated_signal.connect(lambda r0: self.set_cam_r0(2, r0))
-            self.cam2.destroyed.connect(lambda args: self.reconnect_cameras(2))
-            self.cam2.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
-            self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
-            self.cam2.request_update_timer_interval_signal.connect(
-                lambda interval: self.UpdateManager.update_cam_timer_interval(2, interval))
+            # To camera From Update Manager
             self.UpdateManager.cam2_timer.timeout.connect(self.cam2.get_frame)
             if self.UpdateManager.is_PID:
+                # TODO: WRONG
                 self.cam2.exposure_updated_signal.connect(lambda exp:
                                                           self.UpdateManager.
                                                           request_update_cam_exposure_time.connect(2, exp))
+            # To Camera From GUI:
+            self.set_cam2_exposure_signal.connect(self.cam2.set_exposure_time)
+            self.set_cam2_gain_signal.connect(self.cam2.set_gain)
+            self.close_cam2_signal.connect(self.cam2.stop_capturing)
+            self.set_cam2_ROI_bounds_signal.connect(self.cam2.set_ROI_bounds)
+            self.set_cam2_full_view_signal.connect(self.cam2.ensure_full_view)
+            # From Camera:
+            self.cam2.r0_updated_signal.connect(lambda r0: self.set_UpdateManager_r0_signal.emit(2, r0))
+            self.cam2.r0_updated_signal.connect(lambda r0: self.set_cam_r0(2, r0))
+            self.cam2.img_captured_signal.connect(lambda img, time_stamp:
+                                                  QMetaObject.invokeMethod(self.UpdateManager, 'process_img',
+                                                                           Qt.QueuedConnection, Q_ARG(int, 2),
+                                                                           Q_ARG(np.ndarray, img),
+                                                                           Q_ARG(float, time_stamp)))
+            self.cam2.exposure_updated_signal.connect(lambda exp: self.update_cam_exposure(2, exp))
+            self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam_gain(2, gain))
+            self.cam2.destroyed.connect(lambda args: self.reconnect_cameras(2))
+            self.cam2.destroyed.connect(lambda args: self.update_UpdateManager_num_cameras_connected_signal.emit(-1))
+            self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
+            self.cam2.request_update_timer_interval_signal.connect(
+                lambda interval: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
+                                                          Qt.QueuedConnection, Q_ARG(int, 2), Q_ARG(float, interval)))
         return
 
     @pyqtSlot(int)
@@ -804,7 +880,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
-                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
                 # Apply the settings directly before starting thread and thread event loop
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.cam1.set_gain(self.cam1_settings_to_set['gain'])
@@ -831,7 +907,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam2 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
-                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
                 # Apply the settings directly before starting thread and thread event loop
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.cam2.set_gain(self.cam2_settings_to_set['gain'])
@@ -960,7 +1036,7 @@ class Window(QMainWindow, Ui_MainWindow):
             cam1_gain = float(self.le_cam1_gain.text())
             cam1_threshold = np.round(float(self.le_cam1_threshold.text())).astype('uint8')
             self.le_cam1_threshold.setText(str(cam1_threshold))
-            self.UpdateManager.request_set_camera_threshold_signal.emit(1, cam1_threshold)
+            self.set_UpdateManager_camera_threshold_signal.emit(1, cam1_threshold)
 
             # Apply all updates:
             if self.cam1_thread is None:  # first time this function is called only.
@@ -979,7 +1055,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
-                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
                 print("Camera 1 lives in thread: ", self.cam1.thread())
@@ -990,9 +1066,9 @@ class Window(QMainWindow, Ui_MainWindow):
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 self.cam1_thread.start(priority=4)
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam1.gain_set_signal.emit(cam1_gain)
+                self.set_cam1_gain_signall.emit(cam1_gain)
                 # Setting exposure begins frame grabbing.
-                self.cam1.exposure_set_signal.emit(cam1_exp_time)
+                self.set_cam1_exposure_signal.emit(cam1_exp_time)
                 # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
@@ -1003,10 +1079,10 @@ class Window(QMainWindow, Ui_MainWindow):
                 try:
                     if self.cam1.serial_no not in str(self.cam_init_dict[key]):
                         # User wants to change the camera on cam1_thread. So, do that.
-                        self.cam1.close_signal.emit(False)  # False flag does not close the thread.
+                        self.close_cam1_signal.emit(False)  # False flag does not close the thread.
                         return
-                    self.cam1.exposure_set_signal.emit(cam1_exp_time)
-                    self.cam1.gain_set_signal.emit(cam1_gain)
+                    self.set_cam1_exposure_signal.emit(cam1_exp_time)
+                    self.set_cam1_gain_signal.emit(cam1_gain)
                 except RuntimeError as e:
                     if 'has been deleted' in str(e):
                         # This error is being thrown, because camera1 does not currently exist. So, call the reconnect
@@ -1037,7 +1113,7 @@ class Window(QMainWindow, Ui_MainWindow):
             cam2_gain = float(self.le_cam2_gain.text())
             cam2_threshold = np.round(float(self.le_cam2_threshold.text())).astype('uint8')
             self.le_cam2_threshold.setText(str(cam2_threshold))
-            self.UpdateManager.request_set_camera_threshold_signal.emit(2, cam2_threshold)
+            self.set_UpdateManager_camera_threshold_signal.emit(2, cam2_threshold)
 
             # Apply all updates:
             if self.cam2_thread is None:  # first time this function is called only.
@@ -1056,7 +1132,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam2 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
-                self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
@@ -1066,9 +1142,9 @@ class Window(QMainWindow, Ui_MainWindow):
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 self.cam2_thread.start(priority=4)
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam2.gain_set_signal.emit(cam2_gain)
+                self.set_cam2_gain_signal.emit(cam2_gain)
                 # Exposure begins frame grab
-                self.cam2.exposure_set_signal.emit(cam2_exp_time)
+                self.set_cam2_exposure_signal.emit(cam2_exp_time)
                 # Setup camera view.
                 self.cam2_reset = True
                 self.resetHist(self.gv_camera2)
@@ -1081,10 +1157,10 @@ class Window(QMainWindow, Ui_MainWindow):
                 try:
                     if self.cam2.serial_no not in str(self.cam_init_dict[key]):
                         # User wants to change the camera on cam2_thread. So, do that.
-                        self.cam2.close_signal.emit(False) # False flag does not close the thread.
+                        self.close_cam2_signal.emit(False) # False flag does not close the thread.
                         return
-                    self.cam2.exposure_set_signal.emit(cam2_exp_time)
-                    self.cam2.gain_set_signal.emit(cam2_gain)
+                    self.set_cam2_exposure_signal.emit(cam2_exp_time)
+                    self.set_cam2_gain_signal.emit(cam2_gain)
                 except RuntimeError as e:
                     if 'has been deleted' in str(e):
                         # This error is being thrown, because camera1 does not currently exist. So, call the reconnect
@@ -1112,13 +1188,13 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.cb_motors_1.currentData(0) != self.cb_motors_2.currentData(0):
             # Garrison Updated to add "0" insideself.cb_motors_1.currentData(0)
             if "MDT693B" in self.cb_motors_1.currentData(0):
-                self.UpdateManager.request_connect_motor_signal.emit(1, self.cb_motors_1.currentData(0))
+                self.connect_motor_signal.emit(1, self.cb_motors_1.currentData(0))
             else:
-                self.UpdateManager.request_connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
+                self.connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
             if "MDT693B" in self.cb_motors_2.currentData(0):
-                self.UpdateManager.request_connect_motor_signal.emit(2, self.cb_motors_2.currentData(0))
+                self.connect_motor_signal.emit(2, self.cb_motors_2.currentData(0))
             else:
-                self.UpdateManager.request_connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
+                self.connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
         return
 
     @pyqtSlot()
@@ -1141,7 +1217,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.ROICam2_Unlock.setVisible(False)
         self.ROICam1_Lock.setVisible(False)
         self.ROICam2_Lock.setVisible(False)
-        self.UpdateManager.request_calibrate_signal.emit()
+        self.calibrate_signal.emit()
         return
 
     @pyqtSlot()
@@ -1167,7 +1243,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     if not UpdateManager.TD == self.PID['Td']:
                         UpdateManager.TD = self.PID['Td']"""
                 # Tell UpdateManager to lock.
-                self.UpdateManager.request_toggle_lock_signal.emit(True)
+                self.toggle_UpdateManager_lock_signal.emit(True)
             else:
                 self.btn_lock.toggle()
         else:
@@ -1193,7 +1269,7 @@ class Window(QMainWindow, Ui_MainWindow):
             print('Set cam 2 x', self.set_cam2_x)
             print('Set cam 2 y', self.set_cam2_y)
             HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
-            self.UpdateManager.request_set_home_signal.emit(HomePosition)
+            self.set_UpdateManager_home_signal.emit(HomePosition)
             self.set_home_marker()
             if int(self.cb_SystemSelection.currentIndex()) == 1:
                 np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
@@ -1227,7 +1303,7 @@ class Window(QMainWindow, Ui_MainWindow):
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             HomePosition = np.loadtxt(file_path, dtype=float)
             np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
-        self.UpdateManager.request_set_home_signal.emit(np.asarray(HomePosition))
+        self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
         self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
         self.set_home_marker()
         print("Set Positions:", HomePosition)
@@ -1503,7 +1579,7 @@ class Window(QMainWindow, Ui_MainWindow):
         Apply the ROI Bounds on the camera.
         """
         if self.cam1_ROI_set:
-            self.cam1.ROI_bounds_set_full_view_signal.emit()
+            self.set_cam1_full_view_signal.emit()
         else:
             ymin, xmin = self.ROICam1_crop.pos()
             height, width = self.ROICam1_crop.size()
@@ -1511,7 +1587,7 @@ class Window(QMainWindow, Ui_MainWindow):
             xmax = xmin + width
             bounds = [xmin, xmax, ymin, ymax]
             # Both updates the bounds of the ROI and immediately applies them.
-            self.cam1.ROI_bounds_set_signal.emit(bounds)
+            self.set_cam1_ROI_bounds_signal.emit(bounds)
         return
 
     @pyqtSlot(bool)
@@ -1533,7 +1609,7 @@ class Window(QMainWindow, Ui_MainWindow):
         Apply the ROI Bounds on the camera.
         """
         if self.cam2_ROI_set:
-            self.cam2.ROI_bounds_set_full_view_signal.emit()
+            self.set_cam2_full_view_signal.emit()
         else:
             ymin, xmin = self.ROICam2_crop.pos()
             height, width = self.ROICam2_crop.size()
@@ -1541,7 +1617,7 @@ class Window(QMainWindow, Ui_MainWindow):
             xmax = xmin + width
             bounds = [xmin, xmax, ymin, ymax]
             # Both updates the bounds of the ROI and immediately applies them.
-            self.cam2.ROI_bounds_set_signal.emit(bounds)
+            self.set_cam2_ROI_bounds_signal.emit(bounds)
         return
 
     @pyqtSlot()
@@ -1551,7 +1627,7 @@ class Window(QMainWindow, Ui_MainWindow):
             P = float(self.le_P.text())
             I = float(self.le_Ti.text())
             D = float(self.le_Td.text())
-            self.UpdateManager.request_update_pid_settings.emit(P, I, D)
+            self.request_update_pid_settings.emit(P, I, D)
             self.PID = {'P': P, 'Ti': I, 'Td': D}
             # Update the GUI with the numbers from the UpdateManager settings
             self.Update_GUI_PID()

@@ -264,24 +264,20 @@ class MDT693B_Motor(QObject):
 
     Subclass QObject. Create signals and connect them to slots.
     """
+
     # first int on any emitted signals should be motor number.
     # If there is a second int, it indicates the channel number.
     # Motor Signals
-    request_close_signal = pyqtSignal()
     close_complete_signal = pyqtSignal(int)
     close_fail_signal = pyqtSignal(int)
     #Ch1 signals
-    request_set_ch1V_signal = pyqtSignal(float)
     set_ch1V_complete_signal = pyqtSignal(int, int, float)
     set_ch1V_failed_signal = pyqtSignal(int, int)
-    request_get_ch1V_signal = pyqtSignal()
     get_ch1V_failed_signal = pyqtSignal(int, int)
     returning_ch1V_signal = pyqtSignal(int, int, float)
     #Ch2 signals
-    request_set_ch2V_signal = pyqtSignal(float)
     set_ch2V_complete_signal = pyqtSignal(int, int, float)
     set_ch2V_failed_signal = pyqtSignal(int, int)
-    request_get_ch2V_signal = pyqtSignal()
     get_ch2V_failed_signal =pyqtSignal(int, int)
     returning_ch2V_signal = pyqtSignal(int, int, float)
 
@@ -384,14 +380,6 @@ class MDT693B_Motor(QObject):
         self._app_closing = False
         return
 
-    def connect_signals(self):
-        self.request_close_signal.connect(self.close)
-        self.request_set_ch1V_signal.connect(lambda v: setattr(self, 'ch1_v', v))
-        self.request_get_ch1V_signal.connect(lambda: getattr(self, "ch1_v"))
-        self.request_set_ch2V_signal.connect(lambda v: setattr(self, 'ch2_v', v))
-        self.request_get_ch2V_signal.connect(lambda: getattr(self, "ch2_v"))
-        return
-
     @pyqtSlot()
     def close(self):
         # Close connection to port
@@ -428,7 +416,7 @@ class MDT693B_Motor(QObject):
     def ch2(self, val: str):
         self._ch2 = val
 
-    @property
+    @pyqtSlot()
     def ch1_v(self):
         if self.ch1 == 'X' or self.ch1 == 'x':
             ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch1_v)
@@ -442,7 +430,7 @@ class MDT693B_Motor(QObject):
             self.get_ch1V_failed_signal.emit(self.motor_number, 1)
         return self._ch1_v[0]
 
-    @property
+    @pyqtSlot()
     def ch2_v(self):
         if self.ch2 == 'X' or self.ch2 == 'x':
             ret = mdt.mdtGetXAxisVoltage(self.handle, self._ch2_v)
@@ -456,8 +444,8 @@ class MDT693B_Motor(QObject):
             self.get_ch2V_failed_signal.emit(self.motor_number, 2)
         return self._ch2_v[0]
 
-    @ch1_v.setter
-    def ch1_v(self, v: float):
+    @pyqtSlot(float)
+    def set_ch1_v(self, v: float):
         v = np.round(v, 3)
         if self.ch1 == 'X' or self.ch1 == 'x':
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
@@ -471,8 +459,8 @@ class MDT693B_Motor(QObject):
             self.set_ch1V_failed_signal.emit(self.motor_number, 1)
         return
 
-    @ch2_v.setter
-    def ch2_v(self, v: float):
+    @pyqtSlot(float)
+    def set_ch2_v(self, v: float):
         v = np.round(v, 3)
         if self.ch2 == 'X' or self.ch2 == 'x':
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)

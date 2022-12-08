@@ -1361,21 +1361,16 @@ from PyQt5.QtCore import Qt, QTimer
 
 
 class BlackflyS_EasyPySpin_QObject(QObject):
+    #TODO: Redo closing protocal and also applying ROI correctly.
+    release_cap_signal = pyqtSignal()
+    # self.release_cap_signal.connect(self.cam1.close)
+
     # signals needed to run Blackfly S camera object on its own thread.
     img_captured_signal = pyqtSignal(np.ndarray, float)
-    capture_img_signal = pyqtSignal()
     exposure_updated_signal = pyqtSignal(float)
-    exposure_set_signal = pyqtSignal(float)
-    gain_set_signal = pyqtSignal(float)
     gain_updated_signal = pyqtSignal(float)
-    close_signal = pyqtSignal(bool)
-    apply_ROI_signal = pyqtSignal()
     ROI_applied = pyqtSignal(bool)
-    ROI_bounds_set_signal = pyqtSignal(list)
-    ROI_bounds_updated_signal = pyqtSignal()
-    release_cap_signal = pyqtSignal()
     r0_updated_signal = pyqtSignal(np.ndarray)
-    ROI_bounds_set_full_view_signal = pyqtSignal()
     request_update_timer_interval_signal = pyqtSignal(float)
 
     def __init__(self, dev_id: int):
@@ -1402,21 +1397,14 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
         self.timeout_time = int(self.timeout_time)
         self.starting = True
+        self._ROI_bounds = None
         return
 
     def connect_signals(self):
         """
         Connect all camera received signals to slots.
         """
-        # I used to set a queued connection to grab frames continuously inside grab frames continuously. Now user timer.
-        # self.capture_img_signal.connect(self.grab_frames_continuously, type=Qt.QueuedConnection)
-        self.exposure_set_signal.connect(self.set_exposure_time)
-        self.gain_set_signal.connect(self.set_gain)
-        self.close_signal.connect(self.stop_capturing)
-        self.ROI_bounds_updated_signal.connect(self.apply_ROI_signal)  # If new ROI region set, apply it immediately.
-        self.ROI_bounds_set_signal.connect(lambda v: setattr(self, 'ROI_bounds', v))
         self.release_cap_signal.connect(self.close)
-        self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
         return
 
     def update_frame(self):
@@ -1691,7 +1679,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot(bool)
     def stop_capturing(self, app_closing=False):
         # end the infinite capture loop by telling camera to not keep capturing
-        self._keep_capturing = False
+        # TODO: Tell timer to stop.
         # return to event loop, and upon next grab_frame emit signal to release cap.
         self._app_closing = app_closing
         return
@@ -1757,10 +1745,10 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         # xmin, xmax, ymin, ymax
         return self._ROI_bounds
 
-    @ROI_bounds.setter
-    def ROI_bounds(self, roi: list):
+    @pyqtSlot()
+    def set_ROI_bounds(self, roi: list):
         self._ROI_bounds = roi
-        self.ROI_bounds_updated_signal.emit()
+        self.apply_ROI()
         return
 
     @property
