@@ -269,7 +269,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.timer.start()
         self.request_images_timer = QTimer()
         self.desired_fps_image_show = 10  # Should be able to set this dynamically.
-        self.request_images_timer.setInterval(1000/self.desired_fps_image_show)
+        self.request_images_timer.setInterval(int(np.floor(1000/self.desired_fps_image_show)))
         self.request_images_timer.setSingleShot(False)
         self.timer_connected_to_cam1 = False
         self.timer_connected_to_cam2 = False
@@ -805,7 +805,7 @@ class Window(QMainWindow, Ui_MainWindow):
         if cam_number == 1:
             # To Update Manager, once cameras exist:
             if not self.timer_connected_to_cam1:
-                self.request_images_timer.timeout.connect(self.request_images.emit(1))
+                self.request_images_timer.timeout.connect(lambda : self.request_images.emit(1))
                 self.timer_connected_to_cam1 = True
             if not self.request_images_timer.isActive():
                 self.request_images_timer.start()
@@ -841,7 +841,7 @@ class Window(QMainWindow, Ui_MainWindow):
         elif cam_number == 2:
             # To Update Manager, once cameras exist:
             if not self.timer_connected_to_cam2:
-                self.request_images_timer.timeout.connect(self.request_images.emit(2))
+                self.request_images_timer.timeout.connect(lambda : self.request_images.emit(2))
                 self.timer_connected_to_cam2 = True
             if not self.request_images_timer.isActive():
                 self.request_images_timer.start()
@@ -1167,8 +1167,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 # Setup camera view.
                 self.cam2_reset = True
                 self.resetHist(self.gv_camera2)
-                # start the infinite event loop around acquiring images:
-                self.cam2.timer.start()
             else:  # Update settings once cam1 exists and cam1_thread is running
                 key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
                 self.cam2_to_connect = key
@@ -1759,7 +1757,7 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         if self.suppress_image_display:
             self.suppress_image_display = False
-            if self.request_images_timer.isActive()
+            if self.request_images_timer.isActive():
                 self.request_images_timer.stop()
         else:
             self.suppress_image_display = True

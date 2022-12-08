@@ -176,8 +176,6 @@ class UpdateManager(QObject):
         self.cam2_timer = QTimer(self)
         self.cam1_timer.setSingleShot(False)
         self.cam2_timer.setSingleShot(False)
-        self.cam1_timer.timeout.connect(lambda: print("cam 1 timer times out"))
-        self.cam2_timer.timeout.connect(lambda: print("cam 2 timer times out"))
         self.timer.timeout.connect(self.apply_update)
         return
 
@@ -191,21 +189,12 @@ class UpdateManager(QObject):
             if self.cam1_timer.isActive():
                 self.cam1_timer.stop()
             self.cam1_timer.setInterval(interval_time)
-            print("cam 1 timer starting", interval_time)
-            self.cam1_timer.timeout.connect(self.check)
             self.cam1_timer.start()
         elif cam_num == 2:
             if self.cam2_timer.isActive():
                 self.cam2_timer.stop()
             self.cam2_timer.setInterval(interval_time)
-            self.cam2_timer.timeout.connect(self.check)
             self.cam2_timer.start()
-            print("cam 2 timer starting", interval_time)
-        return
-
-    @pyqtSlot()
-    def check(self):
-        print("timer is timing out.")
         return
 
     @pyqtSlot(float)
@@ -260,7 +249,7 @@ class UpdateManager(QObject):
             self.close_motor2_signal.connect(self.motor2.close)
             self.set_motor2_ch1V_signal.connect(self.motor2.set_ch1_v)
             self.get_motor2_ch1V_signal.connect(self.motor2.ch1_v)
-            self.set_moto2_ch2V_signal.connect(self.motor2.set_ch2_v)
+            self.set_motor2_ch2V_signal.connect(self.motor2.set_ch2_v)
             self.get_motor2_ch2V_signal.connect(self.motor2.ch1_v)
             # Motor1 signals to Update Manager
             self.motor2.destroyed.connect(lambda args: self.reconnect_motor(2))
