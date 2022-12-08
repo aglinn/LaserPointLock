@@ -754,8 +754,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
             """self.cam1.request_update_timer_interval_signal.connect(self.UpdateManager.update_cam_timer_interval)"""
             self.cam1.request_update_timer_interval_signal.connect(
-                lambda interval: QMetaObject.invokeMethod(self.UpdateManager,
-                                                          self.UpdateManager.update_cam_timer_interval,
+                lambda interval: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
                                                           Qt.QueuedConnection, Q_ARG(int, 1), Q_ARG(float, interval)))
             self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
