@@ -174,6 +174,8 @@ class UpdateManager(QObject):
         self.is_PID = False
         self.timer = QTimer()
         self.timer.setSingleShot(True)
+        self.cam1_timer = QTimer()
+        self.cam2_timer = QTimer()
         return
 
     def connect_signals(self):
@@ -195,6 +197,23 @@ class UpdateManager(QObject):
         self.request_close.connect(self.close)
         self.request_ping.connect(self.return_ping)
         self.timer.timeout.connect(self.apply_update)
+        return
+
+    @pyqtSlot(int, float)
+    def update_cam_timer_interval(self, cam_num: int, interval_time: float):
+        """
+        Update camera interval at which frames are grabbedd
+        """
+        if cam_num == 1:
+            if self.cam1_timer.isActive():
+                self.cam1_timer.stop()
+            self.cam1_timer.setInterval(interval_time)
+            self.cam1_timer.start()
+        elif cam_num == 2:
+            if self.cam2_timer.isActive():
+                self.cam2_timer.stop()
+            self.cam2_timer.setInterval(interval_time)
+            self.cam2_timer.start()
         return
 
     @pyqtSlot(float)

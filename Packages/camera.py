@@ -1376,7 +1376,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     release_cap_signal = pyqtSignal()
     r0_updated_signal = pyqtSignal(np.ndarray)
     ROI_bounds_set_full_view_signal = pyqtSignal()
-    request_start_timer = pyqtSignal()
+    request_update_timer_interval_signal = pyqtSignal(float)
 
     def __init__(self, dev_id: int):
         super().__init__()
@@ -1398,12 +1398,10 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self._gain = 1
         self._keep_capturing = True
         self._app_closing = False
-        self.timer = QTimer()
         self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        self.timeout_time = np.ceil((1 / self.frame_rate)*1000) # in ms
+        self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
         self.timeout_time = int(self.timeout_time)
-        self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
-        self.timer.setSingleShot(False)
+        self.starting = True
         return
 
     def connect_signals(self):
@@ -1419,22 +1417,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.ROI_bounds_set_signal.connect(lambda v: setattr(self, 'ROI_bounds', v))
         self.release_cap_signal.connect(self.close)
         self.ROI_bounds_set_full_view_signal.connect(self.ensure_full_view)
-        self.timer.destroyed.connect(self.new_timer)
-        self.timer.timeout.connect(self.get_frame)
-        self.request_start_timer.connect(self.start_timer)
-        return
-
-    @pyqtSlot()
-    def start_timer(self):
-        self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        print("frame rate is.", self.frame_rate)
-        self.timeout_time = np.ceil((1 / self.frame_rate) * 1000)  # in ms
-        self.timeout_time = int(self.timeout_time+1)
-        self.timer.setInterval(self.timeout_time)  # int in ms. Need to set this better based on current frame rate.
-        print("Timer interval is ", self.timeout_time, self.timer.interval())
-        self.timer.setSingleShot(False)
-        self.timer.start()
-        print("Starting camera timer from thread: ", QThread.currentThread())
         return
 
     def update_frame(self):
@@ -1443,7 +1425,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
 
     @pyqtSlot()
     def get_frame(self):
-        print("Getting frame from thread ", QThread.currentThread())
         ret, frame, time_stamp = self.cap.read()
         if ret:
             # Timestamp in ns as int convert to ms as float int-->floaot automatic.
@@ -1469,44 +1450,13 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self._exposure_time = self.cap.get(cv2.CAP_PROP_EXPOSURE)/1000.0  # Convert back to ms
         # Update the timer interval as needed.
         frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        if self.frame_rate != frame_rate:
+        if self.frame_rate != frame_rate or self.starting:
+            self.starting = False
             self.frame_rate = frame_rate
-            self.timeout_time = np.ceil((1 / self.frame_rate) * 1000)  # in ms
+            self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
             self.timeout_time = int(self.timeout_time)
-            if self.timer.isActive():
-                print("Destroying timer.")
-                self.timer.timeout.disconnect()
-                self.timer.stop()
-                self.timer.deleteLater()
-            else:
-                print("Timeout time set to ", self.timeout_time)
-                self.timer.setInterval(self.timeout_time)
+            self.request_update_timer_interval_signal.emit(self.timeout_time)
         self.exposure_updated_signal.emit(self.exposure_time)
-        return
-
-    @pyqtSlot()
-    def new_timer(self):
-        """
-        Create a new timer object and start it.
-        """
-        print("New timer")
-        print("Timeout time set to ", self.timeout_time)
-        self.timer = QTimer()
-        self.timer.setSingleShot(False)
-        self.timer.setInterval(self.timeout_time)
-        # Make sure no connections
-        try:
-            self.timer.timeout.disconnect()
-        except:
-            pass
-        try:
-            self.timer.destroyed.disconnect()
-        except:
-            pass
-        # Now reconnect.
-        self.timer.timeout.connect(self.get_frame)
-        self.timer.destroyed.connect(self.new_timer)
-        self.timer.start()
         return
 
     def set_resolution(self, res):

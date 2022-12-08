@@ -94,9 +94,9 @@ class Window(QMainWindow, Ui_MainWindow):
             self.PID = {'P': 0.5, 'Ti': 0.1, 'Td': 0}
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
-        print("Update manager lives in thread, ", self.UpdateManager.thread())
         self.UpdateManager.timer.moveToThread(self.UpdateManager_thread)
-        print("Update manager Timer lives in ", self.UpdateManager.timer.thread())
+        self.UpdateManager.cam1_timer.moveToThread(self.UpdateManager_thread)
+        self.UpdateManager.cam2_timer.moveToThread(self.UpdateManager_thread)
         # Connect signals related to update manager.
         self.UpdateManager.connect_signals()
         self.connect_UpdateManager_signals()
@@ -750,6 +750,9 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
             self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
+            self.cam1.request_update_timer_interval_signal.connect(
+                lambda interval: self.UpdateManager.update_cam_timer_interval(1, interval))
+            self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
                 self.cam1.exposure_updated_signal.connect(lambda exp:
                                                           self.UpdateManager.
@@ -765,6 +768,9 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam2.destroyed.connect(lambda args: self.reconnect_cameras(2))
             self.cam2.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
+            self.cam2.request_update_timer_interval_signal.connect(
+                lambda interval: self.UpdateManager.update_cam_timer_interval(2, interval))
+            self.UpdateManager.cam2_timer.timeout.connect(self.cam2.get_frame)
             if self.UpdateManager.is_PID:
                 self.cam2.exposure_updated_signal.connect(lambda exp:
                                                           self.UpdateManager.
@@ -972,9 +978,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.UpdateManager.request_update_num_cameras_connected_signal.emit(1)
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
-                self.cam1.timer.moveToThread(self.cam1_thread)
                 print("Camera 1 lives in thread: ", self.cam1.thread())
-                print("Camera 1 timer lives in thread, ", self.cam1.timer.thread())
                 # Now, connect GUI related camera signals to appropriate GUI slots.
                 self.cam1.connect_signals()
                 self.connect_camera_signals(1)
@@ -983,9 +987,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1_thread.start(priority=4)
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.cam1.gain_set_signal.emit(cam1_gain)
+                # Setting exposure begins frame grabbing.
                 self.cam1.exposure_set_signal.emit(cam1_exp_time)
-                # start the infinite event loop around acquiring images:
-                self.cam1.request_start_timer.emit()
                 # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
@@ -1060,6 +1063,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam2_thread.start(priority=4)
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.cam2.gain_set_signal.emit(cam2_gain)
+                # Exposure begins frame grab
                 self.cam2.exposure_set_signal.emit(cam2_exp_time)
                 # Setup camera view.
                 self.cam2_reset = True
