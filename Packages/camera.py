@@ -1495,8 +1495,14 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         self.timer.setSingleShot(False)
         self.timer.setInterval(self.timeout_time)
         # Make sure no connections
-        self.timer.timeout.disconnect()
-        self.timer.destroyed.disconnect()
+        try:
+            self.timer.timeout.disconnect()
+        except:
+            pass
+        try:
+            self.timer.destroyed.disconnect()
+        except:
+            pass
         # Now reconnect.
         self.timer.timeout.connect(self.get_frame)
         self.timer.destroyed.connect(self.new_timer)
@@ -1745,6 +1751,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         if self.timer is not None:
             self.timer.stop()
         self.cap.release()
+        self.release_cap_signal.emit()
         if not self._app_closing:
             # So far only calling like this to disconnect the camera in an effort to reconnect another. So, delete this
             # object, but do not delete the thread, which is what emitting cap_released signal does.
