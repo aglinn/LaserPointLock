@@ -97,11 +97,8 @@ class UpdateManager(QObject):
         self._t1 = []
         self._t2 = []
         self._frequency_domain = None
-        self._update_GUI_images_every_n_images = 20
-        # self._cam1_com_count = self._update_GUI_images_every_n_images
-        # self._cam2_com_count = self._update_GUI_images_every_n_images
-        self._cam1_img_count = self._update_GUI_images_every_n_images
-        self._cam2_img_count = self._update_GUI_images_every_n_images
+        self.report_cam1_img_to_gui = False
+        self.report_cam2_img_to_gui = False
         self.img1_threshold = 0
         self.img2_threshold = 0
         # Initialize Threading variables:
@@ -1857,6 +1854,13 @@ class UpdateManager(QObject):
         self.cam_img_received_signal.emit(1)
         return
 
+    @pyqtSlot(int)
+    def set_report_imgae_to_gui(self, cam_num: int):
+        if cam_num == 1:
+            self.report_cam1_img_to_gui = True
+        if cam_num == 2:
+            self.report_cam2_img_to_gui = True
+
     @staticmethod
     def find_com(img_thresh):
         """
@@ -1885,11 +1889,9 @@ class UpdateManager(QObject):
                 self.t1 = timestamp
                 self.cam_1_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(1, np.asarray([com_x, com_y]))
-            if self._cam1_img_count >= self._update_GUI_images_every_n_images:
+            if self.report_cam1_img_to_gui:
                 self.update_gui_img_signal.emit(1, np.asarray(img))
-                self._cam1_img_count = 0
-            else:
-                self._cam1_img_count += 1
+                self.report_cam1_img_to_gui = False
         elif cam_number == 2:
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
@@ -1900,11 +1902,9 @@ class UpdateManager(QObject):
                 self.t2 = timestamp
                 self.cam_2_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(2, np.asarray([com_x, com_y]))
-            if self._cam2_img_count >= self._update_GUI_images_every_n_images:
+            if self.report_cam2_img_to_gui:
                 self.update_gui_img_signal.emit(2, np.asarray(img))
-                self._cam2_img_count = 0
-            else:
-                self._cam2_img_count += 1
+                self.report_cam2_img_to_gui = False
         return
 
     @pyqtSlot(int)
