@@ -102,6 +102,7 @@ class Window(QMainWindow, Ui_MainWindow):
         # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
         self.UpdateManager_thread.start(priority=4)
         self.UpdateManager.request_create_timers.emit()
+        print("Window thread is ", self.UpdateManager_thread.thread())
         print("Update manager is on thread ", self.UpdateManager.thread())
         time.sleep(0.1)
         print("Update manager timer is on thread ", self.UpdateManager.timer.thread())
@@ -751,9 +752,9 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
             self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
-            self.cam1.request_update_timer_interval_signal.connect(self.UpdateManager.update_cam_timer_interval)
-            """self.cam1.request_update_timer_interval_signal.connect(
-                lambda interval: self.UpdateManager.update_cam_timer_interval(1, interval))"""
+            """self.cam1.request_update_timer_interval_signal.connect(self.UpdateManager.update_cam_timer_interval)"""
+            self.cam1.request_update_timer_interval_signal.connect(
+                lambda interval: self.UpdateManager.update_cam_timer_interval(1, interval))
             self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
                 self.cam1.exposure_updated_signal.connect(lambda exp:
