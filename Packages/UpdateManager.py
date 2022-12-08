@@ -320,26 +320,26 @@ class UpdateManager(QObject):
                 # print("requesting set 1,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #      self.motor2_ch2_updated)
                 self.num_attempts_set_motor1_ch1_V += 1
-                self.motor1.request_set_ch1V_signal.emit(voltage)
+                self.set_motor1_ch1V_signal.emit(voltage)
             elif motor_chanel == 2:
                 self.motor1_ch2_updated = False
                 # print("requesting set 1,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #      self.motor2_ch2_updated)
                 self.num_attempts_set_motor1_ch2_V += 1
-                self.motor1.request_set_ch2V_signal.emit(voltage)
+                self.set_motor1_ch2V_signal.emit(voltage)
         elif motor_number == 2:
             if motor_chanel == 1:
                 self.motor2_ch1_updated = False
                 # print("requesting set 2,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #       self.motor2_ch2_updated)
                 self.num_attempts_set_motor2_ch1_V += 1
-                self.motor2.request_set_ch1V_signal.emit(voltage)
+                self.set_motor2_ch1V_signal.emit(voltage)
             elif motor_chanel == 2:
                 self.motor2_ch2_updated = False
                 # print("requesting set 2,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
                 #       self.motor2_ch2_updated)
                 self.num_attempts_set_motor2_ch2_V += 1
-                self.motor2.request_set_ch2V_signal.emit(voltage)
+                self.set_motor2_ch2V_signal.emit(voltage)
         return
 
     @pyqtSlot(int, int)
@@ -578,11 +578,11 @@ class UpdateManager(QObject):
         """
         if motor_number == 1:
             if self.num_attempts_close_motor1 < 3:
-                self.motor1.request_close_signal.emit()
+                self.close_motor1_signal.emit()
                 self.num_attempts_close_motor1 += 1
         elif motor_number == 2:
             if self.num_attempts_close_motor2 < 3:
-                self.motor2.request_close_signal.emit()
+                self.close_motor2_signal.emit()
                 self.num_attempts_close_motor2 += 1
         return
 
@@ -621,7 +621,7 @@ class UpdateManager(QObject):
                 self.motor1_thread.start(priority=6)
             else:  # Want to swap motors out on thread 1!
                 # Request that we close motor 1 first.
-                self.motor1.request_close_signal.emit()
+                self.close_motor1_signal.emit()
                 # increment number of close attempts
                 self.num_attempts_close_motor1 = 1
                 self.motor1_to_connect = motor_to_connect
@@ -652,7 +652,7 @@ class UpdateManager(QObject):
                 self.motor2_thread.start(priority=6)
             else:  # Want to swap motors out on thread 1!
                 # Request that we close motor 1 first.
-                self.motor2.request_close_signal.emit()
+                self.close_motor2_signal.emit()
                 # increment number of close attempts
                 self.num_attempts_close_motor2 = 1
                 self.motor2_to_connect = motor_to_connect
@@ -788,7 +788,7 @@ class UpdateManager(QObject):
                             self.request_set_motor(1, 1, 75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
-                        self.motor1.request_get_ch1V_signal.emit()
+                        self.get_motor1_ch1V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor1_ch1_V = 0
                 elif self._locking:
@@ -806,7 +806,7 @@ class UpdateManager(QObject):
                             self.request_set_motor(1, 2, 75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
-                        self.motor1.request_get_ch2V_signal.emit()
+                        self.get_motor1_ch2V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor1_ch2_V = 0
                 elif self._locking:
@@ -825,7 +825,7 @@ class UpdateManager(QObject):
                             self.request_set_motor(2, 1, 75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
-                        self.motor2.request_get_ch2V_signal.emit()
+                        self.get_motor2_ch1V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor2_ch1_V = 0
                 elif self._locking:
@@ -843,7 +843,7 @@ class UpdateManager(QObject):
                             self.request_set_motor(2, 2, 75.0)
                     else:
                         # Could not set the voltage correctly. Can I at least get the current voltage?
-                        self.motor2.request_get_ch2V_signal.emit()
+                        self.get_motor2_ch2V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor2_ch2_V = 0
                 elif self._locking:
@@ -1004,10 +1004,10 @@ class UpdateManager(QObject):
             self.motor2_ch1_updated = False
             self.motor2_ch2_updated = False
             self._motors_updated = False
-            self.motor1.request_get_ch1V_signal.emit()
-            self.motor2.request_get_ch1V_signal.emit()
-            self.motor1.request_get_ch2V_signal.emit()
-            self.motor2.request_get_ch2V_signal.emit()
+            self.get_motor1_ch1V_signal.emit()
+            self.get_motor2_ch1V_signal.emit()
+            self.get_motor1_ch2V_signal.emit()
+            self.get_motor2_ch2V_signal.emit()
             # Initiatlize parameters for tracking unlocking:
             self.lock_time_start = time.monotonic()
             self.time_last_unlock = 0
