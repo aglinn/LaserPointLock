@@ -286,7 +286,8 @@ class Window(QMainWindow, Ui_MainWindow):
     @pyqtSlot(float)
     def report_UpdateManager_ping(self, ping_time: float):
         if ping_time > 0.005:
-            print(ping_time, " is how long the Update Manager took to receive a signal to enter its slot.")
+            pass
+            # print(ping_time, " is how long the Update Manager took to receive a signal to enter its slot.")
         return
 
     def connectSignalsSlots(self):
