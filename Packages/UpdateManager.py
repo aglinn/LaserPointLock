@@ -40,6 +40,7 @@ class UpdateManager(QObject):
     request_set_home_signal = pyqtSignal(np.ndarray)
     request_set_calibration_matrix = pyqtSignal(np.ndarray)
     request_update_num_cameras_connected_signal = pyqtSignal(int) # This int is +1 for adding and -1 for removing
+    request_create_timers = pyqtSignal()
     # bool flags whether to force an unlock or keep trying.
     update_locking_out_of_bounds_params_signal = pyqtSignal(bool, float)
     request_set_camera_threshold_signal = pyqtSignal(int, float)
@@ -172,12 +173,9 @@ class UpdateManager(QObject):
         self.time_out_interval = 1000.0/55.0  # TODO: Need to set this dynamically.
         self.block_timer = False
         self.is_PID = False
-        self.timer = QTimer(self)
-        self.timer.setSingleShot(True)
-        self.cam1_timer = QTimer(self)
-        self.cam2_timer = QTimer(self)
-        self.cam1_timer.setSingleShot(False)
-        self.cam2_timer.setSingleShot(False)
+        self.timer = None
+        self.cam1_timer = None
+        self.cam2_timer = None
         return
 
     def connect_signals(self):
@@ -198,9 +196,20 @@ class UpdateManager(QObject):
         self.request_set_camera_threshold_signal.connect(self.update_img_thresholds)
         self.request_close.connect(self.close)
         self.request_ping.connect(self.return_ping)
-        self.timer.timeout.connect(self.apply_update)
+        self.request_create_timers.connect(self.create_timers)
+        return
+
+    @pyqtSlot()
+    def create_timers(self):
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.cam1_timer = QTimer(self)
+        self.cam2_timer = QTimer(self)
+        self.cam1_timer.setSingleShot(False)
+        self.cam2_timer.setSingleShot(False)
         self.cam1_timer.timeout.connect(lambda: print("cam 1 timer times out"))
         self.cam2_timer.timeout.connect(lambda: print("cam 2 timer times out"))
+        self.timer.timeout.connect(self.apply_update)
         return
 
     @pyqtSlot(int, float)

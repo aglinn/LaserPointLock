@@ -94,8 +94,6 @@ class Window(QMainWindow, Ui_MainWindow):
             self.PID = {'P': 0.5, 'Ti': 0.1, 'Td': 0}
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
-        print("Update manager is on thread ", self.UpdateManager.thread())
-        print("Update manager timer is on thread ", self.UpdateManager.timer.thread())
         # Connect signals related to update manager.
         self.UpdateManager.connect_signals()
         self.connect_UpdateManager_signals()
@@ -103,6 +101,10 @@ class Window(QMainWindow, Ui_MainWindow):
         # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
         # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
         self.UpdateManager_thread.start(priority=4)
+        self.UpdateManager.request_create_timers.emit()
+        print("Update manager is on thread ", self.UpdateManager.thread())
+        time.sleep(0.1)
+        print("Update manager timer is on thread ", self.UpdateManager.timer.thread())
         # params for Handle threading of cameras:
         self.cam1_thread = None
         self.cam2_thread = None
