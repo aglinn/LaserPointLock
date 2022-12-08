@@ -325,7 +325,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.toggle_UpdateManager_lock_signal.connect(self.UpdateManager.lock_pointing)
         self.calibrate_signal.connect(self.UpdateManager.begin_calibration)
         self.update_UpdateManager_num_cameras_connected_signal.connect(self.UpdateManager.update_num_cameras_connected)
-        self.request_calculate_calibration_matrix_signal.connect(self.UpdateManager.calculate_calibration_matrix)
         self.set_UpdateManager_r0_signal.connect(self.UpdateManager.update_r0)
         self.set_UpdateManager_camera_threshold_signal.connect(self.UpdateManager.update_img_thresholds)
         self.close_UpdateManager.connect(self.UpdateManager.close)
