@@ -108,6 +108,7 @@ class Window(QMainWindow, Ui_MainWindow):
     set_UpdateManager_locking_out_of_bounds_params_signal = pyqtSignal(bool, float)
     set_UpdateManager_camera_threshold_signal = pyqtSignal(int, float)
     request_UpdateManager_ping = pyqtSignal(float)
+    request_images = pyqtSignal(int)  # Cam number?
 
     def __init__(self):
         super().__init__()
@@ -266,6 +267,12 @@ class Window(QMainWindow, Ui_MainWindow):
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.ping_UpdateManager)
         self.timer.start()
+        self.request_images_timer = QTimer()
+        self.desired_fps_image_show = 10  # Should be able to set this dynamically.
+        self.request_images_timer.setInterval(1000/self.desired_fps_image_show)
+        self.request_images_timer.setSingleShot(False)
+        self.timer_connected_to_cam1 = False
+        self.timer_connected_to_cam2 = False
         return
 
     @pyqtSlot()
@@ -330,6 +337,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.close_UpdateManager.connect(self.UpdateManager.close)
         self.request_UpdateManager_ping.connect(self.UpdateManager.return_ping)
         self.create_UpdateManager_timers.connect(self.UpdateManager.create_timers)
+        self.request_images.connect(self.UpdateManager.set_report_imgae_to_gui)
         # Back to GUI from Update Manager.
         self.UpdateManager.update_gui_img_signal.connect(self.update_cam_img)
         self.UpdateManager.update_gui_cam_com_signal.connect(self.update_cam_com_display)
@@ -795,6 +803,12 @@ class Window(QMainWindow, Ui_MainWindow):
         Connect all Camera related signals.
         """
         if cam_number == 1:
+            # To Update Manager, once cameras exist:
+            if not self.timer_connected_to_cam1:
+                self.request_images_timer.timeout.connect(self.request_images.emit(1))
+                self.timer_connected_to_cam1 = True
+            if not self.request_images_timer.isActive():
+                self.request_images_timer.start()
             # To camera From Update Manager
             self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
@@ -825,6 +839,12 @@ class Window(QMainWindow, Ui_MainWindow):
                 lambda interval: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
                                                           Qt.QueuedConnection, Q_ARG(int, 1), Q_ARG(float, interval)))
         elif cam_number == 2:
+            # To Update Manager, once cameras exist:
+            if not self.timer_connected_to_cam2:
+                self.request_images_timer.timeout.connect(self.request_images.emit(2))
+                self.timer_connected_to_cam2 = True
+            if not self.request_images_timer.isActive():
+                self.request_images_timer.start()
             # To camera From Update Manager
             self.UpdateManager.cam2_timer.timeout.connect(self.cam2.get_frame)
             if self.UpdateManager.is_PID:
@@ -1739,8 +1759,12 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         if self.suppress_image_display:
             self.suppress_image_display = False
+            if self.request_images_timer.isActive()
+                self.request_images_timer.stop()
         else:
             self.suppress_image_display = True
+            if not self.request_images_timer.isActive():
+                self.request_images_timer.start()
         return
 
     @pyqtSlot()
