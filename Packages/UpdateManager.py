@@ -172,10 +172,10 @@ class UpdateManager(QObject):
         self.time_out_interval = 1000.0/55.0  # TODO: Need to set this dynamically.
         self.block_timer = False
         self.is_PID = False
-        self.timer = QTimer()
+        self.timer = QTimer(self)
         self.timer.setSingleShot(True)
-        self.cam1_timer = QTimer()
-        self.cam2_timer = QTimer()
+        self.cam1_timer = QTimer(self)
+        self.cam2_timer = QTimer(self)
         return
 
     def connect_signals(self):

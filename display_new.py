@@ -90,13 +90,17 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager_thread.finished.connect(lambda: print("Update Manager Thread has finished."))
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
+        self.this_thread = self.UpdateManager.thread()
         if self.UpdateManager.is_PID:
             self.PID = {'P': 0.5, 'Ti': 0.1, 'Td': 0}
         # move update manager to its own thread.
         self.UpdateManager.moveToThread(self.UpdateManager_thread)
-        self.UpdateManager.timer.moveToThread(self.UpdateManager_thread)
-        self.UpdateManager.cam1_timer.moveToThread(self.UpdateManager_thread)
-        self.UpdateManager.cam2_timer.moveToThread(self.UpdateManager_thread)
+        if self.this_thread != self.UpdateManager.timer.thread():
+            self.UpdateManager.timer.moveToThread(self.UpdateManager_thread)
+            self.UpdateManager.cam1_timer.moveToThread(self.UpdateManager_thread)
+            self.UpdateManager.cam2_timer.moveToThread(self.UpdateManager_thread)
+        else:
+            print("parent worked")
         # Connect signals related to update manager.
         self.UpdateManager.connect_signals()
         self.connect_UpdateManager_signals()
