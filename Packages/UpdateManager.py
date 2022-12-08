@@ -212,11 +212,12 @@ class UpdateManager(QObject):
         self.timer.timeout.connect(self.apply_update)
         return
 
-    @pyqtSlot(int, float)
-    def update_cam_timer_interval(self, cam_num: int, interval_time: float):
+    @pyqtSlot(float)
+    def update_cam_timer_interval(self, interval_time: float):
         """
         Update camera interval at which frames are grabbedd
         """
+        cam_num = 1
         print("starting timer from Thread, ", QThread.currentThread())
         if cam_num == 1:
             if self.cam1_timer.isActive():

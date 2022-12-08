@@ -27,7 +27,7 @@ import time
 import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread, QTimer
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread, QTimer, QObject
 from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
 from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
 from Packages.motors import MDT693A_Motor
@@ -751,8 +751,9 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
             self.cam1.destroyed.connect(lambda args: self.UpdateManager.request_update_num_cameras_connected_signal(-1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
-            self.cam1.request_update_timer_interval_signal.connect(
-                lambda interval: self.UpdateManager.update_cam_timer_interval(1, interval))
+            self.cam1.request_update_timer_interval_signal.connect(self.UpdateManager.update_cam_timer_interval)
+            """self.cam1.request_update_timer_interval_signal.connect(
+                lambda interval: self.UpdateManager.update_cam_timer_interval(1, interval))"""
             self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
                 self.cam1.exposure_updated_signal.connect(lambda exp:
