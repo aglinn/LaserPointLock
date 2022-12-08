@@ -176,6 +176,8 @@ class UpdateManager(QObject):
         self.timer.setSingleShot(True)
         self.cam1_timer = QTimer(self)
         self.cam2_timer = QTimer(self)
+        self.cam1_timer.setSingleShot(False)
+        self.cam2_timer.setSingleShot(False)
         return
 
     def connect_signals(self):
@@ -210,7 +212,7 @@ class UpdateManager(QObject):
             if self.cam1_timer.isActive():
                 self.cam1_timer.stop()
             self.cam1_timer.setInterval(interval_time)
-            print("cam 1 timer starting")
+            print("cam 1 timer starting", interval_time)
             self.cam1_timer.timeout.connect(self.check)
             self.cam1_timer.start()
         elif cam_num == 2:
@@ -219,7 +221,7 @@ class UpdateManager(QObject):
             self.cam2_timer.setInterval(interval_time)
             self.cam2_timer.timeout.connect(self.check)
             self.cam2_timer.start()
-            print("cam 2 timer starting")
+            print("cam 2 timer starting", interval_time)
         return
 
     @pyqtSlot()
