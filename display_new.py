@@ -108,7 +108,10 @@ class Window(QMainWindow, Ui_MainWindow):
     set_UpdateManager_locking_out_of_bounds_params_signal = pyqtSignal(bool, float)
     set_UpdateManager_camera_threshold_signal = pyqtSignal(int, float)
     request_UpdateManager_ping = pyqtSignal(float)
-    request_images = pyqtSignal(int)  # Cam number?
+    request_images = pyqtSignal(int)  # Cam number
+    set_P = pyqtSignal(float)
+    set_I = pyqtSignal(float)
+    set_D = pyqtSignal(float)
 
     def __init__(self):
         super().__init__()
@@ -339,6 +342,10 @@ class Window(QMainWindow, Ui_MainWindow):
         self.request_UpdateManager_ping.connect(self.UpdateManager.return_ping)
         self.create_UpdateManager_timers.connect(self.UpdateManager.create_timers)
         self.request_images.connect(self.UpdateManager.set_report_imgae_to_gui)
+        if self.UpdateManager.is_PID:
+            self.set_P.connect(self.UpdateManager.set_P)
+            self.set_I.connect(self.UpdateManager.set_I)
+            self.set_D.connect(self.UpdateManager.set_D)
         # Back to GUI from Update Manager.
         self.UpdateManager.update_gui_img_signal.connect(self.update_cam_img)
         self.UpdateManager.update_gui_cam_com_signal.connect(self.update_cam_com_display)
@@ -896,10 +903,11 @@ class Window(QMainWindow, Ui_MainWindow):
             # To camera From Update Manager
             self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
-                #TODO: WRONG
                 self.cam1.exposure_updated_signal.connect(lambda exp:
-                                                          self.UpdateManager.
-                                                          request_update_cam_exposure_time.connect(1, exp))
+                                                          QMetaObject.invokeMethod(self.UpdateManager,
+                                                                                   'set_cam_exp_time',
+                                                                                   Qt.QueuedConnection, Q_ARG(int, 1),
+                                                                                   Q_ARG(float, exp)))
             # To Camera From GUI:
             self.set_cam1_exposure_signal.connect(self.cam1.set_exposure_time)
             self.set_cam1_gain_signal.connect(self.cam1.set_gain)
@@ -932,10 +940,11 @@ class Window(QMainWindow, Ui_MainWindow):
             # To camera From Update Manager
             self.UpdateManager.cam2_timer.timeout.connect(self.cam2.get_frame)
             if self.UpdateManager.is_PID:
-                # TODO: WRONG
-                self.cam2.exposure_updated_signal.connect(lambda exp:
-                                                          self.UpdateManager.
-                                                          request_update_cam_exposure_time.connect(2, exp))
+                self.cam1.exposure_updated_signal.connect(lambda exp:
+                                                          QMetaObject.invokeMethod(self.UpdateManager,
+                                                                                   'set_cam_exp_time',
+                                                                                   Qt.QueuedConnection, Q_ARG(int, 2),
+                                                                                   Q_ARG(float, exp)))
             # To Camera From GUI:
             self.set_cam2_exposure_signal.connect(self.cam2.set_exposure_time)
             self.set_cam2_gain_signal.connect(self.cam2.set_gain)
@@ -1728,7 +1737,9 @@ class Window(QMainWindow, Ui_MainWindow):
             P = float(self.le_P.text())
             I = float(self.le_Ti.text())
             D = float(self.le_Td.text())
-            self.request_update_pid_settings.emit(P, I, D)
+            self.set_P.emit(P)
+            self.set_I.emit(I)
+            self.set_D.emit(D)
             self.PID = {'P': P, 'Ti': I, 'Td': D}
             # Update the GUI with the numbers from the UpdateManager settings
             self.Update_GUI_PID()

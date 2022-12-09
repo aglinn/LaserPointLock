@@ -859,7 +859,6 @@ class UpdateManager(QObject):
         # print("Calling Update")
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
-            print("Starting update timer with interval.", self.time_out_interval)
             self.timer.start(self.time_out_interval)
         return
 
@@ -869,9 +868,7 @@ class UpdateManager(QObject):
         This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
-        print("Applying update.")
         try:
-            print("Got update")
             # Try getting the update voltage
             self.get_update()
         except update_out_of_bounds:
@@ -883,7 +880,6 @@ class UpdateManager(QObject):
             than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than 10 times in a row 
             in less than a minute each time, then the code unlocks and returns to measuring state.
             """
-            print(" Had to fit update.")
             # Fit the best update we can, given we cannot restore pointing
             self.fit_update()
             # Track unlocking.
@@ -902,7 +898,6 @@ class UpdateManager(QObject):
                     self.lock_pointing(False)
                     print("System has unlocked!")
                     return
-        print("setting motors.")
         # Apply all update voltages
         self.request_set_motor(1, 1, self.update_voltage[0])
         self.request_set_motor(2, 1, self.update_voltage[2])
@@ -1025,6 +1020,7 @@ class UpdateManager(QObject):
                 self.com_found_signal_handler = None
             self._locking = False
             self.update_gui_locked_state.emit(False)
+            print("Should stop locking now!")
         pass
 
     @pyqtSlot(bool, float)
@@ -2108,9 +2104,6 @@ class UpdateManager(QObject):
 
 class PIDUpdateManager(UpdateManager):
 
-    request_update_cam_exposure_time = pyqtSignal(int, float)
-    request_update_pid_settings = pyqtSignal(float, float, float)
-
     def __init__(self):
         super().__init__()
         self._dt = None
@@ -2124,12 +2117,6 @@ class PIDUpdateManager(UpdateManager):
         self.cam2_exp_time = None
         self.cam1_time_last_found_int = 0
         self.cam2_time_last_found_int = 0
-
-    def connect_signals(self):
-        self.request_update_cam_exposure_time.connect(self.set_cam_exp_time)
-        self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "P", P))
-        self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "I", I))
-        self.request_update_pid_settings.connect(lambda P, I, D: setattr(self, "D", D))
 
     @pyqtSlot(bool)
     def lock_pointing(self, lock: bool):
@@ -2228,8 +2215,8 @@ class PIDUpdateManager(UpdateManager):
     def P(self):
         return self._P
 
-    @P.setter
-    def P(self, value):
+    @pyqtSlot(float)
+    def set_P(self, value):
         self._P = value
         return
 
@@ -2237,8 +2224,8 @@ class PIDUpdateManager(UpdateManager):
     def I(self):
         return self._I
 
-    @I.setter
-    def I(self, value):
+    @pyqtSlot(float)
+    def set_I(self, value):
         self._I = value
         return
 
@@ -2246,7 +2233,7 @@ class PIDUpdateManager(UpdateManager):
     def D(self):
         return self._D
 
-    @D.setter
-    def D(self, value):
+    @pyqtSlot(float)
+    def set_D(self, value):
         self._D = value
         return
