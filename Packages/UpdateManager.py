@@ -1096,7 +1096,7 @@ class UpdateManager(QObject):
 
         # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
         # hopefully induces a dx to undo the measured dx, up to constraints on voltages.
-        self.update_voltage = self.V0 + self.dV
+        self.update_voltage = self.V0 - self.dV
         print("fit dV ", self.dV)
         return
 
