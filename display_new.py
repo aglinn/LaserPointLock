@@ -439,7 +439,6 @@ class Window(QMainWindow, Ui_MainWindow):
         ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
         # Show the figure
         fig.show()
-        fig.close
         return
 
     @pyqtSlot(dict)
