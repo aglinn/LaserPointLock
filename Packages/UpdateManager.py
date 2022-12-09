@@ -2175,7 +2175,10 @@ class PIDUpdateManager(UpdateManager):
         set point is as close as possible. Then, maybe the updates can be stable... But not today!
         """
         super().fit_update()
-        self.update_voltage *= self.P
+        if self.P > 0:
+            self.update_voltage *= self.P
+        else:
+            self.update_voltage *= 0.1
         return
 
     def calc_integral(self):
