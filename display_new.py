@@ -350,11 +350,13 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.request_gui_plot_calibrate_fits.connect(self.plot_calibration_fits)
         return
 
-    @pyqtSlot(Figure)
-    def plot_calibration_fits(self, fig: Figure):
+    @pyqtSlot(Figure, np.ndarray)
+    def plot_calibration_fits(self, fig: Figure, ax: np.ndarray):
         """
         Just show the axes in the main thread so that it displays properly.
         """
+        # fig.sca(ax)
+        time.sleep(1)
         fig.show()
         return
 

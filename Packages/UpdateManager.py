@@ -6,7 +6,7 @@ from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer, QMetaOb
 from Packages.motors import MDT693B_Motor, MDT693A_Motor
 from datetime import datetime
 import cv2
-from matplotlib.pyplot import Figure
+from matplotlib.pyplot import Figure, Axes
 
 
 class update_out_of_bounds(Exception):
@@ -50,7 +50,7 @@ class UpdateManager(QObject):
     update_gui_locked_state = pyqtSignal(bool)
     update_gui_locking_update_out_of_bounds_signal = pyqtSignal(dict)
     update_gui_ping = pyqtSignal(float)
-    request_gui_plot_calibrate_fits = pyqtSignal(Figure)
+    request_gui_plot_calibrate_fits = pyqtSignal(Figure, np.ndarray)
 
     # TODO: Implement timing synchronization?
     # TODO: Implement triggering of cameras?
@@ -1553,8 +1553,10 @@ class UpdateManager(QObject):
             ax[2, 3].tick_params(axis='both', which='major', labelsize=6)
             ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
             # Show the figure
-            self.request_gui_plot_calibrate_fits.emit(fig)
-
+            self.request_gui_plot_calibrate_fits.emit(fig, ax)
+            fig.close
+            del fig
+            del ax
         inv_calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
                               [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
