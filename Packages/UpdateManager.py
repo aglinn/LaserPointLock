@@ -1057,7 +1057,9 @@ class UpdateManager(QObject):
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
         # in the change observed in dX
         dV = np.matmul(self.calibration_matrix, self.update_dx)
+        print('dV', dV)
         self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        print("dV Post rounding, ", self.dV)
         # place.
         # voltage to be set on the motors
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the

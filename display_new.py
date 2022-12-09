@@ -1873,12 +1873,12 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot()
     def load_visible_state(self):
-        self.load_state(method='Load_Visible')
+        self.load_state(False, method='Load_Visible')
         return
 
     @pyqtSlot()
     def load_IR_state(self):
-        self.load_state(method='Load_IR')
+        self.load_state(False, method='Load_IR')
         return
 
 
