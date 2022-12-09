@@ -1084,14 +1084,14 @@ class UpdateManager(QObject):
         """
         P = Parameters()
         self.V0 = np.round(self.V0, decimals=1)
-        P.add('dv_0', 0, min=-self.V0[0], max=150.0 - self.V0[0])
-        P.add('dv_1', 0, min=-self.V0[1], max=150.0 - self.V0[1])
-        P.add('dv_2', 0, min=-self.V0[2], max=150.0 - self.V0[2])
-        P.add('dv_3', 0, min=-self.V0[3], max=150.0 - self.V0[3])
+        P.add('dv_0', 0, min=-150.0 + self.V0[0], max=self.V0[0])
+        P.add('dv_1', 0, min=-150.0 + self.V0[1], max=self.V0[1])
+        P.add('dv_2', 0, min=-150.0 + self.V0[2], max=self.V0[2])
+        P.add('dv_3', 0, min=-150.0 + self.V0[3], max=self.V0[3])
         res = minimize(self.residual, P, args=(self.update_dx, self.inv_calibration_matrix))
         dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
                             res.params['dv_3'].value])
-        self.dV = np.round(dV, decimals=1) # Round down on tenths decimal place, motors do not like more than 1 decimal
+        self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
 
         # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
