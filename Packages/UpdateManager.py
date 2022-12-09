@@ -50,7 +50,7 @@ class UpdateManager(QObject):
     update_gui_locked_state = pyqtSignal(bool)
     update_gui_locking_update_out_of_bounds_signal = pyqtSignal(dict)
     update_gui_ping = pyqtSignal(float)
-    request_gui_plot_calibrate_fits = pyqtSignal(Figure, np.ndarray)
+    request_gui_plot_calibrate_fits = pyqtSignal(list, list, list)
 
     # TODO: Implement timing synchronization?
     # TODO: Implement triggering of cameras?
@@ -1478,85 +1478,15 @@ class UpdateManager(QObject):
             p_mot2_y_cam2_y[0] = 0
 
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
-        if True:  # This just lets me collapse the below code
-            import matplotlib.pyplot as plt
-            # First plot the fits.
-            Voltage_plot = np.linspace(0, 150, 100)
-            fig, ax = plt.subplots(4, 4, dpi=200, gridspec_kw={"hspace": 0.5, "wspace": 0.3})
-            ax[0, 0].plot(Voltage_plot, p_mot1_x_cam1_x[0] * Voltage_plot + p_mot1_x_cam1_x[1], linewidth = 3)
-            ax[1, 0].plot(Voltage_plot, p_mot1_y_cam1_x[0] * Voltage_plot + p_mot1_y_cam1_x[1], linewidth = 3)
-            ax[2, 0].plot(Voltage_plot, p_mot2_x_cam1_x[0] * Voltage_plot + p_mot2_x_cam1_x[1], linewidth = 3)
-            ax[3, 0].plot(Voltage_plot, p_mot2_y_cam1_x[0] * Voltage_plot + p_mot2_y_cam1_x[1], linewidth = 3)
-            ax[0, 1].plot(Voltage_plot, p_mot1_x_cam1_y[0] * Voltage_plot + p_mot1_x_cam1_y[1], linewidth = 3)
-            ax[1, 1].plot(Voltage_plot, p_mot1_y_cam1_y[0] * Voltage_plot + p_mot1_y_cam1_y[1], linewidth = 3)
-            ax[2, 1].plot(Voltage_plot, p_mot2_x_cam1_y[0] * Voltage_plot + p_mot2_x_cam1_y[1], linewidth = 3)
-            ax[3, 1].plot(Voltage_plot, p_mot2_y_cam1_y[0] * Voltage_plot + p_mot2_y_cam1_y[1], linewidth = 3)
-            ax[0, 2].plot(Voltage_plot, p_mot1_x_cam2_x[0] * Voltage_plot + p_mot1_x_cam2_x[1], linewidth = 3)
-            ax[1, 2].plot(Voltage_plot, p_mot1_y_cam2_x[0] * Voltage_plot + p_mot1_y_cam2_x[1], linewidth = 3)
-            ax[2, 2].plot(Voltage_plot, p_mot2_x_cam2_x[0] * Voltage_plot + p_mot2_x_cam2_x[1], linewidth = 3)
-            ax[3, 2].plot(Voltage_plot, p_mot2_y_cam2_x[0] * Voltage_plot + p_mot2_y_cam2_x[1], linewidth = 3)
-            ax[0, 3].plot(Voltage_plot, p_mot1_x_cam2_y[0] * Voltage_plot + p_mot1_x_cam2_y[1], linewidth = 3)
-            ax[1, 3].plot(Voltage_plot, p_mot1_y_cam2_y[0] * Voltage_plot + p_mot1_y_cam2_y[1], linewidth = 3)
-            ax[2, 3].plot(Voltage_plot, p_mot2_x_cam2_y[0] * Voltage_plot + p_mot2_x_cam2_y[1], linewidth = 3)
-            ax[3, 3].plot(Voltage_plot, p_mot2_y_cam2_y[0] * Voltage_plot + p_mot2_y_cam2_y[1], linewidth = 3)
-            # Now plot the data
-            ax[0, 0].plot(self.mot1_x_voltage, self.mot1_x_cam1_x, 'r', marker='x', markersize=2)
-            ax[1, 0].plot(self.mot1_y_voltage, self.mot1_y_cam1_x, 'r', marker='x', markersize=2)
-            ax[2, 0].plot(self.mot2_x_voltage, self.mot2_x_cam1_x, 'r', marker='x', markersize=2)
-            ax[3, 0].plot(self.mot2_y_voltage, self.mot2_y_cam1_x, 'r', marker='x', markersize=2)
-            ax[0, 1].plot(self.mot1_x_voltage, self.mot1_x_cam1_y, 'r', marker='x', markersize=2)
-            ax[1, 1].plot(self.mot1_y_voltage, self.mot1_y_cam1_y, 'r', marker='x', markersize=2)
-            ax[2, 1].plot(self.mot2_x_voltage, self.mot2_x_cam1_y, 'r', marker='x', markersize=2)
-            ax[3, 1].plot(self.mot2_y_voltage, self.mot2_y_cam1_y, 'r', marker='x', markersize=2)
-            ax[0, 2].plot(self.mot1_x_voltage, self.mot1_x_cam2_x, 'r', marker='x', markersize=2)
-            ax[1, 2].plot(self.mot1_y_voltage, self.mot1_y_cam2_x, 'r', marker='x', markersize=2)
-            ax[2, 2].plot(self.mot2_x_voltage, self.mot2_x_cam2_x, 'r', marker='x', markersize=2)
-            ax[3, 2].plot(self.mot2_y_voltage, self.mot2_y_cam2_x, 'r', marker='x', markersize=2)
-            ax[0, 3].plot(self.mot1_x_voltage, self.mot1_x_cam2_y, 'r', marker='x', markersize=2)
-            ax[1, 3].plot(self.mot1_y_voltage, self.mot1_y_cam2_y, 'r', marker='x', markersize=2)
-            ax[2, 3].plot(self.mot2_x_voltage, self.mot2_x_cam2_y, 'r', marker='x', markersize=2)
-            ax[3, 3].plot(self.mot2_y_voltage, self.mot2_y_cam2_y, 'r', marker='x', markersize=2)
-            # Label the plots
-            ax[0, 0].set_title("mot 1 x cam 1 x", fontsize=6)
-            ax[1, 0].set_title("mot 1 y cam 1 x", fontsize=6)
-            ax[2, 0].set_title("mot 2 x cam 1 x", fontsize=6)
-            ax[3, 0].set_title("mot 2 y cam 1 x", fontsize=6)
-            ax[0, 1].set_title("mot 1 x cam 1 y", fontsize=6)
-            ax[1, 1].set_title("mot 1 y cam 1 y", fontsize=6)
-            ax[2, 1].set_title("mot 2 x cam 1 y", fontsize=6)
-            ax[3, 1].set_title("mot 2 y cam 1 y", fontsize=6)
-            ax[0, 2].set_title("mot 1 x cam 2 x", fontsize=6)
-            ax[1, 2].set_title("mot 1 y cam 2 x", fontsize=6)
-            ax[2, 2].set_title("mot 2 x cam 2 x", fontsize=6)
-            ax[3, 2].set_title("mot 2 y cam 2 x", fontsize=6)
-            ax[0, 3].set_title("mot 1 x cam 2 y", fontsize=6)
-            ax[1, 3].set_title("mot 1 y cam 2 y", fontsize=6)
-            ax[2, 3].set_title("mot 2 x cam 2 y", fontsize=6)
-            ax[3, 3].set_title("mot 2 y cam 2 y", fontsize=6)
-            ax[3, 0].set_xlabel('Voltages (V)', fontsize=6)
-            ax[3, 0].set_ylabel('position (pixels)', fontsize=6)
-            # Adjust the tick parameters for better viewing size
-            ax[0, 0].tick_params(axis='both', which='major', labelsize=6)
-            ax[1, 0].tick_params(axis='both', which='major', labelsize=6)
-            ax[2, 0].tick_params(axis='both', which='major', labelsize=6)
-            ax[3, 0].tick_params(axis='both', which='major', labelsize=6)
-            ax[0, 1].tick_params(axis='both', which='major', labelsize=6)
-            ax[1, 1].tick_params(axis='both', which='major', labelsize=6)
-            ax[2, 1].tick_params(axis='both', which='major', labelsize=6)
-            ax[3, 1].tick_params(axis='both', which='major', labelsize=6)
-            ax[0, 2].tick_params(axis='both', which='major', labelsize=6)
-            ax[1, 2].tick_params(axis='both', which='major', labelsize=6)
-            ax[2, 2].tick_params(axis='both', which='major', labelsize=6)
-            ax[3, 2].tick_params(axis='both', which='major', labelsize=6)
-            ax[0, 3].tick_params(axis='both', which='major', labelsize=6)
-            ax[1, 3].tick_params(axis='both', which='major', labelsize=6)
-            ax[2, 3].tick_params(axis='both', which='major', labelsize=6)
-            ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
-            # Show the figure
-            self.request_gui_plot_calibrate_fits.emit(fig, ax)
-            fig.close
-            del fig
-            del ax
+        motor_voltages = [self.mot1_x_voltage, self.mot1_y_voltage, self.mot2_x_voltage, self.mot2_y_voltage]
+        positions = [self.mot1_x_cam1_x, self.mot1_y_cam1_x, self.mot2_x_cam1_x, self.mot2_y_cam1_x, self.mot1_x_cam1_y,
+                     self.mot1_y_cam1_y, self.mot2_x_cam1_y, self.mot2_y_cam1_y, self.mot1_x_cam2_x, self.mot1_y_cam2_x,
+                     self.mot2_x_cam2_x, self.mot2_y_cam2_x, self.mot1_x_cam2_y, self.mot1_y_cam2_y, self.mot2_x_cam2_y,
+                     self.mot2_y_cam2_y]
+        fits = [p_mot1_x_cam1_x, p_mot1_y_cam1_x, p_mot2_x_cam1_x, p_mot2_y_cam1_x, p_mot1_x_cam1_y, p_mot1_y_cam1_y,
+                p_mot2_x_cam1_y, p_mot2_y_cam1_y, p_mot1_x_cam2_x, p_mot1_y_cam2_x, p_mot2_x_cam2_x, p_mot2_y_cam2_x,
+                p_mot1_x_cam2_y, p_mot1_y_cam2_y, p_mot2_x_cam2_y, p_mot2_y_cam2_y]
+        self.request_gui_plot_calibrate_fits.emit(motor_voltages, positions, fits)
         inv_calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
                               [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
@@ -1697,7 +1627,6 @@ class UpdateManager(QObject):
             dV = np.matmul(self.calibration_matrix, dx)
             if np.any(np.abs(dV - dV_known) > 0.1):  # Check if any are off my more than 0.1 V
                 print("Failed on linear combination of dx. Anticipated dV ", dV_known, "calculated dV ", dV)
-
         return
 
     # Analysis/convenience methods.
