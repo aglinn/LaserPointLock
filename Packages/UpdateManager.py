@@ -2113,7 +2113,6 @@ class PIDUpdateManager(UpdateManager):
         self._I = 0.1
         self._D = 0
         self.is_PID = True
-        self._use_PID = True
         self.cam1_exp_time = None
         self.cam2_exp_time = None
         self.cam1_time_last_found_int = 0
@@ -2126,6 +2125,8 @@ class PIDUpdateManager(UpdateManager):
         """
         if lock:
             self.integral_ti = np.zeros(4)
+            self.cam1_time_last_found_int = self.t1[-1]
+            self.cam2_time_last_found_int = self.t2[-1]
         super().lock_pointing(lock)
         return
 
@@ -2143,12 +2144,18 @@ class PIDUpdateManager(UpdateManager):
             if self.D > 0:
                 derivatives = self.calc_derivative()
                 # Add the D term:
-                self.update_dx += self.D * derivatives
+                try:
+                    self.update_dx += self.D * derivatives
+                except TypeError:
+                    self.update_dx = self.D * derivatives
             # I term.
             if self.I > 0:
                 self.calc_integral()
                 # Add the I term:
-                self.update_dx += self.I*self.integral_ti
+                try:
+                    self.update_dx += self.I*self.integral_ti
+                except TypeError:
+                    self.update_dx = self.I*self.integral_ti
             return
         elif self.P > 0:
             super().calc_update_dx()
