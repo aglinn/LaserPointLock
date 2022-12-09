@@ -137,7 +137,7 @@ class Window(QMainWindow, Ui_MainWindow):
         # Start the thread
         # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
         # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
-        self.UpdateManager_thread.start(priority=4)
+        self.UpdateManager_thread.start(priority=6)
         self.create_UpdateManager_timers.emit()
         print("Window thread is ", self.UpdateManager_thread.thread())
         print("Update manager is on thread ", self.UpdateManager.thread())

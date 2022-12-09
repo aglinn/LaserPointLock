@@ -618,7 +618,7 @@ class UpdateManager(QObject):
                 # Start the thread
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 # Set priority as time critical! As soon as I want to apply an update, tell the motors and apply ASAP!
-                self.motor1_thread.start(priority=6)
+                self.motor1_thread.start(priority=4)
             else:  # Want to swap motors out on thread 1!
                 # Request that we close motor 1 first.
                 self.close_motor1_signal.emit()
@@ -650,7 +650,7 @@ class UpdateManager(QObject):
                 # Start the thread
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
                 # Set priority as time critical! As soon as I want to apply an update, tell the motors and apply ASAP!
-                self.motor2_thread.start(priority=6)
+                self.motor2_thread.start(priority=4)
             else:  # Want to swap motors out on thread 1!
                 # Request that we close motor 1 first.
                 self.close_motor2_signal.emit()
@@ -900,7 +900,6 @@ class UpdateManager(QObject):
                     self.lock_pointing(False)
                     print("System has unlocked!")
                     return
-        print("Trying to apply an update voltage of ", self.update_voltage)
         # Apply all update voltages
         self.request_set_motor(1, 1, self.update_voltage[0])
         self.request_set_motor(2, 1, self.update_voltage[2])
