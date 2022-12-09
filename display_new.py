@@ -552,21 +552,24 @@ class Window(QMainWindow, Ui_MainWindow):
                 decimals = str(2)
             else:
                 decimals = str(decimals)
-            self.le_P.setText('%.'+decimals+'f' % (self.PID['P']))
+            format_decimals = '%.'+decimals+'f'
+            self.le_P.setText(format_decimals % (self.PID['P']))
             temp = str(self.PID['Ti'])
             decimals = temp[::-1].find('.')
             if decimals < 2:
                 decimals = str(2)
             else:
                 decimals = str(decimals)
-            self.le_Ti.setText('%.'+decimals+'f' % (self.PID['Ti']))
+            format_decimals = '%.'+decimals+'f'
+            self.le_Ti.setText(format_decimals % (self.PID['Ti']))
             temp = str(self.PID['Td'])
             decimals = temp[::-1].find('.')
             if decimals < 2:
                 decimals = str(2)
             else:
                 decimals = str(decimals)
-            self.le_Td.setText('%.'+decimals+'f' % (self.PID['Td']))
+            format_decimals = '%.'+decimals+'f'
+            self.le_Td.setText(format_decimals % (self.PID['Td']))
         else:
             self.le_P.setText('%.2f' % (1))
             self.le_Ti.setText('N/A not PID')
