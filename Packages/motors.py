@@ -448,7 +448,6 @@ class MDT693B_Motor(QObject):
     @pyqtSlot(float)
     def set_ch1_v(self, v: float):
         v = np.round(v, 3)
-        print("setting voltage ", v)
         if self.ch1 == 'X' or self.ch1 == 'x':
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch1 == 'Y' or self.ch1 == 'y':
@@ -464,7 +463,6 @@ class MDT693B_Motor(QObject):
     @pyqtSlot(float)
     def set_ch2_v(self, v: float):
         v = np.round(v, 3)
-        print("setting voltage ", v)
         if self.ch2 == 'X' or self.ch2 == 'x':
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch2 == 'Y' or self.ch2 == 'y':

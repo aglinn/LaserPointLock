@@ -546,9 +546,9 @@ class Window(QMainWindow, Ui_MainWindow):
     def Update_GUI_PID(self):
         # Update the GUI with the numbers from the UpdateManager settings
         if self.UpdateManager.is_PID:
-            self.le_P.setText('%.2f' % (self.PID['P']))
-            self.le_Ti.setText('%.2f' % (self.PID['Ti']))
-            self.le_Td.setText('%.2f' % (self.PID['Td']))
+            self.le_P.setText('%.8f' % (self.PID['P']))
+            self.le_Ti.setText('%.8f' % (self.PID['Ti']))
+            self.le_Td.setText('%.8f' % (self.PID['Td']))
         else:
             self.le_P.setText('%.2f' % (1))
             self.le_Ti.setText('N/A not PID')
