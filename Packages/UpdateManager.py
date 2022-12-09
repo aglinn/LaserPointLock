@@ -1065,6 +1065,7 @@ class UpdateManager(QObject):
         # so we subtract that dV restoring us to the old position.
         update_voltage = self.V0 - self.dV
         if np.any(update_voltage > 150) or np.any(update_voltage < 0):
+            print("was going to set a dV, ", self.dV)
             exception_message = ''
             for i in range(4):
                 if update_voltage[i] < 0:
@@ -1096,6 +1097,7 @@ class UpdateManager(QObject):
         # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
         # hopefully induces a dx to undo the measured dx, up to constraints on voltages.
         self.update_voltage = self.V0 + self.dV
+        print("fit dV ", self.dV)
         return
 
     @property
