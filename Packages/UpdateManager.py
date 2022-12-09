@@ -213,7 +213,7 @@ class UpdateManager(QObject):
             self.set_motor1_ch1V_signal.connect(self.motor1.set_ch1_v)
             self.get_motor1_ch1V_signal.connect(self.motor1.ch1_v)
             self.set_motor1_ch2V_signal.connect(self.motor1.set_ch2_v)
-            self.get_motor1_ch2V_signal.connect(self.motor1.ch1_v)
+            self.get_motor1_ch2V_signal.connect(self.motor1.ch2_v)
             # Motor1 signals to Update Manager
             self.motor1.destroyed.connect(lambda args: self.reconnect_motor(1))
             self.motor1.close_complete_signal.connect(self.accept_motor_close)
@@ -250,7 +250,7 @@ class UpdateManager(QObject):
             self.set_motor2_ch1V_signal.connect(self.motor2.set_ch1_v)
             self.get_motor2_ch1V_signal.connect(self.motor2.ch1_v)
             self.set_motor2_ch2V_signal.connect(self.motor2.set_ch2_v)
-            self.get_motor2_ch2V_signal.connect(self.motor2.ch1_v)
+            self.get_motor2_ch2V_signal.connect(self.motor2.ch2_v)
             # Motor1 signals to Update Manager
             self.motor2.destroyed.connect(lambda args: self.reconnect_motor(2))
             self.motor2.close_complete_signal.connect(self.accept_motor_close)
@@ -1017,6 +1017,7 @@ class UpdateManager(QObject):
             self.num_out_of_voltage_range = 1
             self.first_unlock = True  # First time since initial lock that piezos went out of bounds?
             self.update_gui_locked_state.emit(True)
+            print(" Should be locking now! ")
         else:
             if self.com_found_signal_handler is not None:
                 # Disconnect unwanted connections.
