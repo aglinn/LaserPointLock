@@ -1084,7 +1084,7 @@ class UpdateManager(QObject):
         my dx in the future step, constrained by the allowed piezo ranges. That is what this function does.
         """
         P = Parameters()
-        np.round(self.V0, decimals=1)
+        self.V0 = np.round(self.V0, decimals=1)
         P.add('dv_0', 0, min=-self.V0[0], max=150.0 - self.V0[0])
         P.add('dv_1', 0, min=-self.V0[1], max=150.0 - self.V0[1])
         P.add('dv_2', 0, min=-self.V0[2], max=150.0 - self.V0[2])

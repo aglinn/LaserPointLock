@@ -297,7 +297,7 @@ class MDT693B_Motor(QObject):
         self.get_info(self._id)
         """
         I actually do not think that this does anything when controlling with my application.
-        Now make sure that the voltage step resolution is as small as possible
+        Now make sure that the voltage step resolution is as small as possible"""
         ret = mdt.mdtSetVoltageAdjustmentResolution(self.handle, 1)
         if ret < 0:
             raise Exception("The adjustment resolution on Motor with serial number,", serial_number,
@@ -306,7 +306,7 @@ class MDT693B_Motor(QObject):
         ret = mdt.mdtGetVoltageAdjustmentResolution(self.handle, self._voltage_step_resolution)
         if ret < 0:
             raise Exception("The adjustment resolution on Motor with serial number,", serial_number,
-                            " did not read correctly.")"""
+                            " did not read correctly.")
 
         """Disable masterscan mode"""
         ret = mdt.mdtSetMasterScanEnable(self.handle, 0)
