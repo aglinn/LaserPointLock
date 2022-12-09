@@ -36,7 +36,7 @@ from Packages.CameraThread import CameraThread
 import tkinter as tk
 from tkinter import filedialog
 from serial.tools import list_ports
-from Packages.UpdateManager import UpdateManager
+from Packages.UpdateManager import PIDUpdateManager as UpdateManager
 # from Packages.UpdateManager import PIDUpdateManager as UpdateManager
 from Packages.UpdateManager import InsufficientInformation, update_out_of_bounds
 import copy
@@ -126,6 +126,8 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager_thread.finished.connect(lambda: print("Update Manager Thread has finished."))
         #  Instantiate Update Manager
         self.UpdateManager = UpdateManager()
+        # Holds PID Dict
+        self.PID = {}
         if self.UpdateManager.is_PID:
             self.PID = {'P': 0.5, 'Ti': 0.1, 'Td': 0}
         # move update manager to its own thread.
@@ -160,8 +162,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.motor1_index = None
         self.motor2_index = None
         self.ResourceManager = visa.ResourceManager()
-        # Holds PID Dict
-        self.PID = {}
         # Initialize global variables
         self.cam1_reset = True
         self.cam2_reset = True
@@ -940,7 +940,7 @@ class Window(QMainWindow, Ui_MainWindow):
             # To camera From Update Manager
             self.UpdateManager.cam2_timer.timeout.connect(self.cam2.get_frame)
             if self.UpdateManager.is_PID:
-                self.cam1.exposure_updated_signal.connect(lambda exp:
+                self.cam2.exposure_updated_signal.connect(lambda exp:
                                                           QMetaObject.invokeMethod(self.UpdateManager,
                                                                                    'set_cam_exp_time',
                                                                                    Qt.QueuedConnection, Q_ARG(int, 2),

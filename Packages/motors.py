@@ -455,7 +455,7 @@ class MDT693B_Motor(QObject):
             self.set_ch1V_complete_signal.emit(self.motor_number, 1, v)
         else:
             print("Warning: The ch1,", self.ch1, ", voltage on motor with handle, ", self.handle,
-                  ", and serial number,", self._serial_number, " was not SET correctly.")
+                  ", and serial number,", self._serial_number, " was not SET correctly. attempted to set ", v)
             self.set_ch1V_failed_signal.emit(self.motor_number, 1)
         return
 
@@ -469,8 +469,8 @@ class MDT693B_Motor(QObject):
         if rep >= 0:
             self.set_ch2V_complete_signal.emit(self.motor_number, 2, v)
         else:
-            print("Warning: The ch1,", self.ch2, ", voltage on motor with handle, ", self.handle,
-                  ", and serial number,", self._serial_number, " was not SET correctly.")
+            print("Warning: The ch2,", self.ch2, ", voltage on motor with handle, ", self.handle,
+                  ", and serial number,", self._serial_number, " was not SET correctly. Attempted to set", v)
             self.set_ch2V_failed_signal.emit(self.motor_number, 2)
         return
 

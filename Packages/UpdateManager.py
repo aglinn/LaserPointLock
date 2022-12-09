@@ -602,6 +602,7 @@ class UpdateManager(QObject):
                 self.motor1_thread.finished.connect(lambda: self.accept_motor_thread_close(1))
                 # Instantiate a motor
                 if "MDT693B" in motor_to_connect:
+                    print("Connecting as motor 1, "+str(motor_to_connect))
                     self.motor1 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=1)
                 else:
                     if self.ResourceManager is None:
@@ -634,6 +635,7 @@ class UpdateManager(QObject):
                 self.motor2_thread.finished.connect(lambda: self.accept_motor_thread_close(2))
                 # Instantiate a motor
                 if "MDT693B" in motor_to_connect:
+                    print("Connecting as motor 2, "+str(motor_to_connect))
                     self.motor2 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=2)
                 else:
                     if self.ResourceManager is None:
@@ -869,6 +871,7 @@ class UpdateManager(QObject):
         changed, and applies an update if both cam com's have been found post voltage update.
         """
         try:
+            print("Got update")
             # Try getting the update voltage
             self.get_update()
         except update_out_of_bounds:
@@ -880,6 +883,7 @@ class UpdateManager(QObject):
             than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than 10 times in a row 
             in less than a minute each time, then the code unlocks and returns to measuring state.
             """
+            print("Fit Update.")
             # Fit the best update we can, given we cannot restore pointing
             self.fit_update()
             # Track unlocking.
@@ -1061,9 +1065,7 @@ class UpdateManager(QObject):
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
         # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
         # so we subtract that dV restoring us to the old position.
-        print("Shape of V0 and dV, respectively", self.V0.shape, self.dV.shape)
         update_voltage = self.V0 - self.dV
-        print("shape of update voltage, ", update_voltage.shape)
         if np.any(update_voltage > 150) or np.any(update_voltage < 0):
             exception_message = ''
             for i in range(4):
@@ -1082,14 +1084,14 @@ class UpdateManager(QObject):
         my dx in the future step, constrained by the allowed piezo ranges. That is what this function does.
         """
         P = Parameters()
-        P.add('dv_0', 0, min = -self.V0[0], max = 150.0 - self.V0[0])
+        P.add('dv_0', 0, min=-self.V0[0], max=150.0 - self.V0[0])
         P.add('dv_1', 0, min=-self.V0[1], max=150.0 - self.V0[1])
         P.add('dv_2', 0, min=-self.V0[2], max=150.0 - self.V0[2])
         P.add('dv_3', 0, min=-self.V0[3], max=150.0 - self.V0[3])
         res = minimize(self.residual, P, args=(self.update_dx, self.inv_calibration_matrix))
         dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
                             res.params['dv_3'].value])
-        self.dV = np.floor(10 * dV) / 10  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        self.dV = np.round(dV, decimals=1) # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
 
         # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
@@ -2134,22 +2136,27 @@ class PIDUpdateManager(UpdateManager):
         controller by making the update_dx a sum of a P, I, and D term.
         """
         # PID only makes sense if there are at least 2 data points. If only one, just do P.
-        if len(self.t1) > 1 and self._use_PID:
-            super().calc_update_dx()  # Averages all dx, since the motors were updated.
-            self.update_dx *= self.P
-            # prep for I and D terms:
-            derivatives = self.calc_derivative()
-            self.calc_integral()
-            # Add the I term:
-            self.update_dx += self.I*self.integral_ti
-            # Add the D term:
-            self.update_dx += self.D*derivatives
-            # Find dX weighted total from PID.
+        if len(self.t1) > 1 and len(self.t2) > 1:
+            if self.P > 0:
+                super().calc_update_dx()  # Averages all dx, since the motors were updated.
+                self.update_dx *= self.P
+            # D terms:
+            if self.D > 0:
+                derivatives = self.calc_derivative()
+                # Add the D term:
+                self.update_dx += self.D * derivatives
+            # I term.
+            if self.I > 0:
+                self.calc_integral()
+                # Add the I term:
+                self.update_dx += self.I*self.integral_ti
             return
-        else:
+        elif self.P > 0:
             super().calc_update_dx()
             self.update_dx *= self.P
             return
+        else:
+            self.update_dx = np.array([0, 0, 0, 0])
         return
 
     def fit_update(self):
@@ -2180,16 +2187,17 @@ class PIDUpdateManager(UpdateManager):
 
     def calc_derivative(self):
         # TODO: I need at least two frames post update motors.
+        # TODO: Fix this is broken!
+        # dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update+1] -
+        # TypeError: can only concatenate tuple (not "int") to tuple
         inds_post_motor_update = np.where(self.t1 >= self.cam1_time_motors_updated)
-        del inds_post_motor_update[-1]
-        dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update+1] -
-                                             self.cam1_dx[inds_post_motor_update]) /
+        dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update] -
+                                             self.cam1_dx[inds_post_motor_update - 1]) /
                                             (self.t1[inds_post_motor_update+1] - self.t1[inds_post_motor_update]),
                                             axis=0)
         inds_post_motor_update = np.where(self.t2 >= self.cam2_time_motors_updated)
-        del inds_post_motor_update[-1]
-        dx_derivative_cam2_avg = np.average((self.cam2_dx[inds_post_motor_update + 1] -
-                                             self.cam2_dx[inds_post_motor_update]) /
+        dx_derivative_cam2_avg = np.average((self.cam2_dx[inds_post_motor_update] -
+                                             self.cam2_dx[inds_post_motor_update - 1]) /
                                             (self.t2[inds_post_motor_update + 1] - self.t2[inds_post_motor_update]),
                                             axis=0)
         return np.concatenate([dx_derivative_cam1_avg, dx_derivative_cam2_avg], axis=0)
