@@ -859,6 +859,7 @@ class UpdateManager(QObject):
         # print("Calling Update")
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
+            print("Starting update timer with interval.", self.time_out_interval)
             self.timer.start(self.time_out_interval)
         return
 
@@ -868,7 +869,9 @@ class UpdateManager(QObject):
         This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
+        print("Applying update.")
         try:
+            print("Got update")
             # Try getting the update voltage
             self.get_update()
         except update_out_of_bounds:
@@ -880,6 +883,7 @@ class UpdateManager(QObject):
             than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than 10 times in a row 
             in less than a minute each time, then the code unlocks and returns to measuring state.
             """
+            print(" Had to fit update.")
             # Fit the best update we can, given we cannot restore pointing
             self.fit_update()
             # Track unlocking.
@@ -898,7 +902,7 @@ class UpdateManager(QObject):
                     self.lock_pointing(False)
                     print("System has unlocked!")
                     return
-
+        print("setting motors.")
         # Apply all update voltages
         self.request_set_motor(1, 1, self.update_voltage[0])
         self.request_set_motor(2, 1, self.update_voltage[2])
