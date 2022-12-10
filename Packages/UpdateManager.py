@@ -166,6 +166,15 @@ class UpdateManager(QObject):
         self.timer = None
         self.cam1_timer = None
         self.cam2_timer = None
+
+        self._1_index_V_out_of_bounds_change_dx0 = None
+        self._1_step_dx0_V_under = None
+        self._2_index_V_out_of_bounds_change_dx0 = None
+        self._2_step_dx0_V_under = None
+        self._1_index_V_out_of_bounds_change_dx1 = None
+        self._1_step_dx1_V_under = None
+        self._2_index_V_out_of_bounds_change_dx1 = None
+        self._2_step_dx1_V_under = None
         return
 
     @pyqtSlot()
@@ -870,6 +879,8 @@ class UpdateManager(QObject):
         This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
+        # The convention with dx is how much has the position on the camera changed from the set point.
+        self.calc_update_dx()
         try:
             # Try getting the update voltage
             self.get_update()
@@ -883,7 +894,7 @@ class UpdateManager(QObject):
             in less than a minute each time, then the code unlocks and returns to measuring state.
             """
             # Fit the best update we can, given we cannot restore pointing
-            self.fit_update()
+            self.find_best_update()
             # Track unlocking.
             self.report_unlock()
             # Check if I am allowed to continue attempting to lock
@@ -1046,12 +1057,75 @@ class UpdateManager(QObject):
         self.update_dx = np.concatenate((dx_cam1_avg, dx_cam2_avg), axis=0)
         return
 
+    def get_dx_steps_for_find_best_udpate(self):
+        """
+        Figure out which dx to change if a given voltage is outside of its range. And what direction to step that dx
+        component if under 0V was attempted to be applied. Always keep cam2 (focused) dxs unchanged.
+        """
+        dx = np.zeros(4)
+        dx[0] = 1
+        dV = np.matmul(self.calibration_matrix, dx)
+        self._1_index_V_out_of_bounds_change_dx0 = np.argmax(np.abs(dV))
+        self._1_step_dx0_V_under = np.sign(dV[self._1_index_V_out_of_bounds_change_dx0])
+        dV[self._1_index_V_out_of_bounds_change_dx0] = 0
+        self._2_index_V_out_of_bounds_change_dx0 = np.argmax(np.abs(dV))
+        self._2_step_dx0_V_under = np.sign(dV[self._2_index_V_out_of_bounds_change_dx0])
+        dx = np.zeros(4)
+        dx[1] = 1
+        dV = np.matmul(self.calibration_matrix, dx)
+        self._1_index_V_out_of_bounds_change_dx1 = np.argmax(np.abs(dV))
+        self._1_step_dx1_V_under = np.sign(dV[self._1_index_V_out_of_bounds_change_dx1])
+        dV[self._1_index_V_out_of_bounds_change_dx1] = 0
+        self._2_index_V_out_of_bounds_change_dx1 = np.argmax(np.abs(dV))
+        self._2_step_dx1_V_under = np.sign(dV[self._2_index_V_out_of_bounds_change_dx1])
+
+    def increment_dx(self, update_voltage):
+        """
+        Shift dx towards bringing voltages in range.
+        """
+        if update_voltage[self._1_index_V_out_of_bounds_change_dx0] < 0:
+            self.update_dx[0] += self._1_step_dx0_V_under
+        elif update_voltage[self._1_index_V_out_of_bounds_change_dx0] > 150:
+            self.update_dx[0] -= self._1_step_dx0_V_under
+        elif update_voltage[self._2_index_V_out_of_bounds_change_dx0] < 0:
+            self.update_dx[0] += self._2_step_dx0_V_under
+        elif update_voltage[self._2_index_V_out_of_bounds_change_dx0] > 150:
+            self.update_dx[0] -= self._2_step_dx0_V_under
+        else:
+            ret = True
+        if update_voltage[self._1_index_V_out_of_bounds_change_dx1] < 0:
+            self.update_dx[1] += self._1_step_dx1_V_under
+        elif update_voltage[self._1_index_V_out_of_bounds_change_dx1] > 150:
+            self.update_dx[1] -= self._1_step_dx1_V_under
+        elif update_voltage[self._2_index_V_out_of_bounds_change_dx1] < 0:
+            self.update_dx[1] += self._2_step_dx1_V_under
+        elif update_voltage[self._2_index_V_out_of_bounds_change_dx1] > 150:
+            self.update_dx[1] -= self._2_step_dx1_V_under
+        else:
+            ret &= True
+        return ret
+
+    def find_best_update(self):
+        # move the dx on unfocused cam1 until the voltages are in bounds.
+        while True:
+            dV = np.matmul(self.calibration_matrix, self.update_dx)
+            self.dV = np.round(dV,
+                               decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+            # place.
+            # voltage to be set on the motors
+            # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
+            # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
+            # so we subtract that dV restoring us to the old position.
+            self.update_voltage = self.V0 - self.dV
+            if self.increment_dx(self.update_voltage):
+                # No further incrementing required. Update is now in bounds.
+                break
+        return
+
     def get_update(self):
         """
         This code finds the next voltages to apply to the piezo.
         """
-        # The convention with dx is how much has the position on the camera changed from the set point.
-        self.calc_update_dx()
 
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
         # in the change observed in dX
@@ -1081,6 +1155,7 @@ class UpdateManager(QObject):
         When the update voltages are out of their allowed range, I want to try to find an update that minimizes
         my dx in the future step, constrained by the allowed piezo ranges. That is what this function does.
         """
+        # TODO: Does not work well at all! Should recalculate update_dx
         P = Parameters()
         self.V0 = np.round(self.V0, decimals=1)
         P.add('dv_0', 0, min=-150.0 + self.V0[0], max=self.V0[0])
@@ -2041,6 +2116,7 @@ class UpdateManager(QObject):
         Therefore, this matrix can be used to update the motor voltages as New_V = Old_V - calib_mat*dx
         """
         self._calibration_matrix = matrix
+        self.get_dx_steps_for_find_best_udpate()
         return
 
     @pyqtSlot(np.ndarray)
@@ -2049,6 +2125,7 @@ class UpdateManager(QObject):
         Way to set the calibration matrix as a slot.
         """
         self._calibration_matrix = matrix
+        self.get_dx_steps_for_find_best_udpate()
         return
 
     @property
@@ -2165,6 +2242,16 @@ class PIDUpdateManager(UpdateManager):
         else:
             self.update_dx = np.array([0, 0, 0, 0])
         return
+
+    def find_best_update(self):
+        """
+        Additionally only use the P term to find update since integral is accumulating. And set integral term to 0 for
+        when the pointing drifts back into bounds.
+        """
+        super().calc_update_dx()
+        self.update_dx *= self.P
+        self.integral_ti = np.zeros(4)
+        super().find_best_update()
 
     def fit_update(self):
         """
