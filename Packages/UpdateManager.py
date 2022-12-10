@@ -1085,22 +1085,30 @@ class UpdateManager(QObject):
         """
         if update_voltage[self._1_index_V_out_of_bounds_change_dx0] < 0:
             self.update_dx[0] += self._1_step_dx0_V_under
+            ret = False
         elif update_voltage[self._1_index_V_out_of_bounds_change_dx0] > 150:
             self.update_dx[0] -= self._1_step_dx0_V_under
+            ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx0] < 0:
             self.update_dx[0] += self._2_step_dx0_V_under
+            ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx0] > 150:
             self.update_dx[0] -= self._2_step_dx0_V_under
+            ret = False
         else:
             ret = True
         if update_voltage[self._1_index_V_out_of_bounds_change_dx1] < 0:
             self.update_dx[1] += self._1_step_dx1_V_under
+            ret = False
         elif update_voltage[self._1_index_V_out_of_bounds_change_dx1] > 150:
             self.update_dx[1] -= self._1_step_dx1_V_under
+            ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx1] < 0:
             self.update_dx[1] += self._2_step_dx1_V_under
+            ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx1] > 150:
             self.update_dx[1] -= self._2_step_dx1_V_under
+            ret = False
         else:
             ret &= True
         return ret
