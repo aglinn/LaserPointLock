@@ -1084,30 +1084,30 @@ class UpdateManager(QObject):
         Shift dx towards bringing voltages in range.
         """
         if update_voltage[self._1_index_V_out_of_bounds_change_dx0] < 0:
-            self.update_dx[0] += self._1_step_dx0_V_under
-            ret = False
-        elif update_voltage[self._1_index_V_out_of_bounds_change_dx0] > 150:
             self.update_dx[0] -= self._1_step_dx0_V_under
             ret = False
+        elif update_voltage[self._1_index_V_out_of_bounds_change_dx0] > 150:
+            self.update_dx[0] += self._1_step_dx0_V_under
+            ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx0] < 0:
-            self.update_dx[0] += self._2_step_dx0_V_under
+            self.update_dx[0] -= self._2_step_dx0_V_under
             ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx0] > 150:
-            self.update_dx[0] -= self._2_step_dx0_V_under
+            self.update_dx[0] += self._2_step_dx0_V_under
             ret = False
         else:
             ret = True
         if update_voltage[self._1_index_V_out_of_bounds_change_dx1] < 0:
-            self.update_dx[1] += self._1_step_dx1_V_under
-            ret = False
-        elif update_voltage[self._1_index_V_out_of_bounds_change_dx1] > 150:
             self.update_dx[1] -= self._1_step_dx1_V_under
             ret = False
+        elif update_voltage[self._1_index_V_out_of_bounds_change_dx1] > 150:
+            self.update_dx[1] += self._1_step_dx1_V_under
+            ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx1] < 0:
-            self.update_dx[1] += self._2_step_dx1_V_under
+            self.update_dx[1] -= self._2_step_dx1_V_under
             ret = False
         elif update_voltage[self._2_index_V_out_of_bounds_change_dx1] > 150:
-            self.update_dx[1] -= self._2_step_dx1_V_under
+            self.update_dx[1] += self._2_step_dx1_V_under
             ret = False
         else:
             ret &= True
@@ -1125,6 +1125,7 @@ class UpdateManager(QObject):
             # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
             # so we subtract that dV restoring us to the old position.
             self.update_voltage = self.V0 - self.dV
+            print(" update voltage ", self.update_voltage)
             if self.increment_dx(self.update_voltage):
                 # No further incrementing required. Update is now in bounds.
                 break
@@ -2231,6 +2232,7 @@ class PIDUpdateManager(UpdateManager):
                 derivatives = self.calc_derivative()
                 # Add the D term:
                 try:
+                    print(self.update_dx.shape, derivatives.shape)
                     self.update_dx += self.D * derivatives
                 except TypeError:
                     self.update_dx = self.D * derivatives
@@ -2295,15 +2297,13 @@ class PIDUpdateManager(UpdateManager):
         # TODO: Fix this is broken!
         # dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update+1] -
         # TypeError: can only concatenate tuple (not "int") to tuple
-        inds_post_motor_update = np.where(self.t1 >= self.cam1_time_motors_updated)
+        inds_post_motor_update = np.asarray(np.where(self.t1 >= self.cam1_time_motors_updated)).reshape(-1)
         dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update] -
-                                             self.cam1_dx[inds_post_motor_update - 1]) /
-                                            (self.t1[inds_post_motor_update+1] - self.t1[inds_post_motor_update]),
+                                             self.cam1_dx[inds_post_motor_update - 1]),
                                             axis=0)
-        inds_post_motor_update = np.where(self.t2 >= self.cam2_time_motors_updated)
+        inds_post_motor_update = np.asarray(np.where(self.t2 >= self.cam2_time_motors_updated)).reshape(-1)
         dx_derivative_cam2_avg = np.average((self.cam2_dx[inds_post_motor_update] -
-                                             self.cam2_dx[inds_post_motor_update - 1]) /
-                                            (self.t2[inds_post_motor_update + 1] - self.t2[inds_post_motor_update]),
+                                             self.cam2_dx[inds_post_motor_update - 1]),
                                             axis=0)
         return np.concatenate([dx_derivative_cam1_avg, dx_derivative_cam2_avg], axis=0)
 
