@@ -80,7 +80,7 @@ class UpdateManager(QObject):
         self._locking = False
         self._force_unlock = False
         self.max_time_allowed_unlocked = 120  # s
-        self.calibration_matrix = None
+        self._calibration_matrix = None
         self.set_pos = None
         self.dV = None
         self.update_voltage = None
