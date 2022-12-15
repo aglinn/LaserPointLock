@@ -175,6 +175,8 @@ class UpdateManager(QObject):
         self._1_step_dx1_V_under = None
         self._2_index_V_out_of_bounds_change_dx1 = None
         self._2_step_dx1_V_under = None
+        self._max_V_attempted = 0
+        self._min_V_attempted = 0
         return
 
     @pyqtSlot()
@@ -1125,7 +1127,6 @@ class UpdateManager(QObject):
             # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
             # so we subtract that dV restoring us to the old position.
             self.update_voltage = self.V0 - self.dV
-            print(" update voltage ", self.update_voltage)
             if self.increment_dx(self.update_voltage):
                 # No further incrementing required. Update is now in bounds.
                 break
@@ -1147,7 +1148,12 @@ class UpdateManager(QObject):
         # so we subtract that dV restoring us to the old position.
         update_voltage = self.V0 - self.dV
         if np.any(update_voltage > 150) or np.any(update_voltage < 0):
-            print("was going to set a dV, ", self.dV)
+            if np.any(update_voltage > self._max_V_attempted):
+                self._max_V_attempted = np.max(update_voltage)
+                print("The max voltage update requested so far is ", self._max_V_attempted)
+            if np.any(update_voltage < self._min_V_attempted):
+                self._min_V_attempted = np.min(update_voltage)
+                print("The min voltage update requested so far is ", self._min_V_attempted)
             exception_message = ''
             for i in range(4):
                 if update_voltage[i] < 0:

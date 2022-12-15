@@ -1709,7 +1709,6 @@ class BlackflyS_EasyPySpin_QObject(QObject):
     @pyqtSlot()
     def apply_ROI(self):
         if self.ROI_bounds is not None:
-            self.timer.stop()
             # Get parameters to apply to the ROI settings of Camera
             width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
             height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
@@ -1734,10 +1733,9 @@ class BlackflyS_EasyPySpin_QObject(QObject):
             frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
             if frame_rate != self.frame_rate:
                 self.frame_rate = frame_rate
-                self.timeout_time = np.ceil((1 / self.frame_rate)*1000) # in ms
+                self.timeout_time = np.floor((1 / self.frame_rate)*1000)  # in ms
                 self.timeout_time = int(self.timeout_time)
-                self.timer.setInterval(self.timeout_time)
-            self.timer.start()
+                self.request_update_timer_interval_signal.emit(self.timeout_time)
         return
 
     @property
@@ -1745,7 +1743,7 @@ class BlackflyS_EasyPySpin_QObject(QObject):
         # xmin, xmax, ymin, ymax
         return self._ROI_bounds
 
-    @pyqtSlot()
+    @pyqtSlot(list)
     def set_ROI_bounds(self, roi: list):
         self._ROI_bounds = roi
         self.apply_ROI()
