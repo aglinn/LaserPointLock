@@ -1712,6 +1712,8 @@ class BlackflyS_EasyPySpin_QObject(QObject):
             # Get parameters to apply to the ROI settings of Camera
             width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
             height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
+            width -= (width - 8) % 4 # make this difference divisible by 4
+            height -= (height - 6) % 2
             x = int(np.round(self.ROI_bounds[2]))
             y = int(np.round(self.ROI_bounds[0]))
 

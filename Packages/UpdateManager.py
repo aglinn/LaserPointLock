@@ -195,7 +195,6 @@ class UpdateManager(QObject):
         """
         Update camera interval at which frames are grabbed
         """
-        print("starting timer from Thread, ", QThread.currentThread())
         if cam_num == 1:
             if self.cam1_timer.isActive():
                 self.cam1_timer.stop()

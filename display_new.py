@@ -138,10 +138,6 @@ class Window(QMainWindow, Ui_MainWindow):
         # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
         self.UpdateManager_thread.start(priority=6)
         self.create_UpdateManager_timers.emit()
-        print("Window thread is ", self.UpdateManager_thread.thread())
-        print("Update manager is on thread ", self.UpdateManager.thread())
-        time.sleep(0.1)
-        print("Update manager timer is on thread ", self.UpdateManager.timer.thread())
         # params for Handle threading of cameras:
         self.cam1_thread = None
         self.cam2_thread = None
