@@ -2300,7 +2300,6 @@ class PIDUpdateManager(UpdateManager):
 
     def calc_derivative(self):
         # TODO: I need at least two frames post update motors.
-        # TODO: Fix this is broken!
         # dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update+1] -
         # TypeError: can only concatenate tuple (not "int") to tuple
         inds_post_motor_update = np.asarray(np.where(self.t1 >= self.cam1_time_motors_updated)).reshape(-1)
