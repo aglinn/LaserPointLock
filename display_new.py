@@ -276,9 +276,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.request_images_timer.setSingleShot(False)
         self.timer_connected_to_cam1 = False
         self.timer_connected_to_cam2 = False
-        print("Running request images timer on thread, ", self.request_images_timer.thread())
-        print("Calling window functions on thread", QThread.currentThread())
-
         # Number of points to keep to display in the line plots:
         self.num_points_to_plot = int(self.le_num_points.text())
         return
