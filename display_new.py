@@ -262,7 +262,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.toggle_mightex_cam_settings_ui_vis(False)
         self.toggle_general_cam_settings_ui_vis(False)
         self.toggle_BOSON_cam_settings_ui_vis(False)
-        self.timer = QTimer()
+        self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.ping_UpdateManager)
         self.timer.start()
@@ -270,12 +270,12 @@ class Window(QMainWindow, Ui_MainWindow):
         self.update_pointing_plots_timer = QTimer(self)
         self.update_pointing_plots_timer.setInterval(int(np.floor(1000/self.desired_pointing_plots_updates_per_second)))
         self.update_pointing_plots_timer.setSingleShot(False)
-        self.update_pointing_plots_timer.connect(self.update_pointing_plots)
+        self.update_pointing_plots_timer.timeout.connect(self.update_pointing_plots)
         self.desired_piezo_plot_updates_per_second = 2
         self.update_piezo_plots_timer = QTimer(self)
         self.update_piezo_plots_timer.setInterval(int(np.floor(1000 / self.desired_piezo_plot_updates_per_second)))
         self.update_piezo_plots_timer.setSingleShot(False)
-        self.update_piezo_plots_timer.connect(self.update_piezo_plots)
+        self.update_piezo_plots_timer.timeout.connect(self.update_piezo_plots)
         self.request_images_timer = QTimer(self)
         self.desired_fps_image_show = 5  # Should be able to set this dynamically.
         self.request_images_timer.setInterval(int(np.floor(1000/self.desired_fps_image_show)))
