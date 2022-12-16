@@ -1311,7 +1311,7 @@ class BlackflyS_EasyPySpin(Camera,EasyPySpin.VideoCapture):
             self.cap.cam.EndAcquisition()
             self._ready_to_acquire = False
 
-            print(x,y,width,height)
+            print(x, y, width, height)
             self.cap.set_pyspin_value('OffsetX', x)
             self.cap.set_pyspin_value('OffsetY', y)
             self.cap.set_pyspin_value('Width', width)
