@@ -1310,12 +1310,26 @@ class BlackflyS_EasyPySpin(Camera,EasyPySpin.VideoCapture):
             # Must make changes while not acquiring images. So, end acquisition, apply changes, begin acquisition
             self.cap.cam.EndAcquisition()
             self._ready_to_acquire = False
-
+            x_offset = self.cap.get_pyspin_value('OffsetX')
+            y_offset = self.cap.get_pyspin_value('OffsetY')
             print(x, y, width, height)
-            self.cap.set_pyspin_value('OffsetX', x)
-            self.cap.set_pyspin_value('OffsetY', y)
-            self.cap.set_pyspin_value('Width', width)
-            self.cap.set_pyspin_value('Height', height)
+            if (x_offset == 0 and x != 0) or \
+                    (y_offset == 0 and y != 0):
+                # Then, I am trying to apply an offset and there is no offset yet, so it is better to apply the widths
+                # first, so that I can apply the appropriate offset. If full width/height, then offset can only be (0,0)
+                self.cap.set_pyspin_value('Width', width)
+                self.cap.set_pyspin_value('Height', height)
+                self.cap.set_pyspin_value('OffsetX', x)
+                self.cap.set_pyspin_value('OffsetY', y)
+            elif x_offset == x and y_offset == y:
+                self.cap.set_pyspin_value('Width', width)
+                self.cap.set_pyspin_value('Height', height)
+            elif (x_offset != 0 and x == 0) or (y_offset != 0 and y == 0):
+                # Then, I need to apply the offsets first, so that I am allowed to set full width/height
+                self.cap.set_pyspin_value('OffsetX', x)
+                self.cap.set_pyspin_value('OffsetY', y)
+                self.cap.set_pyspin_value('Width', width)
+                self.cap.set_pyspin_value('Height', height)
 
             self.startXY = [self.cap.get_pyspin_value('OffsetX'), self.cap.get_pyspin_value('OffsetY')]
             # Restart Acquisition/resetup camera to acquire images:
