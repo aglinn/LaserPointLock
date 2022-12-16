@@ -266,8 +266,18 @@ class Window(QMainWindow, Ui_MainWindow):
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.ping_UpdateManager)
         self.timer.start()
+        self.desired_pointing_plots_updates_per_second = 2
+        self.update_pointing_plots_timer = QTimer(self)
+        self.update_pointing_plots_timer.setInterval(int(np.floor(1000/self.desired_pointing_plots_updates_per_second)))
+        self.update_pointing_plots_timer.setSingleShot(False)
+        self.update_pointing_plots_timer.connect(self.update_pointing_plots)
+        self.desired_piezo_plot_updates_per_second = 2
+        self.update_piezo_plots_timer = QTimer(self)
+        self.update_piezo_plots_timer.setInterval(int(np.floor(1000 / self.desired_piezo_plot_updates_per_second)))
+        self.update_piezo_plots_timer.setSingleShot(False)
+        self.update_piezo_plots_timer.connect(self.update_piezo_plots)
         self.request_images_timer = QTimer(self)
-        self.desired_fps_image_show = 10  # Should be able to set this dynamically.
+        self.desired_fps_image_show = 5  # Should be able to set this dynamically.
         self.request_images_timer.setInterval(int(np.floor(1000/self.desired_fps_image_show)))
         self.request_images_timer.setSingleShot(False)
         self.timer_connected_to_cam1 = False
@@ -347,9 +357,9 @@ class Window(QMainWindow, Ui_MainWindow):
             self.set_D.connect(self.UpdateManager.set_D)
         # Back to GUI from Update Manager.
         self.UpdateManager.update_gui_img_signal.connect(self.update_cam_img)
-        self.UpdateManager.update_gui_cam_com_signal.connect(self.update_cam_com_display)
+        self.UpdateManager.update_gui_cam_com_signal.connect(self.update_cam_com_data)
         self.UpdateManager.update_gui_new_calibration_matrix_signal.connect(self.handle_calibration_matrix_update)
-        self.UpdateManager.update_gui_piezo_voltage_signal.connect(self.update_gui_with_piezo_voltages)
+        self.UpdateManager.update_gui_piezo_voltage_signal.connect(self.update_piezo_data)
         self.UpdateManager.update_gui_locked_state.connect(self.confirm_lock_state)
         self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
         self.UpdateManager.update_gui_ping.connect(self.report_UpdateManager_ping)
@@ -491,21 +501,32 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     @pyqtSlot(int, int, float)
-    def update_gui_with_piezo_voltages(self, motor_num: int, channel_num: int, voltage: float):
+    def update_piezo_data(self, motor_num: int, channel_num: int, voltage: float):
         """
-        Update the gui with newly set voltages. update based on motor_num and motor_channel.
+        Update the piezo voltage data with new voltages.
         """
-        if not self.suppress_pointing_display:
+        if not self.suppress_piezzo_display:
             if motor_num == 1:
                 if channel_num == 1:
-                    self.motor1_x = self.addToPlot(self.motor1_x, self.motor1_x_plot, voltage, maxSize=self.num_points_to_plot)
+                    self.motor1_x = self.add_point_to_data(self.motor1_x, voltage, maxSize=self.num_points_to_plot)
                 elif channel_num == 2:
-                    self.motor1_y = self.addToPlot(self.motor1_y, self.motor1_y_plot, voltage, maxSize=self.num_points_to_plot)
+                    self.motor1_y = self.add_point_to_data(self.motor1_y, voltage, maxSize=self.num_points_to_plot)
             elif motor_num == 2:
                 if channel_num == 1:
-                    self.motor2_x = self.addToPlot(self.motor2_x, self.motor2_x_plot, voltage, maxSize=self.num_points_to_plot)
+                    self.motor2_x = self.add_point_to_data(self.motor2_x, voltage, maxSize=self.num_points_to_plot)
                 elif channel_num == 2:
-                    self.motor2_y = self.addToPlot(self.motor2_y, self.motor2_y_plot, voltage, maxSize=self.num_points_to_plot)
+                    self.motor2_y = self.add_point_to_data(self.motor2_y, voltage, maxSize=self.num_points_to_plot)
+        return
+
+    @pyqtSlot()
+    def update_piezo_plots(self):
+        """
+        plot the voltages.
+        """
+        self.motor1_x_plot.setData(self.motor1_x)
+        self.motor1_y_plot.setData(self.motor1_y)
+        self.motor2_x_plot.setData(self.motor2_x)
+        self.motor2_y_plot.setData(self.motor2_y)
         return
 
     @pyqtSlot(np.ndarray)
@@ -725,9 +746,9 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     @staticmethod
-    def addToPlot(data, plot, point, maxSize=100):
+    def add_point_to_data(data, point, maxSize=100):
         """
-        Scrolling plot with a maximum size
+        add data point to data while maintaining maximum size of data.
         """
         if data.size == maxSize:
             data = np.roll(data, -1)
@@ -738,7 +759,6 @@ class Window(QMainWindow, Ui_MainWindow):
             start_ind = data.size - maxSize + 1
             data = data[start_ind:]
             data = np.append(data, point)
-        plot.setData(data)
         return data
 
     def find_cameras(self):
@@ -925,6 +945,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.timer_connected_to_cam1 = True
             if not self.request_images_timer.isActive():
                 self.request_images_timer.start()
+            if not self.update_pointing_plots_timer.isActive():
+                self.update_pointing_plots_timer.start()
             # To camera From Update Manager
             self.UpdateManager.cam1_timer.timeout.connect(self.cam1.get_frame)
             if self.UpdateManager.is_PID:
@@ -962,6 +984,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.timer_connected_to_cam2 = True
             if not self.request_images_timer.isActive():
                 self.request_images_timer.start()
+            if not self.update_pointing_plots_timer.isActive():
+                self.update_pointing_plots_timer.start()
             # To camera From Update Manager
             self.UpdateManager.cam2_timer.timeout.connect(self.cam2.get_frame)
             if self.UpdateManager.is_PID:
@@ -1096,8 +1120,6 @@ class Window(QMainWindow, Ui_MainWindow):
         Update the img displayed in cam1 image viewer object.
         """
         # TODO: Do this faster?
-        # TODO: Instead of checking if image display is suppressed, if image display suppressed, then destroy
-        # the connection to this function in the first place. Same for other suppressed plottings.
         if not self.suppress_image_display:
             if cam_num == 1:
                 if self.cam1_reset:
@@ -1109,6 +1131,11 @@ class Window(QMainWindow, Ui_MainWindow):
                                              pos=self.cam1_r0)
                 # Update max value of camera image:
                 self.le_cam1_max.setText(str(np.max(img)))
+                # Update COM crosshairs on the image:
+                self.cam1_x_line.setPos(self.cam1_x[-1])
+                self.cam1_y_line.setPos(self.cam1_y[-1])
+                self.cam1_x_line.setVisible(True)
+                self.cam1_y_line.setVisible(True)
             elif cam_num == 2:
                 if self.cam2_reset:
                     self.gv_camera2.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False,
@@ -1119,43 +1146,52 @@ class Window(QMainWindow, Ui_MainWindow):
                                              pos=self.cam2_r0)
                 # Update max value of camera image:
                 self.le_cam2_max.setText(str(np.max(img)))
+                # Update COM crosshairs on the image:
+                self.cam2_x_line.setPos(self.cam2_x[-1])
+                self.cam2_y_line.setPos(self.cam2_y[-1])
+                self.cam2_x_line.setVisible(True)
+                self.cam2_y_line.setVisible(True)
         return
 
     @pyqtSlot(int, np.ndarray)
-    def update_cam_com_display(self, cam_num: int, cam_com: np.ndarray):
+    def update_cam_com_data(self, cam_num: int, cam_com: np.ndarray):
         """
-        Set the crosshairs for pointing on image display and also plot the pointing information as time series.
+        Keep up with COM data sent from Update Manager, storing only a max num of points.
         """
         if cam_num == 1:
-            if not self.suppress_image_display:
-                # Update COM crosshairs on the image:
-                self.cam1_x_line.setPos(cam_com[0])
-                self.cam1_y_line.setPos(cam_com[1])
-                self.cam1_x_line.setVisible(True)
-                self.cam1_y_line.setVisible(True)
-
-            # Update the pointing position plots:
-            if not self.suppress_pointing_display:
-                self.cam1_x = self.addToPlot(self.cam1_x, self.cam1_x_plot, cam_com[0],
-                                             maxSize=self.num_points_to_plot)
-                self.cam1_y = self.addToPlot(self.cam1_y, self.cam1_y_plot, cam_com[1],
-                                             maxSize=self.num_points_to_plot)
-                self.update_gui_std(1)
+            # Update the COM data
+            self.cam1_x = self.add_point_to_data(self.cam1_x, cam_com[0], maxSize=self.num_points_to_plot)
+            self.cam1_y = self.add_point_to_data(self.cam1_y, cam_com[1], maxSize=self.num_points_to_plot)
         elif cam_num == 2:
-            if not self.suppress_image_display:
-                # Update COM crosshairs on the image:
-                self.cam2_x_line.setPos(cam_com[0])
-                self.cam2_y_line.setPos(cam_com[1])
-                self.cam2_x_line.setVisible(True)
-                self.cam2_y_line.setVisible(True)
+            # Update the COM data
+            self.cam2_x = self.add_point_to_data(self.cam2_x, cam_com[0], maxSize=self.num_points_to_plot)
+            self.cam2_y = self.add_point_to_data(self.cam2_y, cam_com[1], maxSize=self.num_points_to_plot)
+        return
 
-            # Update the pointing position plots:
+    @pyqtSlot()
+    def update_pointing_plots(self):
+        """
+        Update the pointing plots and Standard deviations.
+        """
+        # Always display std
+        if self.cam1 is not None and self.cam2 is not None:
+            self.update_gui_std(1)
+            self.update_gui_std(2)
             if not self.suppress_pointing_display:
-                self.cam2_x = self.addToPlot(self.cam2_x, self.cam2_x_plot, cam_com[0],
-                                             maxSize=self.num_points_to_plot)
-                self.cam2_y = self.addToPlot(self.cam2_y, self.cam2_y_plot, cam_com[1],
-                                             maxSize=self.num_points_to_plot)
-                self.update_gui_std(2)
+                self.cam1_x_plot.setData(self.cam1_x)
+                self.cam1_y_plot.setData(self.cam1_y)
+                self.cam2_x_plot.setData(self.cam2_x)
+                self.cam2_y_plot.setData(self.cam2_y)
+        elif self.cam1 is not None:
+            self.update_gui_std(1)
+            if not self.suppress_pointing_display:
+                self.cam1_x_plot.setData(self.cam1_x)
+                self.cam1_y_plot.setData(self.cam1_y)
+        elif self.cam2 is not None:
+            self.update_gui_std(2)
+            if not self.suppress_pointing_display:
+                self.cam2_x_plot.setData(self.cam2_x)
+                self.cam2_y_plot.setData(self.cam2_y)
         return
 
     def convert_img(self, img):
@@ -1321,7 +1357,6 @@ class Window(QMainWindow, Ui_MainWindow):
         Tell the update manager to connect the motors.
         """
         if self.cb_motors_1.currentData(0) != self.cb_motors_2.currentData(0):
-            # Garrison Updated to add "0" insideself.cb_motors_1.currentData(0)
             if "MDT693B" in self.cb_motors_1.currentData(0):
                 self.connect_motor_signal.emit(1, self.cb_motors_1.currentData(0))
             else:
@@ -1368,17 +1403,10 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.ROICam2_Unlock.setVisible(False)
                 self.ROICam1_Lock.setVisible(True)
                 self.ROICam2_Lock.setVisible(True)
-                """if self.PID:
-                    # TODO: Need to implement this.
-                    self.UpdateManager._integral_ti = np.zeros(4)
-                    if not UpdateManager.P == self.PID['P']:
-                        UpdateManager.P = self.PID['P']
-                    if not UpdateManager.TI == self.PID['Ti']:
-                        UpdateManager.TI = self.PID['Ti']
-                    if not UpdateManager.TD == self.PID['Td']:
-                        UpdateManager.TD = self.PID['Td']"""
                 # Tell UpdateManager to lock.
                 self.toggle_UpdateManager_lock_signal.emit(True)
+                # Start the timer for updating piezo display, if suppress piezo display not checked.
+                self.toggle_piezo_display()
             else:
                 self.btn_lock.toggle()
         else:
@@ -1877,18 +1905,19 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         if self.suppress_image_display:
             self.suppress_image_display = False
-            if self.request_images_timer.isActive():
-                self.request_images_timer.stop()
-        else:
-            self.suppress_image_display = True
             if not self.request_images_timer.isActive():
                 self.request_images_timer.start()
+        else:
+            self.suppress_image_display = True
+            if self.request_images_timer.isActive():
+                self.request_images_timer.stop()
         return
 
     @pyqtSlot()
     def toggle_pointing_display(self):
         """
-        turn on/off whether GUI updates pointing line plots.
+        turn on/off whether GUI updates pointing line plots. never stop the timer so that standard deviation always
+        updates.
         """
         if self.suppress_pointing_display:
             self.suppress_pointing_display = False
@@ -1899,6 +1928,10 @@ class Window(QMainWindow, Ui_MainWindow):
     @ pyqtSlot()
     def toggle_piezo_display(self):
         self.suppress_piezzo_display = self.cb_suppress_piezzo_update.isChecked()
+        if self.suppress_piezzo_display and self.update_piezo_plots_timer.isActive():
+            self.update_piezo_plots_timer.stop()
+        elif not self.suppress_piezzo_display and not self.update_piezo_plots_timer.isActive():
+            self.update_piezo_plots_timer.start()
         return
 
     @pyqtSlot()
