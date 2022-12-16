@@ -286,9 +286,8 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(float)
     def report_UpdateManager_ping(self, ping_time: float):
-        """if ping_time > 0.005:
-            print(ping_time, " is how long the Update Manager took to receive a signal to enter its slot.")"""
-        pass
+        if ping_time > 0.005:
+            print(ping_time, " is how long the Update Manager took to receive a signal to enter its slot.")
         return
 
     def connectSignalsSlots(self):
@@ -1717,13 +1716,8 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.cam1_ROI_set:
             self.set_cam1_full_view_signal.emit()
         else:
-            """ymin, xmin = self.ROICam1_crop.pos()
+            ymin, xmin = self.ROICam1_crop.pos()
             height, width = self.ROICam1_crop.size()
-            ymax = ymin + height
-            xmax = xmin + width
-            bounds = [xmin, xmax, ymin, ymax]"""
-            xmin, ymin = self.ROICam1_crop.pos()
-            width, height = self.ROICam1_crop.size()
             ymax = ymin + height
             xmax = xmin + width
             bounds = [xmin, xmax, ymin, ymax]
@@ -1757,11 +1751,6 @@ class Window(QMainWindow, Ui_MainWindow):
             ymax = ymin + height
             xmax = xmin + width
             bounds = [xmin, xmax, ymin, ymax]
-            """xmin, ymin = self.ROICam2_crop.pos()
-            width, height = self.ROICam2_crop.size()
-            ymax = ymin + height
-            xmax = xmin + width
-            bounds = [xmin, xmax, ymin, ymax]"""
             # Both updates the bounds of the ROI and immediately applies them.
             self.set_cam2_ROI_bounds_signal.emit(bounds)
         return

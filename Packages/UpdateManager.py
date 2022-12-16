@@ -1842,6 +1842,7 @@ class UpdateManager(QObject):
             self._r0[0:2] = r0
         elif cam_num == 2:
             self._r0[2:] = r0
+        print("Updating camera offset, r0 now is ", self._r0)
         return
 
     @pyqtSlot(int, float)
@@ -1894,8 +1895,8 @@ class UpdateManager(QObject):
             cv2.subtract(img, self.img1_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
             if com_x is not None:
-                com_x += self._r0[0]
-                com_y += self._r0[1]
+                com_x += self._r0[1]
+                com_y += self._r0[0]
                 self.cam1_dx = np.asarray([com_x, com_y]) - self.set_pos[0:2]
                 self.t1 = timestamp
                 self.cam_1_com = np.asarray([com_x, com_y])
@@ -1907,8 +1908,8 @@ class UpdateManager(QObject):
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
             if com_x is not None:
-                com_x += self._r0[2]
-                com_y += self._r0[3]
+                com_x += self._r0[3]
+                com_y += self._r0[2]
                 self.cam2_dx = np.asarray([com_x, com_y]) - self.set_pos[2:]
                 self.t2 = timestamp
                 self.cam_2_com = np.asarray([com_x, com_y])
