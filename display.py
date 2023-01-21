@@ -43,7 +43,7 @@ if __name__ == "__main__":
     from serial.tools import list_ports
     # from Packages.UpdateManager import UpdateManager
     from Packages.UpdateManager import PIDUpdateManager as UpdateManager
-    from Packages.UpdateManager import InsufficientInformation, update_out_of_bounds
+    from Packages.UpdateManager import InsufficientInformation, UpdateOutOfBounds
     import copy
     import pickle as pkl
     import gc
@@ -1156,7 +1156,7 @@ if __name__ == "__main__":
                 update_voltage = UpdateManager.get_update()
                 # update voltages
                 #print(update_voltage)
-            except update_out_of_bounds:
+            except UpdateOutOfBounds:
                 # This section of code keeps the update voltage in bounds, by setting anything out of bounds to the
                 # limit of the bounds. Additionally, it tracks the number of times that the voltages went out of
                 # bounds in less than 1 minute since the last out of bounds (i.e. if it goes out of bounds once but

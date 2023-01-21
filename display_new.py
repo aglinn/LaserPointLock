@@ -1,22 +1,15 @@
+# TODO: Fix the locking mechanism to allow unlocking by clicking the lock button again!!
 # TODO: When reporting locked/unlocked update the lock ROI symbols
-# TODO: 1 Implement PID
 # TODO: 1 Finish overhauling code to allow for operation with IR Cameras.
 # TODO: 2 Try to shutter the TOPAS if the BOSON FPAs get too hot. Can I even control the TOPAS shutter?
-# TODO: 2 try the other algorithm from the paper I found.
 # TODO: 2 Make the GUI compatible with multiple screen formats.
 # TODO: 2 Log the information on Grafana.
-# TODO: 3 Move all print statements to the GUI.
 # TODO: 2 Add GUI ability to set the averager state of the BOSON camera, and power on defaults.
 # TODO: 3 It would be nice to allow the user to switch between IR and visibile system, which would require disconnecting
 #  devices and reinitializing the cam_list.
 # TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
 #  parallel.
 # TODO: I need to make sure that the older piezzo controllers still work with this code!
-# TODO: Delete the align toggle button!
-# TODO: Applying an ROI to the cameras fails.
-# TODO: Connecting 2 cameras is failing, although connecting either camera in either camera view works fine. I do not
-# think that I am simply overloading the GUI event loop, because suppressing image display does not update COM plots
-# correctly??
 from PyQt5.QtWidgets import QMainWindow
 from Packages.pointing_ui import Ui_MainWindow
 
@@ -30,6 +23,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread, QTimer, QMetaObject, Qt, Q_ARG
 from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
 from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
+from Packages.camera import Boson_QObject as Boson
 from Packages.motors import MDT693A_Motor
 from Packages.motors import MDT693B_Motor
 from Packages.CameraThread import CameraThread
@@ -38,7 +32,7 @@ from tkinter import filedialog
 from serial.tools import list_ports
 from Packages.UpdateManager import PIDUpdateManager as UpdateManager
 # from Packages.UpdateManager import PIDUpdateManager as UpdateManager
-from Packages.UpdateManager import InsufficientInformation, update_out_of_bounds
+from Packages.UpdateManager import InsufficientInformation, UpdateOutOfBounds
 import copy
 import pickle as pkl
 import gc
@@ -262,10 +256,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.toggle_mightex_cam_settings_ui_vis(False)
         self.toggle_general_cam_settings_ui_vis(False)
         self.toggle_BOSON_cam_settings_ui_vis(False)
-        self.timer = QTimer(self)
+        # The below is used to see if the Update Manager is becoming bogged down. Uncomment to test.
+        """self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.ping_UpdateManager)
-        self.timer.start()
+        self.timer.start()"""
         self.desired_pointing_plots_updates_per_second = 2
         self.update_pointing_plots_timer = QTimer(self)
         self.update_pointing_plots_timer.setInterval(int(np.floor(1000/self.desired_pointing_plots_updates_per_second)))
@@ -350,7 +345,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.close_UpdateManager.connect(self.UpdateManager.close)
         self.request_UpdateManager_ping.connect(self.UpdateManager.return_ping)
         self.create_UpdateManager_timers.connect(self.UpdateManager.create_timers)
-        self.request_images.connect(self.UpdateManager.set_report_imgae_to_gui)
+        self.request_images.connect(self.UpdateManager.set_report_image_to_gui)
         if self.UpdateManager.is_PID:
             self.set_P.connect(self.UpdateManager.set_P)
             self.set_I.connect(self.UpdateManager.set_I)
@@ -378,13 +373,15 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
         # Unpack the inputs
-        mot1_x_voltage, mot1_y_voltage, mot2_x_voltage, mot2_y_voltage = motor_voltages
-        mot1_x_cam1_x, mot1_y_cam1_x, mot2_x_cam1_x, mot2_y_cam1_x, mot1_x_cam1_y, mot1_y_cam1_y, mot2_x_cam1_y, \
-        mot2_y_cam1_y, mot1_x_cam2_x, mot1_y_cam2_x, mot2_x_cam2_x, mot2_y_cam2_x, mot1_x_cam2_y, mot1_y_cam2_y, \
-        mot2_x_cam2_y, mot2_y_cam2_y = positions
-        p_mot1_x_cam1_x, p_mot1_y_cam1_x, p_mot2_x_cam1_x, p_mot2_y_cam1_x, p_mot1_x_cam1_y, p_mot1_y_cam1_y, \
-        p_mot2_x_cam1_y, p_mot2_y_cam1_y, p_mot1_x_cam2_x, p_mot1_y_cam2_x, p_mot2_x_cam2_x, p_mot2_y_cam2_x, \
-        p_mot1_x_cam2_y, p_mot1_y_cam2_y, p_mot2_x_cam2_y, p_mot2_y_cam2_y = fits
+        mot1_x_voltage, mot1_y_voltage, mot1_z_voltage, mot2_x_voltage, mot2_y_voltage, mot2_z_voltage = motor_voltages
+        mot1_x_cam1_x, mot1_y_cam1_x, mot1_z_cam1_x, mot2_x_cam1_x, mot2_y_cam1_x, mot2_z_cam1_x, mot1_x_cam1_y, \
+        mot1_y_cam1_y, mot1_z_cam1_y, mot2_x_cam1_y, mot2_y_cam1_y, mot2_z_cam1_y, mot1_x_cam2_x, mot1_y_cam2_x, \
+        mot1_z_cam2_x, mot2_x_cam2_x, mot2_y_cam2_x, mot2_z_cam2_x, mot1_x_cam2_y, mot1_y_cam2_y, mot1_z_cam2_y, \
+        mot2_x_cam2_y, mot2_y_cam2_y, mot2_z_cam2_y = positions
+        p_mot1_x_cam1_x, p_mot1_y_cam1_x, p_mot1_z_cam1_x, p_mot2_x_cam1_x, p_mot2_y_cam1_x, p_mot2_z_cam1_x, \
+        p_mot1_x_cam1_y, p_mot1_y_cam1_y, p_mot1_z_cam1_y, p_mot2_x_cam1_y, p_mot2_y_cam1_y, p_mot2_z_cam1_y, \
+        p_mot1_x_cam2_x, p_mot1_y_cam2_x, p_mot1_z_cam2_x, p_mot2_x_cam2_x, p_mot2_y_cam2_x, p_mot2_z_cam2_x, \
+        p_mot1_x_cam2_y, p_mot1_y_cam2_y, p_mot1_z_cam2_y, p_mot2_x_cam2_y, p_mot2_y_cam2_y, p_mot2_z_cam2_y = fits
 
         # First plot the fits.
         Voltage_plot = np.linspace(0, 150, 100)
@@ -458,8 +455,48 @@ class Window(QMainWindow, Ui_MainWindow):
         ax[1, 3].tick_params(axis='both', which='major', labelsize=6)
         ax[2, 3].tick_params(axis='both', which='major', labelsize=6)
         ax[3, 3].tick_params(axis='both', which='major', labelsize=6)
-        # Show the figure
+
+        # show the slow_matrix.
+        # Fits
+        fig2, ax2 = plt.subplts(2, 4, dpi=200, gridspec_kw={"hspace": 0.5, "wspace": 0.3})
+        ax[0, 0].plot(Voltage_plot, p_mot1_z_cam1_x[0] * Voltage_plot + p_mot1_z_cam1_x[1], linewidth=3)
+        ax[1, 0].plot(Voltage_plot, p_mot2_z_cam1_x[0] * Voltage_plot + p_mot2_z_cam1_x[1], linewidth=3)
+        ax[0, 1].plot(Voltage_plot, p_mot1_z_cam1_y[0] * Voltage_plot + p_mot1_z_cam1_y[1], linewidth=3)
+        ax[1, 1].plot(Voltage_plot, p_mot2_z_cam1_y[0] * Voltage_plot + p_mot2_z_cam1_y[1], linewidth=3)
+        ax[0, 2].plot(Voltage_plot, p_mot1_z_cam2_x[0] * Voltage_plot + p_mot1_z_cam2_x[1], linewidth=3)
+        ax[1, 2].plot(Voltage_plot, p_mot2_z_cam2_x[0] * Voltage_plot + p_mot2_z_cam2_x[1], linewidth=3)
+        ax[0, 3].plot(Voltage_plot, p_mot1_z_cam2_y[0] * Voltage_plot + p_mot1_z_cam2_y[1], linewidth=3)
+        ax[1, 3].plot(Voltage_plot, p_mot2_z_cam2_y[0] * Voltage_plot + p_mot2_z_cam2_y[1], linewidth=3)
+        # Data
+        ax[0, 0].plot(mot1_z_voltage, mot1_z_cam1_x, 'r', marker='x', markersize=2)
+        ax[1, 0].plot(mot2_z_voltage, mot2_z_cam1_x, 'r', marker='x', markersize=2)
+        ax[0, 1].plot(mot1_z_voltage, mot1_z_cam1_y, 'r', marker='x', markersize=2)
+        ax[1, 1].plot(mot2_z_voltage, mot2_z_cam1_y, 'r', marker='x', markersize=2)
+        ax[0, 2].plot(mot1_z_voltage, mot1_z_cam2_x, 'r', marker='x', markersize=2)
+        ax[1, 2].plot(mot2_z_voltage, mot2_z_cam2_x, 'r', marker='x', markersize=2)
+        ax[0, 3].plot(mot1_z_voltage, mot1_z_cam2_y, 'r', marker='x', markersize=2)
+        ax[1, 3].plot(mot2_z_voltage, mot2_z_cam2_y, 'r', marker='x', markersize=2)
+        # Label the plots
+        ax[0, 0].set_title("mot 1 z cam 1 x", fontsize=6)
+        ax[1, 0].set_title("mot 2 z cam 1 x", fontsize=6)
+        ax[0, 1].set_title("mot 1 z cam 1 y", fontsize=6)
+        ax[1, 1].set_title("mot 2 z cam 1 y", fontsize=6)
+        ax[0, 2].set_title("mot 1 z cam 2 x", fontsize=6)
+        ax[1, 2].set_title("mot 2 z cam 2 x", fontsize=6)
+        ax[0, 3].set_title("mot 1 z cam 2 y", fontsize=6)
+        ax[1, 3].set_title("mot 2 z cam 2 y", fontsize=6)
+        # Adjust the tick parameters for better viewing size
+        ax[0, 0].tick_params(axis='both', which='major', labelsize=6)
+        ax[1, 0].tick_params(axis='both', which='major', labelsize=6)
+        ax[0, 1].tick_params(axis='both', which='major', labelsize=6)
+        ax[1, 1].tick_params(axis='both', which='major', labelsize=6)
+        ax[0, 2].tick_params(axis='both', which='major', labelsize=6)
+        ax[1, 2].tick_params(axis='both', which='major', labelsize=6)
+        ax[0, 3].tick_params(axis='both', which='major', labelsize=6)
+        ax[1, 3].tick_params(axis='both', which='major', labelsize=6)
+        # Show the figures
         fig.show()
+        fig2.show()
         return
 
     @pyqtSlot(dict)
@@ -816,10 +853,10 @@ class Window(QMainWindow, Ui_MainWindow):
                 raise DeviceNotFoundError("No visible cameras found.")
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             # Find the Boson Cameras
-            pass
-            # TODO: Figure out how to correctly connect two BOSONs.
+            num_cameras = 0
+            # TODO: Test
             # Boson VID and PID:
-            """VID = 0x09CB
+            VID = 0x09CB
             PID = 0x4007
             device_list = list_ports.grep(r'FLIR Control')
             port_list = []
@@ -828,7 +865,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 if device.vid == VID and device.pid == PID:
                     port = device.device
                     port_list.append(port)
-            cam_list = []
             device_id = None
             for boson_port in port_list:
                 c = BosonCamera(port=boson_port, device_id=device_id)
@@ -837,10 +873,21 @@ class Window(QMainWindow, Ui_MainWindow):
                 c.do_ffc()
                 while ffc_state == 0:
                     ffc_state = c.get_ffc_state()
-                cam_list.append(c)
-                cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+                cam_key = 'boson: ' + c.serial_no
+                self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
+                self.cam_init_dict[cam_key] = [c.port, c.device_id]
+                c.close()
+                del c
                 device_id = 1
-            """
+                num_cameras += 1
+                try:
+                    c
+                    print("Well the camera still exists after I tried to close it in find_cameras()")
+                except NameError:
+                    print("Good, the cameras do close after I find them in find_cameras.")
+            # Are there cameras?
+            if num_cameras == 0:
+                raise DeviceNotFoundError("No IR cameras found.")
         else:
             print("Choose a system!")
         # Update GUI List with available cameras
@@ -1027,6 +1074,7 @@ class Window(QMainWindow, Ui_MainWindow):
         # TODO: Known bug! This function was designed to be called on cam_object deletion, but it is not being called at
             that time. Instead, the user needs to hit update again, and the try/except statements call this. This does
             allow the user to do the desired camera swap, but requires a second attempt—buggy.
+        # TODO: Confirm that this is fixed?
         """
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             if cam_number == 1:
@@ -1042,20 +1090,17 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.update_UpdateManager_num_cameras_connected_signal.emit(1)
-                # Apply the settings directly before starting thread and thread event loop
-                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam1.set_gain(self.cam1_settings_to_set['gain'])
-                self.cam1.set_exposure_time(self.cam1_settings_to_set['exposure'])
                 # move camera 1 object to camera 1 thread
                 self.cam1.moveToThread(self.cam1_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.cam1.connect_signals()
                 self.connect_camera_signals(1)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.set_cam1_gain_signal.emit(self.cam1_settings_to_set['gain'])
+                # Starts infinite frame grabbing loop.
+                self.set_cam1_exposure_signal.emit(self.cam1_settings_to_set['exposure'])
                 # Setup camera view.
                 self.cam1_reset = True
                 self.resetHist(self.gv_camera1)
-                # start the infinite event loop around acquiring images:
-                self.cam1.timer.start()
             elif cam_number == 2:
                 key = self.cam2_to_connect
                 if 'fly' in key:
@@ -1069,23 +1114,64 @@ class Window(QMainWindow, Ui_MainWindow):
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.update_UpdateManager_num_cameras_connected_signal.emit(1)
-                # Apply the settings directly before starting thread and thread event loop
-                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
-                self.cam2.set_gain(self.cam2_settings_to_set['gain'])
-                self.cam2.set_exposure_time(self.cam2_settings_to_set['exposure'])
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.cam2.connect_signals()
                 self.connect_camera_signals(2)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.set_cam2_gain_signal.emit(self.cam2_settings_to_set['gain'])
+                # Starts infinite frame grabbing loop.
+                self.set_cam2_exposure_signal.emit(self.cam2_settings_to_set['exposure'])
                 # Setup camera view.
                 self.cam2_reset = True
                 self.resetHist(self.gv_camera2)
-                # start the infinite event loop around acquiring images:
-                self.cam2.timer.start()
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            # TODO: Update this correctly for the Boson
-            pass
+            # TODO: Test for Boson
+            if cam_number == 1:
+                key = self.cam1_to_connect
+                if 'boson' in key:
+                    self.cam1 = Boson(self.cam_init_dict[key][0], device_id=self.cam_init_dict[key][1])
+                    self.cam1.update_frame()
+                    if self.cam1.serial_no not in str(key):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
+                # move camera 1 object to camera 1 thread
+                self.cam1.moveToThread(self.cam1_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(1)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.set_cam1_gain_signal.emit(self.cam1_settings_to_set['gain'])
+                # Starts infinite frame grabbing loop.
+                self.set_cam1_exposure_signal.emit(self.cam1_settings_to_set['exposure'])
+                # Setup camera view.
+                self.cam1_reset = True
+                self.resetHist(self.gv_camera1, max=65535)
+            elif cam_number == 2:
+                key = self.cam2_to_connect
+                if 'fly' in key:
+                    self.cam2 = BlackflyS(self.cam_init_dict[key])
+                    if self.cam2.serial_no not in str(self.cam_init_dict[key]):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                elif "Mightex" in key:
+                    if self.mightex_engine is None:
+                        self.mightex_engine = MightexEngine()
+                    self.cam2 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
+                # move camera 2 object to camera 2 thread
+                self.cam2.moveToThread(self.cam2_thread)
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(2)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                self.set_cam2_gain_signal.emit(self.cam2_settings_to_set['gain'])
+                # Starts infinite frame grabbing loop.
+                self.set_cam2_exposure_signal.emit(self.cam2_settings_to_set['exposure'])
+                # Setup camera view.
+                self.cam2_reset = True
+                self.resetHist(self.gv_camera2, max=65535)
         else:
             print("Choose a Point Lock system first!")
         return
@@ -1119,7 +1205,6 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Update the img displayed in cam1 image viewer object.
         """
-        # TODO: Do this faster?
         if not self.suppress_image_display:
             if cam_num == 1:
                 if self.cam1_reset:
@@ -1201,7 +1286,7 @@ class Window(QMainWindow, Ui_MainWindow):
     @pyqtSlot()
     def update_cam1_settings(self):
         """
-        This function updates the camera settings on camera thread 1. Including selecting the camera on thread 1.
+        This function updates the camera settings on camera thread 1. Including selecting the camera on cam thread 1.
         """
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             # Grab inputs from the GUI
@@ -1233,7 +1318,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1.moveToThread(self.cam1_thread)
                 print("Camera 1 lives in thread: ", self.cam1.thread())
                 # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.cam1.connect_signals()
                 self.connect_camera_signals(1)
                 # Start the threads event loop
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
@@ -1264,13 +1348,64 @@ class Window(QMainWindow, Ui_MainWindow):
                     # Otherwise, I do not know why this is happening. So, raise the error as is.
                     raise RuntimeError(str(e))
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            # TODO: Update this correctly for the Boson
-            """cam1_index = int(self.cb_cam1.currentIndex())
-            self.cam1_threshold = float(self.le_cam1_threshold.text())
-            self.cam_list[cam1_index].update_frame()
-            self.cam1_reset = True
-            self.resetHist(self.gv_camera1, max=65536)"""
-            pass
+            # TODO: Test
+            # Grab inputs from the GUI
+            # TODO: Is Uin16 the right type for the Boson?
+            cam1_threshold = np.round(float(self.le_cam1_threshold.text())).astype('uint16')
+            self.le_cam1_threshold.setText(str(cam1_threshold))
+            self.set_UpdateManager_camera_threshold_signal.emit(1, cam1_threshold)
+
+            # Apply all updates:
+            if self.cam1_thread is None:  # first time this function is called only.
+                self.cam1_thread = QThread()
+                self.cam1_thread.finished.connect(lambda: print("Camera 1 thread has finished."))
+                self.cam1_thread.started.connect(lambda: print("Camera 1 thread has started."))
+                # Instantiate a camera object as cam1.
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                if 'boson' in key or 'Boson' in key:
+                    self.cam1 = Boson(self.cam_init_dict[key][0], device_id=self.cam_init_dict[key][1])
+                    self.cam1.update_frame()
+                    if self.cam1.serial_no not in str(key):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
+                # move camera 1 object to camera 1 thread
+                self.cam1.moveToThread(self.cam1_thread)
+                print("Camera 1 lives in thread: ", self.cam1.thread())
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(1)
+                # Start the thread's event loop
+                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
+                self.cam1_thread.start(priority=4)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                # self.set_cam1_gain_signal.emit(cam1_gain)
+                # Setting exposure begins frame grabbing.
+                # self.set_cam1_exposure_signal.emit(cam1_exp_time)
+                # This call really just starts Update Managers frame grab timer and tells Update Manager what exposure
+                # time to use in I of PID.
+                self.set_cam1_exposure_signal.emit(1/60.0)
+                # Setup camera view.
+                self.cam1_reset = True
+                self.resetHist(self.gv_camera1, max=65535)
+            else:  # Update settings once cam1 exists and cam1_thread is running
+                key = str(self.cam_model.item(self.cb_cam1.currentIndex(), 0).text())
+                self.cam1_settings_to_set = {'exposure': 1/60.0, 'gain': 1}
+                self.cam1_to_connect = key
+                try:
+                    if self.cam1.serial_no not in str(self.cam_init_dict[key]):
+                        # User wants to change the camera on cam1_thread. So, do that.
+                        self.close_cam1_signal.emit(False)  # False flag does not close the thread.
+                        return
+                    self.set_cam1_exposure_signal.emit(1/60.0)
+                    self.set_cam1_gain_signal.emit(1)
+                except RuntimeError as e:
+                    if 'has been deleted' in str(e):
+                        # This error is being thrown, because camera1 does not currently exist. So, call the reconnect
+                        # Camera function, which should reconnect the camera to connect with setttigns to set.
+                        self.reconnect_cameras(cam_number=1)
+                    # Otherwise, I do not know why this is happening. So, raise the error as is.
+                    raise RuntimeError(str(e))
         else:
             print("Choose a Point Lock system first!")
         return
@@ -1309,7 +1444,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 # move camera 2 object to camera 2 thread
                 self.cam2.moveToThread(self.cam2_thread)
                 # Now, connect GUI related camera signals to appropriate GUI slots.
-                self.cam2.connect_signals()
                 self.connect_camera_signals(2)
                 # Start the threads event loop
                 # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
@@ -1340,13 +1474,64 @@ class Window(QMainWindow, Ui_MainWindow):
                     # Otherwise, I do not know why this is happening. So, raise the error as is.
                     raise RuntimeError(str(e))
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            # TODO: Update this correctly for the Boson
-            """cam1_index = int(self.cb_cam1.currentIndex())
-            self.cam1_threshold = float(self.le_cam1_threshold.text())
-            self.cam_list[cam1_index].update_frame()
-            self.cam1_reset = True
-            self.resetHist(self.gv_camera1, max=65536)"""
-            pass
+            # TODO: Test
+            # Grab inputs from the GUI
+            # TODO: Is Uin16 the right type for the Boson?
+            cam2_threshold = np.round(float(self.le_cam2_threshold.text())).astype('uint16')
+            self.le_cam2_threshold.setText(str(cam2_threshold))
+            self.set_UpdateManager_camera_threshold_signal.emit(2, cam2_threshold)
+
+            # Apply all updates:
+            if self.cam2_thread is None:  # first time this function is called only.
+                self.cam2_thread = QThread()
+                self.cam2_thread.finished.connect(lambda: print("Camera 2 thread has finished."))
+                self.cam2_thread.started.connect(lambda: print("Camera 2 thread has started."))
+                # Instantiate a camera object as cam1.
+                key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
+                if 'boson' in key or 'Boson' in key:
+                    self.cam2 = Boson(self.cam_init_dict[key][0], device_id=self.cam_init_dict[key][1])
+                    self.cam2.update_frame()
+                    if self.cam2.serial_no not in str(key):
+                        print("Somehow the camera initialized does not have the anticipated serial number.")
+                else:
+                    raise NotImplemented('Choose a supported camera type.')
+                self.update_UpdateManager_num_cameras_connected_signal.emit(1)
+                # move camera 2 object to camera 2 thread
+                self.cam2.moveToThread(self.cam2_thread)
+                print("Camera 2 lives in thread: ", self.cam2.thread())
+                # Now, connect GUI related camera signals to appropriate GUI slots.
+                self.connect_camera_signals(2)
+                # Start the thread's event loop
+                # See priority options here: https://doc.qt.io/qt-6/qthread.html#Priority-enum
+                self.cam2_thread.start(priority=4)
+                # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
+                # self.set_cam2_gain_signal.emit(cam2_gain)
+                # Setting exposure begins frame grabbing.
+                # self.set_cam2_exposure_signal.emit(cam2_exp_time)
+                # This call really just starts Update Managers frame grab timer and tells Update Manager what exposure
+                # time to use in I of PID.
+                self.set_cam2_exposure_signal.emit(1 / 60.0)
+                # Setup camera view.
+                self.cam2_reset = True
+                self.resetHist(self.gv_camera2, max=65535)
+            else:  # Update settings once cam2 exists and cam2_thread is running
+                key = str(self.cam_model.item(self.cb_cam2.currentIndex(), 0).text())
+                self.cam2_settings_to_set = {'exposure': 1 / 60.0, 'gain': 1}
+                self.cam2_to_connect = key
+                try:
+                    if self.cam2.serial_no not in str(self.cam_init_dict[key]):
+                        # User wants to change the camera on cam2_thread. So, do that.
+                        self.close_cam2_signal.emit(False)  # False flag does not close the thread.
+                        return
+                    self.set_cam2_exposure_signal.emit(1 / 60.0)
+                    self.set_cam2_gain_signal.emit(1)
+                except RuntimeError as e:
+                    if 'has been deleted' in str(e):
+                        # This error is being thrown, because camera1 does not currently exist. So, call the reconnect
+                        # Camera function, which should reconnect the camera to connect with setttigns to set.
+                        self.reconnect_cameras(cam_number=2)
+                    # Otherwise, I do not know why this is happening. So, raise the error as is.
+                    raise RuntimeError(str(e))
         else:
             print("Choose a Point Lock system first!")
         return
@@ -1663,9 +1848,59 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.cam2_thread is not None:
             del self.cam2_thread
 
+        num = self.test_anything_open()
+
         # delete updatemanager
         del self.UpdateManager
+        try:
+            self.UpdateManager
+        except NameError:
+            num += 1
+        if num == 10:
+            print("Successfully closed all known resources.")
+        else:
+            print("only closed ", num, " objects, expected to close 10.")
         return
+
+    def test_anything_open(self):
+        num = 0
+        try:
+            self.cam1
+        except NameError:
+            num += 1
+        try:
+            self.cam1_thread
+        except NameError:
+            num += 1
+        try:
+            self.cam2
+        except NameError:
+            num += 1
+        try:
+            self.cam2_thread
+        except NameError:
+            num += 1
+        try:
+            self.UpdateManager.motor1
+        except NameError:
+            num += 1
+        try:
+            self.UpdateManager.motor1_thread
+        except NameError:
+            num += 1
+        try:
+            self.UpdateManager.motor2
+        except NameError:
+            num += 1
+        try:
+            self.UpdateManager.motor2_thread
+        except NameError:
+            num += 1
+        try:
+            self.UpdateManager.ResourceManager
+        except NameError:
+            num += 1
+        return num
 
     @pyqtSlot()
     def capture_cam1_img(self):

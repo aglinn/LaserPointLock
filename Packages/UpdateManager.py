@@ -1,16 +1,25 @@
+# TODO: Double check that V0 everywhere assumes [m1x,m1y,m1z,m2x,m2y,m2z]
+# TODO: Implement timing synchronization?
+# TODO: Implement triggering of cameras?
+# TODO: Remove time delayed udpate.
 import numpy as np
 import nfft
 import time
+
+import scipy.linalg
 from lmfit import Parameters, minimize
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer, QMetaObject, Qt, Q_ARG
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer
 from Packages.motors import MDT693B_Motor, MDT693A_Motor
 from datetime import datetime
 import cv2
-from matplotlib.pyplot import Figure, Axes
+from shapely.geometry import Polygon
+from shapely.validation import explain_validity
 
 
-class update_out_of_bounds(Exception):
+class UpdateOutOfBounds(Exception):
+    pass
 
+class UnableToUpdateInBounds(Exception):
     pass
 
 
@@ -34,12 +43,16 @@ class UpdateManager(QObject):
     get_motor1_ch1V_signal = pyqtSignal()
     set_motor1_ch2V_signal = pyqtSignal(float)
     get_motor1_ch2V_signal = pyqtSignal()
+    set_motor1_ch3V_signal = pyqtSignal(float)
+    get_motor1_ch3V_signal = pyqtSignal()
     # Motor 2
     close_motor2_signal = pyqtSignal()
     set_motor2_ch1V_signal = pyqtSignal(float)
     get_motor2_ch1V_signal = pyqtSignal()
     set_motor2_ch2V_signal = pyqtSignal(float)
     get_motor2_ch2V_signal = pyqtSignal()
+    set_motor2_ch3V_signal = pyqtSignal(float)
+    get_motor2_ch3V_signal = pyqtSignal()
 
     # Signals emitted by Update Manager to the GUI
     update_gui_img_signal = pyqtSignal(int, np.ndarray)
@@ -51,9 +64,6 @@ class UpdateManager(QObject):
     update_gui_locking_update_out_of_bounds_signal = pyqtSignal(dict)
     update_gui_ping = pyqtSignal(float)
     request_gui_plot_calibrate_fits = pyqtSignal(list, list, list)
-
-    # TODO: Implement timing synchronization?
-    # TODO: Implement triggering of cameras?
 
     def __init__(self):
         # Init QObject
@@ -74,13 +84,21 @@ class UpdateManager(QObject):
         self._motors_updated = True  # Flag that is set true once update manager knows all voltages have been updated.
         self.motor1_ch1_updated = True
         self.motor1_ch2_updated = True
+        self.motor1_ch3_updated = True
         self.motor2_ch1_updated = True
         self.motor2_ch2_updated = True
+        self.motor2_ch3_updated = True
         # params for locking
         self._locking = False
         self._force_unlock = False
         self.max_time_allowed_unlocked = 120  # s
         self._calibration_matrix = None
+        self.all_motors_matrix = None
+        self.null_vectors = None
+        self.null_matrix_inv_1 = None
+        self.null_matrix_inv_2 = None
+        self.null_matrix_inv_3 = None
+        self.motor_channel_to_skip = [[1, 3], [2, 3]]
         self.set_pos = None
         self.dV = None
         self.update_voltage = None
@@ -88,12 +106,8 @@ class UpdateManager(QObject):
         self._cam_2_com = np.array([0.0, 0.0])
         self._cam_1_img = None
         self._cam_2_img = None
-        self.img1_X_mesh = np.zeros([2, 2])
-        self.img1_Y_mesh = np.zeros([2, 2])
-        self.img2_X_mesh = np.zeros([2, 2])
-        self.img2_Y_mesh = np.zeros([2, 2])
         self._dx = []
-        self.V0 = np.array([75.0, 75.0, 75.0, 75.0])
+        self.V0 = np.array([75.0, 75.0, 75.0, 75.0, 75.0, 75.0])
         self._t1 = []
         self._t2 = []
         self._frequency_domain = None
@@ -124,6 +138,16 @@ class UpdateManager(QObject):
         # parameters for understanding GUI state:
         self.num_cams_connected = 0
         # parameters to handle calibrating:
+        # So far, slow motors is hard coded to be 0 or 2.
+        self._slow_motors = {0: [1, 3], 1: [2, 3]}  # The lists contain motor number and channel to treat as slow.
+        self._control_motors = {0: [1, 1], 1: [1, 2], 2: [2, 1], 3: [2, 2]}  # must be four control motors!
+        self._control_voltage_indexes = []
+        for i in range(1, 3):
+            for j in range(1, 4):
+                motor_to_check = [i, j]
+                if motor_to_check in self._control_motors.values():
+                    self._control_voltage_indexes.append(j-1+(i-1)*3)
+        self._control_voltage_indexes = np.asarray(self._control_voltage_indexes)
         self._calibrating = False
         self.num_calibration_points_dropped_current_sweep = 0
         self.num_cams_connected = 0
@@ -134,25 +158,34 @@ class UpdateManager(QObject):
         self.max_setV_attempts_calib = 2
         self.num_attempts_set_motor1_ch1_V = 0
         self.num_attempts_set_motor1_ch2_V = 0
+        self.num_attempts_set_motor1_ch3_V = 0
         self.num_attempts_set_motor2_ch1_V = 0
         self.num_attempts_set_motor2_ch2_V = 0
+        self.num_attempts_set_motor2_ch3_V = 0
         self.calibration_voltages = 5 * np.arange(31)
+        self.calibration_voltages = np.concatenate((self.calibration_voltages, np.flip(self.calibration_voltages)[1:]))
+        self.calibration_voltages = np.concatenat((self.calibration_voltages, self.calibration_voltages[1:]))
+        print("Calibration voltages shape", self.calibration_voltages.shape)
         self.num_steps_per_motor = len(self.calibration_voltages)
-        self.mot1_x_voltage, self.mot1_y_voltage, self.mot2_x_voltage, self.mot2_y_voltage = np.zeros(
-            (4, len(self.calibration_voltages)))
+        self.mot1_x_voltage, self.mot1_y_voltage, self.mot1_z_voltage, self.mot2_x_voltage, self.mot2_y_voltage, \
+            self.mot2_z_voltage = np.zeros((6, len(self.calibration_voltages)))
         self.mot1_x_cam1_x, self.mot1_x_cam1_y, self.mot1_x_cam2_x, self.mot1_x_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
         self.mot1_y_cam1_x, self.mot1_y_cam1_y, self.mot1_y_cam2_x, self.mot1_y_cam2_y = np.zeros(
+            (4, len(self.calibration_voltages)))
+        self.mot1_z_cam1_x, self.mot1_z_cam1_y, self.mot1_z_cam2_x, self.mot1_z_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
         self.mot2_x_cam1_x, self.mot2_x_cam1_y, self.mot2_x_cam2_x, self.mot2_x_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
         self.mot2_y_cam1_x, self.mot2_y_cam1_y, self.mot2_y_cam2_x, self.mot2_y_cam2_y = np.zeros(
             (4, len(self.calibration_voltages)))
-        self.starting_v = 75.0 * np.ones(4)
+        self.mot2_z_cam1_x, self.mot2_z_cam1_y, self.mot2_z_cam2_x, self.mot2_z_cam2_y = np.zeros(
+            (4, len(self.calibration_voltages)))
+        self.starting_v = 75.0 * np.ones(6)
         # Start off the calibration process with voltages at first step
         self.starting_v[0] = self.calibration_voltages[0]
         self._r0 = np.array([0, 0, 0, 0])
-        self.num_frames_to_average_during_calibrate = 10
+        self.num_frames_to_average_during_calibrate = 2
         self.cam1_com_avg_num = 1
         self.cam2_com_avg_num = 1
         self._cam1_dx = []
@@ -224,12 +257,13 @@ class UpdateManager(QObject):
             self.get_motor1_ch1V_signal.connect(self.motor1.ch1_v)
             self.set_motor1_ch2V_signal.connect(self.motor1.set_ch2_v)
             self.get_motor1_ch2V_signal.connect(self.motor1.ch2_v)
+            self.set_motor1_ch3V_signal.connect(self.motor1.set_ch3_v)
+            self.get_motor1_ch3V_signal.connect(self.motor1.ch3_v)
             # Motor1 signals to Update Manager
             self.motor1.destroyed.connect(lambda args: self.reconnect_motor(1))
             self.motor1.close_complete_signal.connect(self.accept_motor_close)
             self.motor1.close_fail_signal.connect(self.close_motor_again)
             # ch1 related signals
-            # self.motor1.request_set_ch1V_signal.connect(lambda voltage: self.requested_set_motor(1, 1, voltage))
             self.motor1.set_ch1V_complete_signal.connect(self.receive_motor_set_V_complete_signal)
             self.motor1.set_ch1V_complete_signal.connect(lambda motor_num, motor_ch, voltage:
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
@@ -242,7 +276,6 @@ class UpdateManager(QObject):
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
             # ch2 related signals
-            # self.motor1.request_set_ch2V_signal.connect(lambda voltage: self.requested_set_motor(1, 2, voltage))
             self.motor1.set_ch2V_complete_signal.connect(self.receive_motor_set_V_complete_signal)
             self.motor1.set_ch2V_complete_signal.connect(lambda motor_num, motor_ch, voltage:
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
@@ -252,6 +285,18 @@ class UpdateManager(QObject):
                                                        self.receive_V_failed_signal(motor_num, motor_ch))
             self.motor1.returning_ch2V_signal.connect(self.set_V_from_get)
             self.motor1.returning_ch2V_signal.connect(lambda motor_num, motor_ch, voltage:
+                                                      self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
+                                                                                                voltage))
+            # ch3 related signals
+            self.motor1.set_ch3V_complete_signal.connect(self.receive_motor_set_V_complete_signal)
+            self.motor1.set_ch3V_complete_signal.connect(lambda motor_num, motor_ch, voltage:
+                                                         self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
+                                                                                                   voltage))
+            self.motor1.set_ch3V_failed_signal.connect(self.receive_motor_set_V_failed_signal)
+            self.motor1.get_ch3V_failed_signal.connect(lambda motor_num, motor_ch:
+                                                       self.receive_V_failed_signal(motor_num, motor_ch))
+            self.motor1.returning_ch3V_signal.connect(self.set_V_from_get)
+            self.motor1.returning_ch3V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
         elif motor_number == 2:
@@ -266,7 +311,6 @@ class UpdateManager(QObject):
             self.motor2.close_complete_signal.connect(self.accept_motor_close)
             self.motor2.close_fail_signal.connect(self.close_motor_again)
             # ch1 related signals
-            # self.motor2.request_set_ch1V_signal.connect(lambda voltage: self.requested_set_motor(2, 1, voltage))
             self.motor2.set_ch1V_complete_signal.connect(self.receive_motor_set_V_complete_signal)
             self.motor2.set_ch1V_complete_signal.connect(lambda motor_num, motor_ch, voltage:
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
@@ -279,7 +323,6 @@ class UpdateManager(QObject):
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
             # ch2 related signals
-            # self.motor2.request_set_ch2V_signal.connect(lambda voltage: self.requested_set_motor(2, 2, voltage))
             self.motor2.set_ch2V_complete_signal.connect(self.receive_motor_set_V_complete_signal)
             self.motor2.set_ch2V_complete_signal.connect(lambda motor_num, motor_ch, voltage:
                                                          self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
@@ -289,6 +332,18 @@ class UpdateManager(QObject):
                                                        self.receive_V_failed_signal(motor_num, motor_ch))
             self.motor2.returning_ch2V_signal.connect(self.set_V_from_get)
             self.motor2.returning_ch2V_signal.connect(lambda motor_num, motor_ch, voltage:
+                                                      self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
+                                                                                                voltage))
+            # ch3 related signals
+            self.motor2.set_ch3V_complete_signal.connect(self.receive_motor_set_V_complete_signal)
+            self.motor2.set_ch3V_complete_signal.connect(lambda motor_num, motor_ch, voltage:
+                                                         self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
+                                                                                                   voltage))
+            self.motor2.set_ch3V_failed_signal.connect(self.receive_motor_set_V_failed_signal)
+            self.motor2.get_ch3V_failed_signal.connect(lambda motor_num, motor_ch:
+                                                       self.receive_V_failed_signal(motor_num, motor_ch))
+            self.motor2.returning_ch3V_signal.connect(self.set_V_from_get)
+            self.motor2.returning_ch3V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
                                                                                                 voltage))
         return
@@ -301,9 +356,11 @@ class UpdateManager(QObject):
         if self.motor1 is not None:
             self.request_set_motor(1, 1, 75.0)
             self.request_set_motor(1, 2, 75.0)
+            self.request_set_motor(1, 3, 75.0)
         if self.motor2 is not None:
             self.request_set_motor(2, 1, 75.0)
             self.request_set_motor(2, 2, 75.0)
+            self.request_set_motor(2, 3, 75.0)
         return
 
     def request_set_motor(self, motor_number: int, motor_chanel: int, voltage: float):
@@ -326,29 +383,29 @@ class UpdateManager(QObject):
         if motor_number == 1:
             if motor_chanel == 1:
                 self.motor1_ch1_updated = False
-                # print("requesting set 1,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                #      self.motor2_ch2_updated)
                 self.num_attempts_set_motor1_ch1_V += 1
                 self.set_motor1_ch1V_signal.emit(voltage)
             elif motor_chanel == 2:
                 self.motor1_ch2_updated = False
-                # print("requesting set 1,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                #      self.motor2_ch2_updated)
                 self.num_attempts_set_motor1_ch2_V += 1
                 self.set_motor1_ch2V_signal.emit(voltage)
+            elif motor_chanel == 3:
+                self.motor1_ch3_updated = False
+                self.num_attempts_set_motor1_ch3_V += 1
+                self.set_motor1_ch3V_signal.emit(voltage)
         elif motor_number == 2:
             if motor_chanel == 1:
                 self.motor2_ch1_updated = False
-                # print("requesting set 2,1 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                #       self.motor2_ch2_updated)
                 self.num_attempts_set_motor2_ch1_V += 1
                 self.set_motor2_ch1V_signal.emit(voltage)
             elif motor_chanel == 2:
                 self.motor2_ch2_updated = False
-                # print("requesting set 2,2 ", voltage, self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated,
-                #       self.motor2_ch2_updated)
                 self.num_attempts_set_motor2_ch2_V += 1
                 self.set_motor2_ch2V_signal.emit(voltage)
+            elif motor_chanel == 3:
+                self.motor2_ch3_updated = False
+                self.num_attempts_set_motor2_ch3_V += 1
+                self.set_motor2_ch3V_signal.emit(voltage)
         return
 
     @pyqtSlot(int, int)
@@ -402,10 +459,30 @@ class UpdateManager(QObject):
                         # Means that that will not happen... At least, warn the user with a print statement for now.
                         print("WARNING: During calibration sweeps, motor 1 channel 2 could not be set to 75.0 V for "
                               "another motors sweep.")
+            elif motor_ch == 3:
+                if self._locking:
+                    self.V0[2] = 75.0
+                    self.motor1_ch3_updated = True
+                elif self._calibrating:
+                    # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
+                    # failed get—only called when sets fail repeatedly and then a get fails too.
+                    self.motor1_ch3_updated = True
+                    # Let the calibration run function know that the voltages are unknown so that it drops the next
+                    # pointing information captured.
+                    self.unknown_current_voltage = True
+                    if self.calibration_sweep_index == 4:
+                        # Drop this the motor voltage from calibration data.
+                        del self.mot1_z_voltage[self.voltage_step - 1 -
+                                                self.num_calibration_points_dropped_current_sweep]
+                    else:
+                        # Well, I really want to calibrate around the center of all of my voltages, and failing here
+                        # Means that that will not happen... At least, warn the user with a print statement for now.
+                        print("WARNING: During calibration sweeps, motor 1 channel 3 could not be set to 75.0 V for "
+                              "another motors sweep.")
         elif motor_number == 2:
             if motor_ch == 1:
                 if self._locking:
-                    self.V0[2] = 75.0
+                    self.V0[3] = 75.0
                     self.motor2_ch1_updated = True
                 elif self._calibrating:
                     # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
@@ -425,7 +502,7 @@ class UpdateManager(QObject):
                               "another motors sweep.")
             elif motor_ch == 2:
                 if self._locking:
-                    self.V0[3] = 75.0
+                    self.V0[4] = 75.0
                     self.motor2_ch2_updated = True
                 elif self._calibrating:
                     # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
@@ -436,12 +513,32 @@ class UpdateManager(QObject):
                     self.unknown_current_voltage = True
                     if self.calibration_sweep_index == 3:
                         # Drop this the motor voltage from calibration data.
-                        del self.mot1_y_voltage[self.voltage_step - 1 -
+                        del self.mot2_y_voltage[self.voltage_step - 1 -
                                                 self.num_calibration_points_dropped_current_sweep]
-                    elif self.calibration_sweep_index < 4:
+                    else:
                         # Well, I really want to calibrate around the center of all of my voltages, and failing here
                         # Means that that will not happen... At least, warn the user with a print statement for now.
                         print("WARNING: During calibration sweeps, motor 2 channel 2 could not be set to 75.0 V for "
+                              "another motors sweep.")
+            elif motor_ch == 3:
+                if self._locking:
+                    self.V0[5] = 75.0
+                    self.motor2_ch3_updated = True
+                elif self._calibrating:
+                    # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
+                    # failed get—only called when sets fail repeatedly and then a get fails too.
+                    self.motor2_ch3_updated = True
+                    # Let the calibration run function know that the voltages are unknown so that it drops the next
+                    # pointing information captured.
+                    self.unknown_current_voltage = True
+                    if self.calibration_sweep_index == 5:
+                        # Drop this the motor voltage from calibration data.
+                        del self.mot2_z_voltage[self.voltage_step - 1 -
+                                                self.num_calibration_points_dropped_current_sweep]
+                    elif self.calibration_sweep_index < 5:
+                        # Well, I really want to calibrate around the center of all of my voltages, and failing here
+                        # Means that that will not happen... At least, warn the user with a print statement for now.
+                        print("WARNING: During calibration sweeps, motor 2 channel 3 could not be set to 75.0 V for "
                               "another motors sweep.")
         self.check_all_motors_updated()
         return
@@ -498,10 +595,32 @@ class UpdateManager(QObject):
                                 "another motors sweep.")
                         else:
                             print("What? I failed to set voltage to 75.0V, but I am reading 75.0 V somehow??")
+            elif motor_ch == 3:
+                if self._locking:
+                    self.V0[2] = voltage
+                    self.motor1_ch3_updated = True
+                elif self._calibrating:
+                    # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
+                    # successful get—only called when sets fail repeatedly.
+                    self.motor1_ch3_updated = True
+                    if self.calibration_sweep_index == 4:
+                        # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
+                        self.mot1_z_voltage[self.voltage_step - 1 -
+                                            self.num_calibration_points_dropped_current_sweep] = voltage
+                    else:
+                        # I must have failed to set the voltages on this motor to 75 V, right? Warn user.
+                        if voltage != 75.0:
+                            # Well, I really want to calibrate around the center of all of my voltages, and failing here
+                            # Means that that will not happen... At least, warn the user with a print statement for now.
+                            print(
+                                "WARNING: During calibration sweeps, motor 1 channel 3 could not be set to 75.0 V for "
+                                "another motors sweep.")
+                        else:
+                            print("What? I failed to set voltage to 75.0V, but I am reading 75.0 V somehow??")
         elif motor_number == 2:
             if motor_ch == 1:
                 if self._locking:
-                    self.V0[2] = voltage
+                    self.V0[3] = voltage
                     self.motor2_ch1_updated = True
                 elif self._calibrating:
                     # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
@@ -523,7 +642,7 @@ class UpdateManager(QObject):
                             print("What? I failed to set voltage to 75.0V, but I am reading 75.0 V somehow??")
             elif motor_ch == 2:
                 if self._locking:
-                    self.V0[3] = voltage
+                    self.V0[4] = voltage
                     self.motor2_ch2_updated = True
                 elif self._calibrating:
                     # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
@@ -540,6 +659,28 @@ class UpdateManager(QObject):
                             # Means that that will not happen... At least, warn the user with a print statement for now.
                             print(
                                 "WARNING: During calibration sweeps, motor 2 channel 2 could not be set to 75.0 V for "
+                                "another motors sweep.")
+                        else:
+                            print("What? I failed to set voltage to 75.0V, but I am reading 75.0 V somehow??")
+            elif motor_ch == 3:
+                if self._locking:
+                    self.V0[5] = voltage
+                    self.motor2_ch3_updated = True
+                elif self._calibrating:
+                    # Failed sets do not reset the motor updated flag in calibration state. So, reset the flag from a
+                    # successful get—only called when sets fail repeatedly.
+                    self.motor2_ch3_updated = True
+                    if self.calibration_sweep_index == 5:
+                        # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
+                        self.mot2_z_voltage[self.voltage_step - 1 -
+                                            self.num_calibration_points_dropped_current_sweep] = voltage
+                    else:
+                        # I must have failed to set the voltages on this motor to 75 V, right? Warn user.
+                        if voltage != 75.0:
+                            # Well, I really want to calibrate around the center of all of my voltages, and failing here
+                            # Means that that will not happen... At least, warn the user with a print statement for now.
+                            print(
+                                "WARNING: During calibration sweeps, motor 2 channel 3 could not be set to 75.0 V for "
                                 "another motors sweep.")
                         else:
                             print("What? I failed to set voltage to 75.0V, but I am reading 75.0 V somehow??")
@@ -721,8 +862,6 @@ class UpdateManager(QObject):
         if motor_number == 1:
             if motor_ch == 1:
                 self.num_attempts_set_motor1_ch1_V = 0
-                # print("received set 1,1, correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                #      self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 0:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot1_x_voltage[self.voltage_step - 1 -
@@ -732,8 +871,6 @@ class UpdateManager(QObject):
                 self.motor1_ch1_updated = True
             elif motor_ch == 2:
                 self.num_attempts_set_motor1_ch2_V = 0
-                # print("received set 1,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 1:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot1_y_voltage[self.voltage_step - 1 -
@@ -741,29 +878,43 @@ class UpdateManager(QObject):
                 elif self._locking:
                     self.V0[1] = set_V
                 self.motor1_ch2_updated = True
+            elif motor_ch == 3:
+                self.num_attempts_set_motor1_ch3_V = 0
+                if self._calibrating and self.calibration_sweep_index == 4:
+                    # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
+                    self.mot1_z_voltage[self.voltage_step - 1 -
+                                        self.num_calibration_points_dropped_current_sweep] = set_V
+                elif self._locking:
+                    self.V0[2] = set_V
+                self.motor1_ch3_updated = True
         elif motor_number == 2:
             if motor_ch == 1:
                 self.num_attempts_set_motor2_ch1_V = 0
-                # print("received set 2,1 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 2:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot2_x_voltage[self.voltage_step - 1 -
                                         self.num_calibration_points_dropped_current_sweep] = set_V
                 elif self._locking:
-                    self.V0[2] = set_V
+                    self.V0[3] = set_V
                 self.motor2_ch1_updated = True
             elif motor_ch == 2:
                 self.num_attempts_set_motor2_ch2_V = 0
-                # print("received set 2,2 correct signal. ", self.motor1_ch1_updated, self.motor1_ch2_updated,
-                #       self.motor2_ch1_updated, self.motor2_ch2_updated)
                 if self._calibrating and self.calibration_sweep_index == 3:
                     # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
                     self.mot2_y_voltage[self.voltage_step - 1 -
                                         self.num_calibration_points_dropped_current_sweep] = set_V
                 elif self._locking:
-                    self.V0[3] = set_V
+                    self.V0[4] = set_V
                 self.motor2_ch2_updated = True
+            elif motor_ch == 3:
+                self.num_attempts_set_motor2_ch3_V = 0
+                if self._calibrating and self.calibration_sweep_index == 5:
+                    # Only set the voltages for the motor that I am sweeping, i.e. ignore reset voltages to 75.0.
+                    self.mot2_z_voltage[self.voltage_step - 1 -
+                                        self.num_calibration_points_dropped_current_sweep] = set_V
+                elif self._locking:
+                    self.V0[5] = set_V
+                self.motor2_ch3_updated = True
 
         self.check_all_motors_updated()
         return
@@ -772,7 +923,8 @@ class UpdateManager(QObject):
         """
         check if all motors have been updated and set flags appropriately.
         """
-        if self.motor1_ch1_updated and self.motor1_ch2_updated and self.motor2_ch1_updated and self.motor2_ch2_updated:
+        if self.motor1_ch1_updated and self.motor1_ch2_updated and self.motor1_ch3_updated and self.motor2_ch1_updated \
+                and self.motor2_ch2_updated and self.motor2_ch3_updated:
             # Yay! All motors have been updated!
             # Set motors updated to true, which tells com update functions to accept next com update as happening after
             # voltages have been set
@@ -802,10 +954,10 @@ class UpdateManager(QObject):
                         self.get_motor1_ch1V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor1_ch1_V = 0
+                    return
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor1_ch1_updated = True
-                    # print("Accepted set 1,1 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
             elif motor_ch == 2:
                 if self._calibrating:
                     if self.num_attempts_set_motor1_ch2_V <= self.max_setV_attempts_calib:
@@ -820,10 +972,28 @@ class UpdateManager(QObject):
                         self.get_motor1_ch2V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor1_ch2_V = 0
+                    return
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor1_ch2_updated = True
-                    # print("Accepted set 1,2 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+            elif motor_ch == 3:
+                if self._calibrating:
+                    if self.num_attempts_set_motor1_ch3_V <= self.max_setV_attempts_calib:
+                        if self.calibration_sweep_index == 4:
+                            # I am trying to set a particular voltage on this motor.
+                            self.request_set_motor(1, 3, self.calibration_voltages[self.voltage_step - 1])
+                        else:
+                            # I should only be trying to reset to 75.0 V
+                            self.request_set_motor(1, 3, 75.0)
+                    else:
+                        # Could not set the voltage correctly. Can I at least get the current voltage?
+                        self.get_motor1_ch3V_signal.emit()
+                        # Reset this flag because will not call set again until a totally new attempt is made.
+                        self.num_attempts_set_motor1_ch3_V = 0
+                    return
+                elif self._locking:
+                    # Just accept, because presumably, this voltage is unchanged and thus already in V0
+                    self.motor1_ch3_updated = True
         elif motor_number == 2:
             if motor_ch == 1:
                 if self._calibrating:
@@ -839,10 +1009,10 @@ class UpdateManager(QObject):
                         self.get_motor2_ch1V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor2_ch1_V = 0
+                    return
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor2_ch1_updated = True
-                    # print("Accepted set 2,1 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
             elif motor_ch == 2:
                 if self._calibrating:
                     if self.num_attempts_set_motor2_ch2_V <= self.max_setV_attempts_calib:
@@ -857,10 +1027,28 @@ class UpdateManager(QObject):
                         self.get_motor2_ch2V_signal.emit()
                         # Reset this flag because will not call set again until a totally new attempt is made.
                         self.num_attempts_set_motor2_ch2_V = 0
+                    return
                 elif self._locking:
                     # Just accept, because presumably, this voltage is unchanged and thus already in V0
                     self.motor2_ch2_updated = True
-                    # print("Accepted set 2,2 failed, ", self.motor1_ch1_updated, self.motor1_ch2_updated, self.motor2_ch1_updated, self.motor2_ch2_updated)
+            elif motor_ch == 3:
+                if self._calibrating:
+                    if self.num_attempts_set_motor2_ch3_V <= self.max_setV_attempts_calib:
+                        if self.calibration_sweep_index == 5:
+                            # I am trying to set a particular voltage on this motor.
+                            self.request_set_motor(2, 3, self.calibration_voltages[self.voltage_step - 1])
+                        else:
+                            # I should only be trying to reset to 75.0 V
+                            self.request_set_motor(2, 3, 75.0)
+                    else:
+                        # Could not set the voltage correctly. Can I at least get the current voltage?
+                        self.get_motor2_ch3V_signal.emit()
+                        # Reset this flag because will not call set again until a totally new attempt is made.
+                        self.num_attempts_set_motor2_ch3_V = 0
+                    return
+                elif self._locking:
+                    # Just accept, because presumably, this voltage is unchanged and thus already in V0
+                    self.motor2_ch3_updated = True
         # Only get to this check if I am locking.
         self.check_all_motors_updated()
         return
@@ -868,10 +1056,276 @@ class UpdateManager(QObject):
     # Locking related methods
     @pyqtSlot()
     def time_delay_update(self):
+        # TODO: Don't time delay.
         # print("Calling Update")
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
-            self.timer.start(self.time_out_interval)
+            # Effectively bypass the timer in a way that preserves code for time-delay (but thus also preserves bloat)
+            self.apply_update()
+            #self.timer.start(self.time_out_interval)
+        return
+
+    @staticmethod
+    def find_solution_region_corners(null_matrix_inv, start_V, voltage1, voltage2):
+        """
+        null matrix is the 2x2 matrix [[ni, mi] , [nj, mj]]. start voltage is [Vi, Vj], and voltage 1 is the bound on
+        i that we are solving for. likewise voltage 2 for j equation.
+        returns the point (a, b) that solves the two equations for voltage1, and voltage2.
+        """
+        return tuple(np.matmul(null_matrix_inv, (np.array([voltage1, voltage2])-start_V)))
+
+    def find_solution_region(self, V, low=0, high=150):
+        """
+        Having failed a normal update, I am now looking to move in null space to bring the voltages in bounds. That is,
+        I want 0<=V_out_of_bounds_update + a*Nullvec1 + b*Nullvec2<=150 for some (a,b)—There are 6 equations in this
+        matrix equation. In general, there is no  guarantee of a solution--2 DOF and 6 equations... So, I split this
+        into 3 sets of 2 equations. These 2 equations can be solved with 2DOF. Solving the inequalities, yields a
+        parallelogram in (a,b) space, where the interior region yields voltages that are in bounds. Then, I try to find
+        the region in (a,b) space where all 3 parallelograms overlap. This overlapping region then represents a solution
+        to all 6 inequalities, i.e. any (a,b) in this overlapping region moves all 6 motors along null vectors back into
+        bounds.
+        inputs: V is self.V0 + self.update_voltage, i.e. the desired update to restore pointing that is out of bounds
+                low, high are the lower and upper bounds of the inequality equation given above.
+        returns: (True, solution region) if there is a region where all 3 overlap.
+                (False, poly3) if there is no solution, and poly3 is useful, because I will want to move the slow motors
+                to their extremes minimizing the distance that the other motors are out of bounds.
+        """
+        # mot1x, mot2x
+        corners1 = []
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], low, low))
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], low, high))
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], high, high))
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], high, low))
+        poly1 = Polygon(corners1)
+        if 'Self-intersection' in explain_validity(poly1):
+            new_corners = corners1
+            new_corners[1] = corners1[2]
+            new_corners[2] = corners1[1]
+            poly1 = Polygon(new_corners)
+            if 'Self-intersection' in explain_validity(poly1):
+                new_corners = corners1
+                new_corners[2] = corners1[3]
+                new_corners[3] = corners1[2]
+                poly1 = Polygon(new_corners)
+                if 'Self-intersection' in explain_validity(poly1):
+                    print("Somehow never built a correct solution polygon, did not think that was possible.")
+        # mot1y, mot2y
+        corners2 = []
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], low, low))
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], low, high))
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], high, high))
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], high, low))
+        poly2 = Polygon(corners2)
+        if 'Self-intersection' in explain_validity(poly2):
+            new_corners2 = corners2
+            new_corners2[1] = corners2[2]
+            new_corners2[2] = corners2[1]
+            poly2 = Polygon(new_corners2)
+            if 'Self-intersection' in explain_validity(poly2):
+                new_corners2 = corners2
+                new_corners2[2] = corners2[3]
+                new_corners2[3] = corners2[2]
+                poly2 = Polygon(new_corners2)
+                if 'Self-intersection' in explain_validity(poly2):
+                    print("Somehow never built a correct solution polygon, did not think that was possible.")
+        # mot1z, mot2z
+        corners3 = []
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], low, low))
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], low, high))
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], high, high))
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], high, low))
+        poly3 = Polygon(corners3)
+        if 'Self-intersection' in explain_validity(poly3):
+            new_corners3 = corners3
+            new_corners3[1] = corners3[2]
+            new_corners3[2] = corners3[1]
+            poly3 = Polygon(new_corners3)
+            if 'Self-intersection' in explain_validity(poly3):
+                new_corners3 = corners3
+                new_corners3[2] = corners3[3]
+                new_corners3[3] = corners3[2]
+                poly3 = Polygon(new_corners3)
+                if 'Self-intersection' in explain_validity(poly3):
+                    print("Somehow never built a correct solution polygon, did not think that was possible.")
+        if poly1.intersects(poly2) and poly1.intersects(poly3) and poly2.intersects(poly3):
+            intermediate = poly1.intersection(poly2)
+            if intermediate.intersects(poly3):
+                solution_region = intermediate.intersection(poly3)
+                return True, solution_region
+        return False, poly3
+
+    def compensate_with_slow_motors(self):
+        """
+        When an update is out of bounds, call this function to see if the update can be moved into bounds by moving the
+        slow motors, for now hard coded to be motor1 and 2 3rd channels.
+
+        take small steps to avoid introducing noise, but at least big enough to bring the control motors in bounds.
+        """
+        if self.null_vectors is None:
+            # Not operating with slow compensating motors.
+            raise UnableToUpdateInBounds
+        # V Would be the desired voltages on all 6 motors to restore the pointing
+        V = self.V0
+        V[self._control_voltage_indexes] = self.update_voltage
+        # Look for a compensating move in null space that brings all motors in bounds.
+        ret, region = self.find_solution_region(V, low=0, high=150)
+        if ret:
+            # Find the solution with the smallest step size in null vector space.
+            if region.type == "Polygon":
+                corners = list(region.exterior.coords)
+                step = corners[np.argmin(np.sum(corners, axis=1))]
+                V += step[0]*self.null_vectors[:, 0] + step[1]*self.null_vectors[:, 1]
+                self.update_voltage = V[self._control_voltage_indexes]
+                V_set_index = (self._slow_motors[0][0]-1)*3 + self._slow_motors[0][1] - 1
+                self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], V[V_set_index])
+                V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+                self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], V[V_set_index])
+                return
+            elif region.type == 'Point' or region.type == 'LineString':
+                corners = list(region._get_coords())
+                step = corners[np.argmin(np.sum(corners, axis=1))]
+                V += step[0] * self.null_vectors[:, 0] + step[1] * self.null_vectors[:, 1]
+                self.update_voltage = V[self._control_voltage_indexes]
+                V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+                self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], V[V_set_index])
+                V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+                self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], V[V_set_index])
+                return
+            else:
+                print("Got an unexpected solution region geometry. Did not think this was possible?")
+        else:
+            # Find the step in nullspace that minimizes the distance out of bounds of the other 4 motors.
+            corners = list(region.exterior.coords)
+            test_voltages = V.reshape(6, 1) + np.matmul(self.null_vectors, np.asarray(corners).transpose())
+            low_error = np.where(test_voltages < 0, -test_voltages, 0)
+            high_error = np.where(test_voltages > 150, test_voltages-150.0, 0)
+            error = low_error + high_error
+            # Grab the voltages with the least error, update V0 with the step that minimized the error and move on to
+            # find best update, but also need to let the program know that when it finds the best update it should also
+            # update the slow motors accordingly. The idea is that moving in null vector space does not affect the dx
+            # at all, hence I can pretend that I am starting from a voltage that is my actual voltage (current V0)
+            # plus some step in null space.
+            step = corners[np.argmin(np.sum(error, axis=0))]
+            delta_V = step[0] * self.null_vectors[:, 0] + step[1] * self.null_vectors[:, 1]
+            self.motor_channel_to_skip = []
+            V_slow_0_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+            if delta_V[V_slow_0_index] == 0:
+                self.motor_channel_to_skip.append(self._slow_motors[0])
+            V_slow_0_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+            if delta_V[V_slow_0_index] == 0:
+                self.motor_channel_to_skip.append(self._slow_motors[1])
+            self.V0 += delta_V
+            raise UnableToUpdateInBounds
+        """V = self.V0
+            V[0:2] = self.update_voltage[0:2]
+            V[3:5] = self.update_voltage[2:]
+            new_update_voltage = None
+            for i in range(self.null_vectors.shape[1]):
+                range = self.check_existence(V, self.null_vectors[:, i])
+                if range is not None:
+                    # Then, I can restore everything to be in bounds with just this null vector, so do that.
+                    new_update_voltage = self.get_update_1_null_vec(V, range, self.null_vectors[:, i])
+                    break
+            if new_update_voltage is None:
+                # TODO: Finish this function First, find step in null space that minimizes how far out of bounds the update
+                # is on the fast control motors (WHILE Keeping the slow motors in bounds... How to do this?
+                # Then, if the step in null space brings all 4 motors in bounds, apply the appropriate update (check if
+                # residual is 0. If, the update is not in bounds at this point, then update the V0 with the move in null
+                # space only! (This move does not impact dx at all! that is update_dx is still the same after this move)
+                # Make sure to find the step accounting for the intended out of bounds update, this ensures that the update
+                # would have been as close as possible to successful! However, do NOT add the update voltage to V0. Now,
+                # with an updated V0, I can proceed into the find_best_update function as normal. However, make sure to
+                # actually apply the updated Voltages on the slow motors in addition to the control motors.
+                # Finally, I think that I should use a timer to forbid running this minnimize_out_of_bounds function too
+                # often, as I have learned that the fitting procedure is slow... 
+                self.minnimize_out_of_bounds()
+            raise UnableToUpdateInBounds"""
+        return
+
+    def minnimize_out_of_bounds(self):
+        # TODO: Delete
+        """
+        When the update voltages are out of their allowed range, I want to try to find an update that minimizes
+        my dx in the future step, constrained by the allowed piezo ranges. That is what this function does.
+        """
+        # TODO: Does not work well at all! Should recalculate update_dx
+        P = Parameters()
+        self.V0 = np.round(self.V0, decimals=1)
+        P.add('dv_0', 0, min=-150.0 + self.V0[0], max=self.V0[0])
+        P.add('dv_1', 0, min=-150.0 + self.V0[1], max=self.V0[1])
+        P.add('dv_2', 0, min=-150.0 + self.V0[2], max=self.V0[2])
+        P.add('dv_3', 0, min=-150.0 + self.V0[3], max=self.V0[3])
+        res = minimize(self.residual, P, args=(self.update_dx, self.inv_calibration_matrix))
+        dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
+                       res.params['dv_3'].value])
+        self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        # place.
+
+        # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
+        # hopefully induces a dx to undo the measured dx, up to constraints on voltages.
+        self.update_voltage = self.V0 - self.dV
+        print("fit dV ", self.dV)
+        return
+
+    @staticmethod
+    def objective_minnimize_out_of_bounds(params, V_start, null_vectors):
+        # TODO: Delete
+        """
+        For a given step (a,b)dot(null_vecs) in the null space return the distance that each voltage is outside of the
+        allowed [0, 150] range. Therefore, minimizing this brings the voltages as close to their range as possible.
+
+        Should constrain the steps (a,b) to keep the 2 slow axis motors in bounds.
+        """
+        if null_vectors.shape[1] == 1:
+            V = V_start + params['a'].value * null_vectors
+        elif null_vectors.shape[1] == 2:
+            V = V_start + params['a'].value * null_vectors[:, 0] + params['b'].value * null_vectors[:, 1]
+        objective = np.zeros(6)
+        inds = np.where(V > 150)
+        if inds[0].size > 0:
+            for ind in inds[0]:
+                objective[ind] = V[ind] - 150.0
+        inds = np.where(V < 0)
+        if inds[0].size > 0:
+            for ind in inds[0]:
+                objective[ind] = -V[ind]
+        return objective
+
+    @staticmethod
+    def check_existence(V: np.ndarray, null_vec):
+        # TODO: Delete
+        range = UpdateManager.find_solution_intervals(V, null_vec)
+        if range[0].max() <= range[1].min():
+            return [range[0].max(), range[1].min()]
+        else:
+            return None
+
+    @ staticmethod
+    def find_solution_intervals(V, null_vec, low=0, high=150):
+        # TODO: Delete
+        left = (low - V) / null_vec
+        right = (high - V) / null_vec
+        range = np.where(left < right, [left, right], [right, left])
+        return range
+
+    def get_update_1_null_vec(self, V, range, null_vec):
+        # TODO: Delete
+        # Try to get an update that brings everything to [1,149] to reduce the need to immediately move all motors again
+        ideal_range = self.check_existence(V, null_vec, 1, 149)
+        if ideal_range is not None:
+            range = ideal_range
+        # Now, I want to apply the smallest overall dV due to walking along the null vector, which means finding the
+        # minnimum value within the range. The range should not contain 0, because if 0 were a solution, then why did I
+        # throw the exception in get_update() that brought me here? I did not, because all updates were within [0,150]
+        # Therefore, if range[0] (lower bound of range) is negative, then range[1] has a smaller magnitude and
+        # vice-a-versa
+        if range[0] < 0:
+            return V + range[1] * null_vec
+        elif range[0] > 0:
+            return V + range[0] * null_vec
+        else:
+            print("WOAH AGAIN, should not be walking along the null vector, if 0 step-size was a solution to bringing "
+                  "updates into bounds, i.e. all updates were already in bounds?!?")
         return
 
     @pyqtSlot()
@@ -885,38 +1339,55 @@ class UpdateManager(QObject):
         try:
             # Try getting the update voltage
             self.get_update()
-        except update_out_of_bounds:
-            """"
-            This section of code keeps the update voltage in bounds by finding a voltage that minizes dx while in
-            staying in bounds.
-            Additionally, it tracks the number of times that the voltages went out of bounds in less than 1 minute 
-            since the last out of bounds (i.e. if it goes out of bounds once but then comes back in bounds for more 
-            than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than 10 times in a row 
-            in less than a minute each time, then the code unlocks and returns to measuring state.
-            """
-            # Fit the best update we can, given we cannot restore pointing
-            self.find_best_update()
-            # Track unlocking.
-            self.report_unlock()
-            # Check if I am allowed to continue attempting to lock
-            if self._force_unlock:
-                if self.time_continually_unlocked > self.max_time_allowed_unlocked:
-                    self.num_out_of_voltage_range = 1
-                    self.time_last_unlock = 0
-                    # Set all voltages back to 75V
-                    self.motors_to_75V()
-                    successful_lock_time = time.monotonic() - self.lock_time_start
-                    print("Successfully locked pointing for", successful_lock_time)
-                    # Tell myself to stop locking.
-                    self._locking = False
-                    self.lock_pointing(False)
-                    print("System has unlocked!")
-                    return
-        # Apply all update voltages
-        self.request_set_motor(1, 1, self.update_voltage[0])
-        self.request_set_motor(2, 1, self.update_voltage[2])
-        self.request_set_motor(1, 2, self.update_voltage[1])
-        self.request_set_motor(2, 2, self.update_voltage[3])
+        except UpdateOutOfBounds:
+            try:
+                self.compensate_with_slow_motors()
+            except UnableToUpdateInBounds:
+                """"
+                This section of code keeps the update voltage in bounds by allowing the laser beam path to shift to a 
+                parallel but offset beam path. 
+                Additionally, it tracks the number of times that the voltages went out of bounds in less than 1 minute 
+                since the last out of bounds (i.e. if it goes out of bounds once but then comes back in bounds for more 
+                than 1 minute, the counter is reset to 0). If the piezos go out of bounds more than 10 times in a row 
+                in less than a minute each time, then the code unlocks and returns to measuring state.
+                """
+                # Fit the best update we can, given we cannot restore pointing
+                self.find_best_update()
+                # Track unlocking.
+                self.report_unlock()
+                # Check if I am allowed to continue attempting to lock
+                if self._force_unlock:
+                    if self.time_continually_unlocked > self.max_time_allowed_unlocked:
+                        self.num_out_of_voltage_range = 1
+                        self.time_last_unlock = 0
+                        # Set all voltages back to 75V
+                        self.motors_to_75V()
+                        successful_lock_time = time.monotonic() - self.lock_time_start
+                        print("Successfully locked pointing for", successful_lock_time)
+                        # Tell myself to stop locking.
+                        self._locking = False
+                        self.lock_pointing(False)
+                        print("System has unlocked!")
+                        return
+                if not self.motor_channel_to_skip:
+                    V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+                    self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], self.V0[V_set_index])
+                    V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+                    self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], self.V0[V_set_index])
+                elif self._slow_motors[0] not in self.motor_channel_to_skip:
+                    V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+                    self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], self.V0[V_set_index])
+                elif self._slow_motors[1] not in self.motor_channel_to_skip:
+                    V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+                    self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], self.V0[V_set_index])
+        # Apply all control motors update voltages
+        update_voltage_index = 0
+        for i in range(1, 3):
+            for j in range(1, 4):
+                motor_to_check = [i, j]
+                if motor_to_check in self._control_motors.values():
+                    self.request_set_motor(i, j, self.update_voltage[update_voltage_index])
+                    update_voltage_index += 1
         return
 
     def report_unlock(self):
@@ -969,12 +1440,12 @@ class UpdateManager(QObject):
 
     @pyqtSlot(bool)
     def lock_pointing(self, lock: bool):
+        # TODO: Should be able to transition out of locking by GUI button! Not working though!
         """
         Prepare the update manager to begin locking the pointing. And also tell the update manager to prepare to stop
         locking as well.
         lock is True when requesting begin lock and untrue when requesting leave lock.
         """
-        # TODO: For PID need to reset self.integral_ti
         if lock:
             # First check that we are ready to lock.
             if self.calibration_matrix is None:
@@ -1020,6 +1491,8 @@ class UpdateManager(QObject):
             self.get_motor2_ch1V_signal.emit()
             self.get_motor1_ch2V_signal.emit()
             self.get_motor2_ch2V_signal.emit()
+            self.get_motor1_ch3V_signal.emit()
+            self.get_motor2_ch3V_signal.emit()
             # Initiatlize parameters for tracking unlocking:
             self.lock_time_start = time.monotonic()
             self.time_last_unlock = 0
@@ -1079,6 +1552,7 @@ class UpdateManager(QObject):
         dV[self._1_index_V_out_of_bounds_change_dx1] = 0
         self._2_index_V_out_of_bounds_change_dx1 = np.argmax(np.abs(dV))
         self._2_step_dx1_V_under = np.sign(dV[self._2_index_V_out_of_bounds_change_dx1])
+        return
 
     def increment_dx(self, update_voltage):
         """
@@ -1115,7 +1589,12 @@ class UpdateManager(QObject):
         return ret
 
     def find_best_update(self):
-        # move the dx on unfocused cam1 until the voltages are in bounds.
+        """
+        Incrementally shift the dx (can think of this as shifting the target position) on the unfocused camera 1 pixel
+        at a time in the direction(s) necessary to allow the voltages to stay in bounds. This means that we allow the
+        offset of the laser pointing to shift, but we require the pointing direction (slope, angles) to stay locked in.
+        So, when the pointing goes out of bounds, the laser beam path is allowed to shift to a parallel but offset path.
+        """
         while True:
             dV = np.matmul(self.calibration_matrix, self.update_dx)
             self.dV = np.round(dV,
@@ -1125,7 +1604,8 @@ class UpdateManager(QObject):
             # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
             # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
             # so we subtract that dV restoring us to the old position.
-            self.update_voltage = self.V0 - self.dV
+            V0 = self.V0[self._control_voltage_indexes]
+            self.update_voltage = V0 - self.dV
             if self.increment_dx(self.update_voltage):
                 # No further incrementing required. Update is now in bounds.
                 break
@@ -1145,26 +1625,28 @@ class UpdateManager(QObject):
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
         # "voltage change" that would have caused dX. That is, the positions moved as though Voltages changed by dV;
         # so we subtract that dV restoring us to the old position.
-        update_voltage = self.V0 - self.dV
+        V0 = self.V0[self._control_voltage_indexes]
+        update_voltage = V0 - self.dV
+        self.update_voltage = update_voltage
         if np.any(update_voltage > 150) or np.any(update_voltage < 0):
+            # TODO: DO i want to log these things here?
             if np.any(update_voltage > self._max_V_attempted):
                 self._max_V_attempted = np.max(update_voltage)
                 print("The max voltage update requested so far is ", self._max_V_attempted)
             if np.any(update_voltage < self._min_V_attempted):
                 self._min_V_attempted = np.min(update_voltage)
                 print("The min voltage update requested so far is ", self._min_V_attempted)
-            exception_message = ''
+            """exception_message = ''
             for i in range(4):
                 if update_voltage[i] < 0:
                     exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) +' '
                 if update_voltage[i] > 150:
-                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) +' '
-            raise update_out_of_bounds(exception_message)
-        else:
-            self.update_voltage = update_voltage
-            return
+                    exception_message += 'update channel ' + str(i) + ' was ' + str(update_voltage[i]) +' '"""
+            raise UpdateOutOfBounds
+        return
 
     def fit_update(self):
+        # TODO: Delete
         """
         When the update voltages are out of their allowed range, I want to try to find an update that minimizes
         my dx in the future step, constrained by the allowed piezo ranges. That is what this function does.
@@ -1190,6 +1672,7 @@ class UpdateManager(QObject):
 
     @property
     def inv_calibration_matrix(self):
+        # TODO: Delete
         """
         Return the inverse calibration matrix, which is needed in the fit_update method.
         """
@@ -1197,6 +1680,7 @@ class UpdateManager(QObject):
 
     @staticmethod
     def residual(params, dx, inv_calibration_matrix):
+        # TODO: Delete
         """
         This returns the difference between the current measured dx and the hypothetical dx induced by a voltage
         change to the piezzos.
@@ -1218,6 +1702,20 @@ class UpdateManager(QObject):
             raise InsufficientInformation("Connect motor 2 before calibrating")
         if self.num_cams_connected != 2:
             raise InsufficientInformation("Need to have 2 cameras connected before calibrating, please")
+        if len(self._control_motors.values()) != 4:
+            raise InsufficientInformation("Need to have 4 control motors specified, but you have ",
+                                          len(self._control_motors.values()), " specified.")
+        motor_to_check = [1, 1]
+        Logic1 = motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values()
+        motor_to_check = [1, 2]
+        Logic2 = motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values()
+        motor_to_check = [2, 1]
+        Logic3 = motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values()
+        if not (Logic1 or Logic2 or Logic3):
+            raise InsufficientInformation("Need at least 4 motors selected for control. Somehow motor 1 channel 1 and 2"
+                                          " and motor 2 channel 1 are not being used. Since there are 3 channels per "
+                                          "motor there are 6 channels total and 3 are not in use. So, you need to use "
+                                          "at least 1 more channel. 4 control channels and up to 2 slow motor channels")
         # Make sure no handler is connected to com_found_signal
         if self.com_found_signal_handler is not None:
             # Disconnect unwanted connections.
@@ -1233,13 +1731,39 @@ class UpdateManager(QObject):
             self.com_found_signal_handler = 'run_calibration'
         self._locking = False
         self.calibration_pointing_index = 0
-        self.calibration_sweep_index = 0
         self.voltage_step = 1  # Start at 1, because index 0 is set on motor1 ch1 as starting voltage
         self._calibrating = True
-        self.request_set_motor(1, 1, self.starting_v[0])
-        self.request_set_motor(2, 1, self.starting_v[2])
-        self.request_set_motor(1, 2, self.starting_v[1])
-        self.request_set_motor(2, 2, self.starting_v[3])
+        self.starting_v = 75.0 * np.ones(6)
+        # Start off the calibration process with voltages at first step for the first motor channel that is being used.
+        motor_to_check = [1, 1]
+        if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+            self.starting_v[0] = self.calibration_voltages[0]
+            self.calibration_sweep_index = 0
+        elif [1, 2] in self._control_motors.values() or [1, 2] in self._slow_motors.values():
+            self.starting_v[1] = self.calibration_voltages[0]
+            self.calibration_sweep_index = 1
+        elif [2, 1] in self._control_motors.values() or [2, 1] in self._slow_motors.values():
+            self.starting_v[3] = self.calibration_voltages[0]
+            self.calibration_sweep_index = 2
+        # Set all motors being used to their starting voltages
+        motor_to_check = [1, 1]
+        if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+            self.request_set_motor(1, 1, self.starting_v[0])
+        motor_to_check = [2, 1]
+        if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+            self.request_set_motor(2, 1, self.starting_v[3])
+        motor_to_check = [1, 2]
+        if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+            self.request_set_motor(1, 2, self.starting_v[1])
+        motor_to_check = [2, 2]
+        if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+            self.request_set_motor(2, 2, self.starting_v[4])
+        motor_to_check = [1, 3]
+        if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+            self.request_set_motor(1, 3, self.starting_v[2])
+        motor_to_check = [2, 3]
+        if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+            self.request_set_motor(2, 3, self.starting_v[5])
         return
 
     @pyqtSlot()
@@ -1286,7 +1810,15 @@ class UpdateManager(QObject):
                     # Reset number of dropped calibration points
                     self.num_calibration_points_dropped_current_sweep = 0
                     # step to next step sweep calibration
-                    self.calibration_sweep_index += 1
+                    motor_to_check = [1, 2]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.calibration_sweep_index += 1
+                    elif [2, 1] in self._control_motors.values() or [2, 1] in self._slow_motors.values():
+                        self.calibration_sweep_index = 2
+                    elif [2, 2] in self._control_motors.values() or [2, 2] in self._slow_motors.values():
+                        self.calibration_sweep_index = 3
+                    else:
+                        raise InsufficientInformation("Not enough motors set as control motors.")
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
@@ -1304,7 +1836,15 @@ class UpdateManager(QObject):
                     # Set motor 1 ch1 back to center voltage
                     self.voltage_step += 1
                     self.request_set_motor(1, 1, 75.0)
-                    self.request_set_motor(1, 2, set_voltage)
+                    motor_to_check = [1, 2]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.request_set_motor(1, 2, set_voltage)
+                    elif [2, 1] in self._control_motors.values() or [2, 1] in self._slow_motors.values():
+                        self.request_set_motor(2, 1, set_voltage)
+                    elif [2, 2] in self._control_motors.values() or [2, 2] in self._slow_motors.values():
+                        self.request_set_motor(2, 2, set_voltage)
+                    else:
+                        raise InsufficientInformation("Not enough motors set as control motors.")
                 return
             elif self.calibration_sweep_index == 1:
                 # capture pointing from first motor, channel 2 sweep
@@ -1340,7 +1880,15 @@ class UpdateManager(QObject):
                     # Reset number of dropped calibration points
                     self.num_calibration_points_dropped_current_sweep = 0
                     # step to next step sweep calibration
-                    self.calibration_sweep_index += 1
+                    motor_to_check = [2, 1]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.calibration_sweep_index += 1
+                    elif [2, 2] in self._control_motors.values() or [2, 2] in self._slow_motors.values():
+                        self.calibration_sweep_index = 3
+                    elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
+                        self.calibration_sweep_index = 4
+                    else:
+                        raise InsufficientInformation("Not enough motors set as control motors.")
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
@@ -1358,7 +1906,15 @@ class UpdateManager(QObject):
                     # Set motor 1 ch2 back to center voltage
                     self.voltage_step += 1
                     self.request_set_motor(1, 2, 75.0)
-                    self.request_set_motor(2, 1, set_voltage)
+                    motor_to_check = [2, 1]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.request_set_motor(2, 1, set_voltage)
+                    elif [2, 2] in self._control_motors.values() or [2, 2] in self._slow_motors.values():
+                        self.request_set_motor(2, 2, set_voltage)
+                    elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
+                        self.request_set_motor(1, 3, set_voltage)
+                    else:
+                        raise InsufficientInformation("Not enough motors set as control motors.")
                 return
             elif self.calibration_sweep_index == 2:
                 # capture pointing from second motor, channel 1 sweep
@@ -1394,7 +1950,15 @@ class UpdateManager(QObject):
                     # Reset number of dropped calibration points
                     self.num_calibration_points_dropped_current_sweep = 0
                     # step to next step sweep calibration
-                    self.calibration_sweep_index += 1
+                    motor_to_check = [2, 2]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.calibration_sweep_index += 1
+                    elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
+                        self.calibration_sweep_index = 4
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.calibration_sweep_index = 5
+                    else:
+                        raise InsufficientInformation("Not enough motors set as control motors.")
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
@@ -1412,11 +1976,18 @@ class UpdateManager(QObject):
                     # Set motor 2 ch1 back to center voltage
                     self.voltage_step += 1
                     self.request_set_motor(2, 1, 75.0)
-                    self.request_set_motor(2, 2, set_voltage)
+                    motor_to_check = [2, 2]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.request_set_motor(2, 2, set_voltage)
+                    elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
+                        self.request_set_motor(1, 3, set_voltage)
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.request_set_motor(2, 3, set_voltage)
+                    else:
+                        raise InsufficientInformation("Not enough motors set as control motors.")
                 return
             elif self.calibration_sweep_index == 3:
-                # capture pointing from second motor, channel 2 sweep
-
+                # capture pointing from second motor, channel 1 sweep
                 # Now capture the pointing information from the last voltage step.
                 # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
                 # received by an event, and the event loop is not being processed during this blocking function.
@@ -1448,6 +2019,140 @@ class UpdateManager(QObject):
                     self.calibration_pointing_index = 0
                     # Reset number of dropped calibration points
                     self.num_calibration_points_dropped_current_sweep = 0
+                    # step to next step sweep calibration
+                    motor_to_check = [1, 3]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.calibration_sweep_index += 1
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.calibration_sweep_index = 5
+                    else:
+                        self.calibration_sweep_index = 6
+                        # Tell update manager to calculate the calibration matrix now that the sweeps are done.
+                        self.calculate_calibration_matrix()
+                        # Return from a calibration process always to a non-locking state of the update manager.
+                        self.lock_pointing(False)
+                else:
+                    # Get next step in pointing information for this sweep
+                    self.calibration_pointing_index += 1
+                # Go ahead and get the motor to start updating to the next set point
+                if self.voltage_step < self.num_steps_per_motor:
+                    # Set the next voltage step on motor current motor
+                    set_voltage = self.calibration_voltages[self.voltage_step]
+                    self.voltage_step += 1
+                    self.request_set_motor(2, 2, set_voltage)
+                elif self.voltage_step == self.num_steps_per_motor:
+                    # Finished voltage steps on the last motor, now start the next motor moving.
+                    # But I still need pointing info from the last motor set position.
+                    self.voltage_step = 0
+                    set_voltage = self.calibration_voltages[self.voltage_step]
+                    # Set motor 2 ch1 back to center voltage
+                    self.voltage_step += 1
+                    self.request_set_motor(2, 2, 75.0)
+                    motor_to_check = [1, 3]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.request_set_motor(1, 3, set_voltage)
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.request_set_motor(2, 3, set_voltage)
+                return
+            elif self.calibration_sweep_index == 4:
+                # capture pointing from second motor, channel 1 sweep
+                # Now capture the pointing information from the last voltage step.
+                # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
+                # received by an event, and the event loop is not being processed during this blocking function.
+                if not self.unknown_current_voltage:
+                    # Only store captured pointing information, if I know what voltages are on the motors right now.
+                    self.mot1_z_cam1_x[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                    self.mot1_z_cam1_y[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    self.mot1_z_cam2_x[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                    self.mot1_z_cam2_y[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
+                    # Reset unknown voltage flag
+                    self.unknown_current_voltage = False
+                    del self.mot1_z_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    del self.mot1_z_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    del self.mot1_z_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    del self.mot1_z_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    self.num_calibration_points_dropped_current_sweep += 1
+                # Keep moving calibration pointing index appropriately
+                if self.calibration_pointing_index == self.num_steps_per_motor - 1:
+                    # Finished getting pointing information from this motor sweep
+                    self.calibration_pointing_index = 0
+                    # Reset number of dropped calibration points
+                    self.num_calibration_points_dropped_current_sweep = 0
+                    # step to next step sweep calibration
+                    motor_to_check = [2, 3]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.calibration_sweep_index += 1
+                    else:
+                        self.calibration_sweep_index = 6
+                        # put this motor back to 75.0 V
+                        self.request_set_motor(1, 3, 75.0)
+                        # Tell update manager to calculate the calibration matrix now that the sweeps are done.
+                        self.calculate_calibration_matrix()
+                        # Return from a calibration process always to a non-locking state of the update manager.
+                        self.lock_pointing(False)
+                else:
+                    # Get next step in pointing information for this sweep
+                    self.calibration_pointing_index += 1
+                # Go ahead and get the motor to start updating to the next set point
+                if self.voltage_step < self.num_steps_per_motor:
+                    # Set the next voltage step on motor current motor
+                    set_voltage = self.calibration_voltages[self.voltage_step]
+                    self.voltage_step += 1
+                    self.request_set_motor(1, 3, set_voltage)
+                elif self.voltage_step == self.num_steps_per_motor:
+                    # Finished voltage steps on the last motor, now start the next motor moving.
+                    # But I still need pointing info from the last motor set position.
+                    self.voltage_step = 0
+                    set_voltage = self.calibration_voltages[self.voltage_step]
+                    # Set motor 2 ch1 back to center voltage
+                    self.voltage_step += 1
+                    self.request_set_motor(1, 3, 75.0)
+                    motor_to_check = [2, 3]
+                    if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                        self.request_set_motor(2, 3, set_voltage)
+                return
+            elif self.calibration_sweep_index == 5:
+                # capture pointing from second motor, channel 2 sweep
+                # Now capture the pointing information from the last voltage step.
+                # There won't be a com from the next voltage step yet eventhough called, because imgs can only be
+                # received by an event, and the event loop is not being processed during this blocking function.
+                if not self.unknown_current_voltage:
+                    # Only store captured pointing information, if I know what voltages are on the motors right now.
+                    self.mot2_z_cam1_x[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                    self.mot2_z_cam1_y[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    self.mot2_z_cam2_x[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                    self.mot2_z_cam2_y[self.calibration_pointing_index -
+                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
+                    # Reset unknown voltage flag
+                    self.unknown_current_voltage = False
+                    del self.mot2_z_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    del self.mot2_z_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    del self.mot2_z_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    del self.mot2_z_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep]
+                    self.num_calibration_points_dropped_current_sweep += 1
+                # Keep moving calibration pointing index appropriately
+                if self.calibration_pointing_index == self.num_steps_per_motor - 1:
+                    # Finished getting pointing information from this motor sweep
+                    self.calibration_pointing_index = 0
+                    # Reset number of dropped calibration points
+                    self.num_calibration_points_dropped_current_sweep = 0
                     # step to next step sweep calibration, here this just ensures I do not accidentally overwrite
                     # anything if this function gets called again.
                     self.calibration_sweep_index += 1
@@ -1461,18 +2166,18 @@ class UpdateManager(QObject):
                     # Set the next voltage step on motor current motor
                     set_voltage = self.calibration_voltages[self.voltage_step]
                     self.voltage_step += 1
-                    self.request_set_motor(2, 2, set_voltage)
+                    self.request_set_motor(2, 3, set_voltage)
                 elif self.voltage_step == self.num_steps_per_motor:
                     # Finished voltage steps on the last motor, now start the next motor moving.
                     # But I still need pointing info from the last motor set position.
                     self.voltage_step = 1
                     # Set motor 2 ch2 back to center voltage
-                    self.request_set_motor(2, 2, 75.0)
-                if self.calibration_sweep_index == 4:
+                    self.request_set_motor(2, 3, 75.0)
+                if self.calibration_sweep_index == 6:
                     # Return from a calibration process always to a non-locking state of the update manager.
                     self.lock_pointing(False)
                 return
-            elif self.calibration_pointing_index == 4:
+            elif self.calibration_pointing_index == 6:
                 # If I am getting here, I am already done sweeping the motors anyway, so just do nothing.
                 return
         else:
@@ -1485,29 +2190,6 @@ class UpdateManager(QObject):
         """
         Calculate the calibration matrix. And plot the resulting fits to pointing changes vs. voltage changes
         """
-        """print("motor 1 x : ", self.mot1_x_voltage, len(self.mot1_x_voltage))
-        print("motor 1 y : ", self.mot1_y_voltage, len(self.mot1_y_voltage))
-        print("motor 2 x : ", self.mot2_x_voltage, len(self.mot2_x_voltage))
-        print("motor 2 y : ", self.mot2_y_voltage, len(self.mot2_y_voltage))
-        print("motor 1 x voltage, cam1 x response: ", self.mot1_x_cam1_x, len(self.mot1_x_cam1_x))
-        print("motor 1 x voltage, cam1 y response: ", self.mot1_x_cam1_y, len(self.mot1_x_cam1_y))
-        print("motor 1 x voltage, cam2 x response: ", self.mot1_x_cam2_x, len(self.mot1_x_cam2_x))
-        print("motor 1 x voltage, cam2 y response: ", self.mot1_x_cam2_y, len(self.mot1_x_cam2_y))
-
-        print("motor 1 y voltage, cam1 x response: ", self.mot1_y_cam1_x, " with len ", len(self.mot1_y_cam1_x))
-        print("motor 1 y voltage, cam1 y response: ", self.mot1_y_cam1_y, " with len ", len(self.mot1_y_cam1_y))
-        print("motor 1 y voltage, cam2 x response: ", self.mot1_y_cam2_x, " with len ", len(self.mot1_y_cam2_x))
-        print("motor 1 y voltage, cam2 y response: ", self.mot1_y_cam2_y, " with len ", len(self.mot1_y_cam2_y))
-
-        print("motor 2 x voltage, cam1 x response: ", self.mot2_x_cam1_x, " with len ", len(self.mot2_x_cam1_x))
-        print("motor 2 x voltage, cam1 y response: ", self.mot2_x_cam1_y, " with len ", len(self.mot2_x_cam1_y))
-        print("motor 2 x voltage, cam2 x response: ", self.mot2_x_cam2_x, " with len ", len(self.mot2_x_cam2_x))
-        print("motor 2 x voltage, cam2 y response: ", self.mot2_x_cam2_y, " with len ", len(self.mot2_x_cam2_y))
-
-        print("motor 2 y voltage, cam1 x response: ", self.mot2_y_cam1_x, " with len ", len(self.mot2_y_cam1_x))
-        print("motor 2 y voltage, cam1 y response: ", self.mot2_y_cam1_y, " with len ", len(self.mot2_y_cam1_y))
-        print("motor 2 y voltage, cam2 x response: ", self.mot2_y_cam2_x, " with len ", len(self.mot2_y_cam2_x))
-        print("motor 2 y voltage, cam2 y response: ", self.mot2_y_cam2_y, " with len ", len(self.mot2_y_cam2_y))"""
         # calculate slopes by fitting lines
         p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_x[1:-1], deg=1)
         p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_x[1:-1], deg=1)
@@ -1519,6 +2201,11 @@ class UpdateManager(QObject):
         p_mot1_y_cam1_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_y[1:-1], deg=1)
         p_mot1_y_cam2_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_y[1:-1], deg=1)
 
+        p_mot1_z_cam1_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_x[1:-1], deg=1)
+        p_mot1_z_cam2_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_x[1:-1], deg=1)
+        p_mot1_z_cam1_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_y[1:-1], deg=1)
+        p_mot1_z_cam2_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_y[1:-1], deg=1)
+
         p_mot2_x_cam1_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_x[1:-1], deg=1)
         p_mot2_x_cam2_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_x[1:-1], deg=1)
         p_mot2_x_cam1_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_y[1:-1], deg=1)
@@ -1528,7 +2215,11 @@ class UpdateManager(QObject):
         p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_x[1:-1], deg=1)
         p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_y[1:-1], deg=1)
         p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_y[1:-1], deg=1)
-        print("Finished Polyfit.")
+
+        p_mot2_z_cam1_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_x[1:-1], deg=1)
+        p_mot2_z_cam2_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_x[1:-1], deg=1)
+        p_mot2_z_cam1_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_y[1:-1], deg=1)
+        p_mot2_z_cam2_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_y[1:-1], deg=1)
         # Try thresholding the slopes that are small to 0, since we anticipate that many of the degrees of freedom are
         # uncoupled:
         # if the full range of the piezo only moves this dimension by <5 pixels, m=0
@@ -1551,6 +2242,15 @@ class UpdateManager(QObject):
         if np.abs(p_mot1_y_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_y_cam2_y[0] = 0
 
+        if np.abs(p_mot1_z_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot1_z_cam1_x[0] = 0
+        if np.abs(p_mot1_z_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot1_z_cam1_y[0] = 0
+        if np.abs(p_mot1_z_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot1_z_cam2_x[0] = 0
+        if np.abs(p_mot1_z_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot1_z_cam2_y[0] = 0
+
         if np.abs(p_mot2_x_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_x_cam1_x[0] = 0
         if np.abs(p_mot2_x_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
@@ -1569,20 +2269,59 @@ class UpdateManager(QObject):
         if np.abs(p_mot2_y_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_y_cam2_y[0] = 0
 
+        if np.abs(p_mot2_z_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot2_z_cam1_x[0] = 0
+        if np.abs(p_mot2_z_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot2_z_cam1_y[0] = 0
+        if np.abs(p_mot2_z_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot2_z_cam2_x[0] = 0
+        if np.abs(p_mot2_z_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
+            p_mot2_z_cam2_y[0] = 0
+
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
-        motor_voltages = [self.mot1_x_voltage, self.mot1_y_voltage, self.mot2_x_voltage, self.mot2_y_voltage]
-        positions = [self.mot1_x_cam1_x, self.mot1_y_cam1_x, self.mot2_x_cam1_x, self.mot2_y_cam1_x, self.mot1_x_cam1_y,
-                     self.mot1_y_cam1_y, self.mot2_x_cam1_y, self.mot2_y_cam1_y, self.mot1_x_cam2_x, self.mot1_y_cam2_x,
-                     self.mot2_x_cam2_x, self.mot2_y_cam2_x, self.mot1_x_cam2_y, self.mot1_y_cam2_y, self.mot2_x_cam2_y,
-                     self.mot2_y_cam2_y]
-        fits = [p_mot1_x_cam1_x, p_mot1_y_cam1_x, p_mot2_x_cam1_x, p_mot2_y_cam1_x, p_mot1_x_cam1_y, p_mot1_y_cam1_y,
-                p_mot2_x_cam1_y, p_mot2_y_cam1_y, p_mot1_x_cam2_x, p_mot1_y_cam2_x, p_mot2_x_cam2_x, p_mot2_y_cam2_x,
-                p_mot1_x_cam2_y, p_mot1_y_cam2_y, p_mot2_x_cam2_y, p_mot2_y_cam2_y]
+        motor_voltages = [self.mot1_x_voltage, self.mot1_y_voltage, self.mot1_z_voltage, self.mot2_x_voltage,
+                          self.mot2_y_voltage, self.mot2_z_voltage]
+        positions = [self.mot1_x_cam1_x, self.mot1_y_cam1_x, self.mot1_z_cam1_x, self.mot2_x_cam1_x, self.mot2_y_cam1_x,
+                     self.mot2_z_cam1_x, self.mot1_x_cam1_y, self.mot1_y_cam1_y, self.mot1_z_cam1_y, self.mot2_x_cam1_y,
+                     self.mot2_y_cam1_y, self.mot2_z_cam1_y, self.mot1_x_cam2_x, self.mot1_y_cam2_x, self.mot1_z_cam2_x,
+                     self.mot2_x_cam2_x, self.mot2_y_cam2_x, self.mot2_z_cam2_x, self.mot1_x_cam2_y, self.mot1_y_cam2_y,
+                     self.mot1_z_cam2_y, self.mot2_x_cam2_y, self.mot2_y_cam2_y, self.mot2_z_cam2_y]
+        fits = [p_mot1_x_cam1_x, p_mot1_y_cam1_x, p_mot1_z_cam1_x, p_mot2_x_cam1_x, p_mot2_y_cam1_x, p_mot2_z_cam1_x,
+                p_mot1_x_cam1_y, p_mot1_y_cam1_y, p_mot1_z_cam1_y, p_mot2_x_cam1_y, p_mot2_y_cam1_y, p_mot2_z_cam1_y,
+                p_mot1_x_cam2_x, p_mot1_y_cam2_x, p_mot1_z_cam2_x, p_mot2_x_cam2_x, p_mot2_y_cam2_x, p_mot2_z_cam2_x,
+                p_mot1_x_cam2_y, p_mot1_y_cam2_y, p_mot1_z_cam2_y, p_mot2_x_cam2_y, p_mot2_y_cam2_y, p_mot2_z_cam2_y]
         self.request_gui_plot_calibrate_fits.emit(motor_voltages, positions, fits)
+        motor1_1 = [p_mot1_x_cam1_x[0], p_mot1_x_cam1_y[0], p_mot1_x_cam2_x[0], p_mot1_x_cam2_y[0]]
+        motor1_2 = [p_mot1_y_cam1_x[0], p_mot1_y_cam1_y[0], p_mot1_y_cam2_x[0], p_mot1_y_cam2_y[0]]
+        motor1_3 = [p_mot1_z_cam1_x[0], p_mot1_z_cam1_y[0], p_mot1_z_cam2_x[0], p_mot1_z_cam2_y[0]]
+        motor2_1 = [p_mot2_x_cam1_x[0], p_mot2_x_cam1_y[0], p_mot2_x_cam2_x[0], p_mot2_x_cam2_y[0]]
+        motor2_2 = [p_mot2_y_cam1_x[0], p_mot2_y_cam1_y[0], p_mot2_y_cam2_x[0], p_mot2_y_cam2_y[0]]
+        motor2_3 = [p_mot2_z_cam1_x[0], p_mot2_z_cam1_y[0], p_mot2_z_cam2_x[0], p_mot2_z_cam2_y[0]]
+        inv_calib_mat = []
+        motor_to_check = [1, 1]
+        if motor_to_check in self._control_motors.values():
+            inv_calib_mat.append(motor1_1)
+        motor_to_check = [1, 2]
+        if motor_to_check in self._control_motors.values():
+            inv_calib_mat.append(motor1_2)
+        motor_to_check = [1, 3]
+        if motor_to_check in self._control_motors.values():
+            inv_calib_mat.append(motor1_3)
+        motor_to_check = [2, 1]
+        if motor_to_check in self._control_motors.values():
+            inv_calib_mat.append(motor2_1)
+        motor_to_check = [2, 2]
+        if motor_to_check in self._control_motors.values():
+            inv_calib_mat.append(motor2_2)
+        motor_to_check = [2, 3]
+        if motor_to_check in self._control_motors.values():
+            inv_calib_mat.append(motor2_3)
+        inv_calib_mat = np.asarray(inv_calib_mat).transpose()
+        """For ref: Correct format for inv_calib_mat from before changing to allowing selection of control/slow motors.
         inv_calib_mat = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0]],
                               [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
-                              [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])
+                              [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])"""
         calib_mat = np.linalg.inv(inv_calib_mat)
         # Set the calibration matrix
         self.calibration_matrix = calib_mat
@@ -1590,6 +2329,43 @@ class UpdateManager(QObject):
         self.test_calibration_matrix()
         # Let the GUI thread know that calibration is done so that it can update GUI information accordingly.
         self.update_gui_new_calibration_matrix_signal.emit(calib_mat)
+        if self._slow_motors.values():
+            # This maps from all used motors dV to dx.
+            self.all_motors_matrix = []
+            motor_to_check = [1, 1]
+            if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                self.all_motors_matrix.append(motor1_1)
+            motor_to_check = [1, 2]
+            if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                self.all_motors_matrix.append(motor1_2)
+            motor_to_check = [1, 3]
+            if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                self.all_motors_matrix.append(motor1_3)
+            motor_to_check = [2, 1]
+            if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                self.all_motors_matrix.append(motor2_1)
+            motor_to_check = [2, 2]
+            if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                self.all_motors_matrix.append(motor2_2)
+            motor_to_check = [2, 3]
+            if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                self.all_motors_matrix.append(motor2_3)
+            self.all_motors_matrix = np.asarray(self.all_motors_matrix).transpose()
+            """ For Ref: correct all motors matrix from when it was hard coded.
+            self.all_motors_matrix = np.array([[p_mot1_x_cam1_x[0], p_mot1_y_cam1_x[0], p_mot1_z_cam1_x[0], p_mot2_x_cam1_x[0], p_mot2_y_cam1_x[0], p_mot2_z_cam1_x[0]],
+                                  [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot1_z_cam1_y[0],  p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0], p_mot2_z_cam1_y[0]],
+                                  [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot1_z_cam2_x[0],  p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0], p_mot2_z_cam2_x[0]],
+                                  [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot1_z_cam2_y[0],  p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0], p_mot2_z_cam2_y[0]]])"""
+            # These vectors tell me how I can move without impacting dx. useful for compensating with the slow motors.
+            self.null_vectors = scipy.linalg.null_space(self.all_motors_matrix)
+            self.null_vectors.reshape(6, int(self.null_vectors.size/6))
+            # These matricies are convenient for finding how to move the slow motors to bring the fast ones in bounds.
+            self.null_matrix_inv_1 = np.linalg.inv(np.concatenate([self.null_vectors[0, :].reshape(1, 2),
+                                                                   self.null_vectors[3, :].reshape(1, 2)], axis=0))
+            self.null_matrix_inv_2 = np.linalg.inv(np.concatenate([self.null_vectors[1, :].reshape(1, 2),
+                                                                   self.null_vectors[4, :].reshape(1, 2)], axis=0))
+            self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[2, :].reshape(1, 2),
+                                                                   self.null_vectors[5, :].reshape(1, 2)], axis=0))
         print("Finished calculating calibration matrix.")
         return
 
@@ -1842,7 +2618,6 @@ class UpdateManager(QObject):
             self._r0[0:2] = r0
         elif cam_num == 2:
             self._r0[2:] = r0
-        print("Updating camera offset, r0 now is ", self._r0)
         return
 
     @pyqtSlot(int, float)
@@ -1867,7 +2642,7 @@ class UpdateManager(QObject):
         return
 
     @pyqtSlot(int)
-    def set_report_imgae_to_gui(self, cam_num: int):
+    def set_report_image_to_gui(self, cam_num: int):
         if cam_num == 1:
             self.report_cam1_img_to_gui = True
         if cam_num == 2:
