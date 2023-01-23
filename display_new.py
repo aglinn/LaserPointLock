@@ -21,8 +21,9 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread, QTimer, QMetaObject, Qt, Q_ARG
-from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
-from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
+from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError
+# from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
+from Packages.camera import Blackfly_S as BlackflyS
 from Packages.camera import Boson_QObject as Boson
 from Packages.motors import MDT693A_Motor
 from Packages.motors import MDT693B_Motor
@@ -867,7 +868,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     port_list.append(port)
             device_id = None
             for boson_port in port_list:
-                c = BosonCamera(port=boson_port, device_id=device_id)
+                c = Boson(port=boson_port, device_id=device_id)
                 print(boson_port)
                 ffc_state = 0
                 c.do_ffc()
@@ -1856,6 +1857,8 @@ class Window(QMainWindow, Ui_MainWindow):
             self.UpdateManager
         except NameError:
             num += 1
+        except AttributeError:
+            num += 1
         if num == 10:
             print("Successfully closed all known resources.")
         else:
@@ -1868,37 +1871,55 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1
         except NameError:
             num += 1
+        except AttributeError:
+            num += 1
         try:
             self.cam1_thread
         except NameError:
+            num += 1
+        except AttributeError:
             num += 1
         try:
             self.cam2
         except NameError:
             num += 1
+        except AttributeError:
+            num += 1
         try:
             self.cam2_thread
         except NameError:
+            num += 1
+        except AttributeError:
             num += 1
         try:
             self.UpdateManager.motor1
         except NameError:
             num += 1
+        except AttributeError:
+            num += 1
         try:
             self.UpdateManager.motor1_thread
         except NameError:
+            num += 1
+        except AttributeError:
             num += 1
         try:
             self.UpdateManager.motor2
         except NameError:
             num += 1
+        except AttributeError:
+            num += 1
         try:
             self.UpdateManager.motor2_thread
         except NameError:
             num += 1
+        except AttributeError:
+            num += 1
         try:
             self.UpdateManager.ResourceManager
         except NameError:
+            num += 1
+        except AttributeError:
             num += 1
         return num
 

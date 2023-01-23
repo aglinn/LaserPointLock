@@ -164,7 +164,7 @@ class UpdateManager(QObject):
         self.num_attempts_set_motor2_ch3_V = 0
         self.calibration_voltages = 5 * np.arange(31)
         self.calibration_voltages = np.concatenate((self.calibration_voltages, np.flip(self.calibration_voltages)[1:]))
-        self.calibration_voltages = np.concatenat((self.calibration_voltages, self.calibration_voltages[1:]))
+        self.calibration_voltages = np.concatenate((self.calibration_voltages, self.calibration_voltages[1:]))
         print("Calibration voltages shape", self.calibration_voltages.shape)
         self.num_steps_per_motor = len(self.calibration_voltages)
         self.mot1_x_voltage, self.mot1_y_voltage, self.mot1_z_voltage, self.mot2_x_voltage, self.mot2_y_voltage, \

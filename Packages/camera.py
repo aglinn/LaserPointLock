@@ -561,8 +561,6 @@ class BaseCamera(QObject):
 
     def __init__(self, dev_id: int):
         super().__init__()
-        # Setup camera to be full view rather than in ROI mode.
-        self.ensure_full_view()
         # Assume the camera is ready to acquire by the end of init function, override if neccessary.
         self._ready_to_acquire = True
         # Need to appropriately set a serial number for the camera, which is used in the camera device list of GUI to
@@ -848,6 +846,8 @@ class Blackfly_S(BaseCamera):
         self.timeout_time = int(self.timeout_time)
         self.starting = True
         self._ROI_bounds = None
+        # Setup camera to be full view rather than in ROI mode.
+        self.ensure_full_view()
         return
 
 
