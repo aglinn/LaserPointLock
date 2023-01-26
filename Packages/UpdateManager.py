@@ -9,7 +9,8 @@ import time
 import scipy.linalg
 from lmfit import Parameters, minimize
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer
-from Packages.motors import MDT693B_Motor, MDT693A_Motor
+from Packages.motors import MDT693BMotor as MDT693B_Motor
+from Packages.motors import MDT693AMotor as MDT693A_Motor
 from datetime import datetime
 import cv2
 from shapely.geometry import Polygon

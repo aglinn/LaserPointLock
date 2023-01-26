@@ -25,8 +25,8 @@ from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError
 # from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
 from Packages.camera import Blackfly_S as BlackflyS
 from Packages.camera import Boson_QObject as Boson
-from Packages.motors import MDT693A_Motor
-from Packages.motors import MDT693B_Motor
+from Packages.motors import MDT693AMotor as MDT693A_Motor
+from Packages.motors import MDT693BMotor as MDT693B_Motor
 from Packages.CameraThread import CameraThread
 import tkinter as tk
 from tkinter import filedialog
@@ -639,32 +639,58 @@ class Window(QMainWindow, Ui_MainWindow):
             self.le_Td.setText('N/A not PID')
         return
 
+    def find_MDT693A(self):
+        """
+        Find all MDT693A motors
+        """
+        num_motors = 0
+        for dev in self.ResourceManager.list_resources():
+            try:
+                motor = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=dev,
+                                      ch1='X',
+                                      ch2='Y')
+                num_motors += 1
+                self.motor_model.appendRow(QtGui.QStandardItem(str("MDT693A" + dev)))
+                motor.close()
+                del motor
+            except:
+                pass
+        return num_motors
+
+    def find_MDT693B(self):
+        """
+        Find all MDT 693B motors
+        """
+        num_motors = 0
+        mdt693b_dev_list = mdt.mdtListDevices()
+        for dev in mdt693b_dev_list:
+            num_motors += 1
+            self.motor_model.appendRow(QtGui.QStandardItem(str(dev)))
+        return num_motors
+
     def find_motors(self):
         """
         Find available motors and populate the GUI list with them.
         """
         num_motors = 0
-        if self.ResourceManager is None:
-            self.ResourceManager = visa.ResourceManager()
-        # Find motors using VISA
-        for dev in self.ResourceManager.list_resources():
-            num_motors += 1
-            self.motor_model.appendRow(QtGui.QStandardItem(str("MDT693A?" + dev)))
+        # Find all MDT693B motors
+        # Using the Thorlabs SDK is known to throw an error when too many devices are connected to the computer.
+        # num_motors += self.find_MDT693B()
+        # Find all MDT693A motors
+        num_motors += self.find_MDT693A()
         self.ResourceManager.close()
         del self.ResourceManager
         self.ResourceManager = None
-
-        # Find newer mdt693b devices using Thorlabs SDK and add them to the list too
-        mdt693b_dev_list = mdt.mdtListDevices()
-        for dev in mdt693b_dev_list:
-            num_motors += 1
-            self.motor_model.appendRow(QtGui.QStandardItem(str(dev)))
+        # Update GUI with motor options
         self.cb_motors_1.setModel(self.motor_model)
         self.cb_motors_2.setModel(self.motor_model)
+        # If there are 2 motors connected to the computer, update GUI selections to motor 1 and motor 2.
         if num_motors > 1:
             self.cb_motors_1.setCurrentIndex(0)
             self.cb_motors_2.setCurrentIndex(1)
         else:
+            if num_motors == 0:
+                print("No motors found.")
             self.cb_motors_1.setCurrentIndex(-1)
             self.cb_motors_1.setCurrentIndex(-1)
         return
@@ -1545,12 +1571,12 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.cb_motors_1.currentData(0) != self.cb_motors_2.currentData(0):
             if "MDT693B" in self.cb_motors_1.currentData(0):
                 self.connect_motor_signal.emit(1, self.cb_motors_1.currentData(0))
-            else:
-                self.connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
+            elif 'MDT693A' in self.cb_motors_1.currentData(0):
+                self.connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)[7:]))
             if "MDT693B" in self.cb_motors_2.currentData(0):
                 self.connect_motor_signal.emit(2, self.cb_motors_2.currentData(0))
-            else:
-                self.connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
+            elif 'MDT693A' in self.cb_motors_2.currentData(0):
+                self.connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0))[7:])
         return
 
     @pyqtSlot()

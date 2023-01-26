@@ -223,6 +223,7 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import QObject, QThread
 import time
 from flirpy.camera.boson import Boson
+from flirpy.camera.core import Core
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
 
 
@@ -1271,12 +1272,13 @@ class Boson_QObject(Boson, BaseCamera):
     # compliant USB video device. So, maybe that implies I can set an ROI using cv2?
 
     def __init__(self, port=None, device_id=None):
+        # MRO: self, Boson, Core, BaseCamera, QObject, sip.wrapper, sip.simplewrapper, object
         # Init Boson class first.
         self.port = port
         super().__init__(port=self.port)
         serial_no = str(self.get_camera_serial())
         # With serial number in hand, can init BaseCamera Object
-        super(Boson, self).__init__(device_id=serial_no)
+        super(Core, self).__init__(dev_id=serial_no)
         ##############################################################
         # Additional steps to finish initing the Boson_QObject class #
         ##############################################################
@@ -1288,13 +1290,16 @@ class Boson_QObject(Boson, BaseCamera):
             print("The ffc correction is not being applied.")
         if not self.get_ffc_mode() == 0:
             print("The IR cameras need to be run in manual FFC mode.")
+        # Find device by device_id
         self.device_id = self.find_video_device(device_id=device_id)
+        # Setup the video device as a cv2 capture device.
+        self.setup_video(self.device_id)
         self.set_ROI_bounds([0, 1024, 0, 1280])
         self.is_boson = True
         # Will need to overwrite framerate with appropriate number.
-        self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        print("Reading Boson Frame Rate as ", self.frame_rate)
-        self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
+        # Cannot read Boson frame rate
+        # self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
+        self.timeout_time = np.floor((1 / 60.0) * 1000)  # in ms
         self.timeout_time = int(self.timeout_time)
         self._exposure_time = self.timeout_time  # uniqute to Boson that does not have a settable exposure time.
         # TODO: Make sure that timer interval is updated with correct signal.

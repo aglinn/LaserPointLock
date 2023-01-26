@@ -508,26 +508,29 @@ class MDT693AMotor(Base_Motor):
         self.port = com_port
         self.inst = rm.open_resource(com_port, baud_rate=115200, data_bits=8, parity=Parity.none,
                                      flow_control=VI_ASRL_FLOW_NONE, stop_bits=StopBits.one)
+        # Init the Base motor object.
+        super().__init__(motor_number, ch1, ch2, ch3)
         # Set voltage high and low to 150 and 0.
         # Low to 0
         cmd = self.ch1 + 'L' + str('{:.1f}'.format(0))
         rep = self.inst.query(cmd)
         cmd = self.ch1+'L?'
-        rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        rep = self.inst.query(cmd)
+        rep = re.findall("\d+", rep)
         if not np.abs(float(rep[0])) < 0.2:
             print("Warning channel, ", self.ch1, ", on motor number, ", self.motor_number, ", did not set low V lim "
                                                                                            "correctly.")
         cmd = self.ch2 + 'L' + str('{:.1f}'.format(0))
         rep = self.inst.query(cmd)
         cmd = self.ch2 + 'L?'
-        rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        rep = re.findall("\d+", self.inst.query(cmd))
         if not np.abs(float(rep[0])) < 0.2:
             print("Warning channel, ", self.ch2, ", on motor number, ", self.motor_number, ", did not set low V lim "
                                                                                            "correctly.")
         cmd = self.ch3 + 'L' + str('{:.1f}'.format(0))
         rep = self.inst.query(cmd)
         cmd = self.ch3 + 'L?'
-        rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        rep = re.findall("\d+", self.inst.query(cmd))
         if not np.abs(float(rep[0])) < 0.2:
             print("Warning channel, ", self.ch3, ", on motor number, ", self.motor_number, ", did not set low V lim "
                                                                                            "correctly.")
@@ -535,26 +538,24 @@ class MDT693AMotor(Base_Motor):
         cmd = self.ch1 + 'H' + str('{:.1f}'.format(150.0))
         rep = self.inst.query(cmd)
         cmd = self.ch1 + 'H?'
-        rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        rep = re.findall("\d+", self.inst.query(cmd))
         if not np.abs(float(rep[0])-150.0) < 0.2:
             print("Warning channel, ", self.ch1, ", on motor number, ", self.motor_number, ", did not set High V lim "
                                                                                            "correctly.")
         cmd = self.ch2 + 'H' + str('{:.1f}'.format(150.0))
         rep = self.inst.query(cmd)
         cmd = self.ch2 + 'H?'
-        rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        rep = re.findall("\d+", self.inst.query(cmd))
         if not np.abs(float(rep[0]) - 150.0) < 0.2:
             print("Warning channel, ", self.ch2, ", on motor number, ", self.motor_number, ", did not set High V lim "
                                                                                            "correctly.")
         cmd = self.ch3 + 'H' + str('{:.1f}'.format(150.0))
         rep = self.inst.query(cmd)
         cmd = self.ch3 + 'H?'
-        rep = re.findall("\d+\.\d+", self.inst.query(cmd))
+        rep = re.findall("\d+", self.inst.query(cmd))
         if not np.abs(float(rep[0]) - 150.0) < 0.2:
             print("Warning channel, ", self.ch3, ", on motor number, ", self.motor_number, ", did not set High V lim "
                                                                                            "correctly.")
-        # Init the Base motor object.
-        super().__init__(motor_number, ch1, ch2, ch3)
         # Now assign the properties the actual starting values.
         self._ch1_v = [self.ch1_v]
         self._ch2_v = [self.ch2_v]
