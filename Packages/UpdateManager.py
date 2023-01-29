@@ -59,7 +59,8 @@ class UpdateManager(QObject):
     update_gui_img_signal = pyqtSignal(int, np.ndarray)
     # This reports all COM found regardless of motor status to GUI.
     update_gui_cam_com_signal = pyqtSignal(int, np.ndarray)
-    update_gui_new_calibration_matrix_signal = pyqtSignal(np.ndarray)  # send this to GUI for GUI thread to save
+    # send this to GUI for GUI thread to save
+    update_gui_new_calibration_matrix_signal = pyqtSignal(np.ndarray, np.ndarray, dict, dict, list)
     update_gui_piezo_voltage_signal = pyqtSignal(int, int, float)
     update_gui_locked_state = pyqtSignal(bool)
     update_gui_locking_update_out_of_bounds_signal = pyqtSignal(dict)
@@ -121,6 +122,8 @@ class UpdateManager(QObject):
         self.motor2_thread = None
         self.motor1 = None
         self.motor2 = None
+        self.motor1_info = ''
+        self.motor2_info = ''
         self.motor1_to_connect = None
         self.motor2_to_connect = None
         self.num_attempts_close_motor1 = 0
@@ -140,8 +143,10 @@ class UpdateManager(QObject):
         self.num_cams_connected = 0
         # parameters to handle calibrating:
         # So far, slow motors is hard coded to be 0 or 2.
-        self._slow_motors = {0: [1, 3], 1: [2, 3]}  # The lists contain motor number and channel to treat as slow.
-        self._control_motors = {0: [1, 1], 1: [1, 2], 2: [2, 1], 3: [2, 2]}  # must be four control motors!
+        # The lists contain motor number and channel to treat as slow.
+        # formatting e.g. {0: [1, 3], 1: [2, 3]} and {0: [1, 1], 1: [1, 2], 2: [2, 1], 3: [2, 2]}
+        self._slow_motors = {}
+        self._control_motors = {}  # must be four control motors!
         self._control_voltage_indexes = []
         for i in range(1, 3):
             for j in range(1, 4):
@@ -211,6 +216,20 @@ class UpdateManager(QObject):
         self._2_step_dx1_V_under = None
         self._max_V_attempted = 0
         self._min_V_attempted = 0
+        return
+
+    @pyqtSlot(dict, dict)
+    def set_control_motors(self, control_motors: dict, slow_motors: dict):
+        """
+        set which motors and channels are used for fast control and slow control of the laser pointing
+
+        inputs:
+        control_motors has 4 items that are each lists of [motor number, channel number] with keys, 0,1,2,3, e.g.
+            {0: [1, 1], 1: [1, 2], 2: [2, 1], 3: [2, 2]}
+        slow_motors: Similar format but only 0 or 2 entries allowed. e.g. {0: [1, 3], 1: [2, 3]}
+        """
+        self._control_motors = control_motors
+        self._slow_motors = slow_motors
         return
 
     @pyqtSlot()
@@ -760,9 +779,9 @@ class UpdateManager(QObject):
                     if self.ResourceManager is None:
                         import visa
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=motor_to_connect,
-                                                ch1='X',
-                                                ch2='Y')
+                    self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=motor_to_connect[7:],
+                                                ch1='X', ch2='Y')
+                self.motor1_info = motor_to_connect
                 # Move the motor to its thread
                 self.motor1.moveToThread(self.motor1_thread)
                 # Connect all signals from the motors
@@ -793,8 +812,9 @@ class UpdateManager(QObject):
                     if self.ResourceManager is None:
                         import visa
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=motor_to_connect,
+                    self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=motor_to_connect[7:],
                                                 ch1='X', ch2='Y')
+                self.motor2_info = motor_to_connect
                 # Move the motor to its thread
                 self.motor2.moveToThread(self.motor2_thread)
                 # Connect all signals from the motors
@@ -824,7 +844,9 @@ class UpdateManager(QObject):
                 else:
                     if self.ResourceManager is None:
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=self.motor1_to_connect, ch1='X', ch2='Y')
+                    self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1,
+                                                com_port=self.motor1_to_connect[7:], ch1='X', ch2='Y')
+                self.motor1_info = self.motor1_to_connect
                 # Move the motor to its thread
                 self.motor1.moveToThread(self.motor1_thread)
                 # Connect all signals from the motors
@@ -839,8 +861,9 @@ class UpdateManager(QObject):
                 else:
                     if self.ResourceManager is None:
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=self.motor2_to_connect,
-                                                ch1='X', ch2='Y')
+                    self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2,
+                                                com_port=self.motor2_to_connect[7:], ch1='X', ch2='Y')
+                self.motor2_info = self.motor2_to_connect
                 # Move the motor to its thread
                 self.motor2.moveToThread(self.motor2_thread)
                 # Connect all signals from the motors
@@ -1077,6 +1100,8 @@ class UpdateManager(QObject):
 
     def find_solution_region(self, V, low=0, high=150):
         """
+        find the allowed steps along Nullvecs that bring all voltages into bound, if any steps exist.
+
         Having failed a normal update, I am now looking to move in null space to bring the voltages in bounds. That is,
         I want 0<=V_out_of_bounds_update + a*Nullvec1 + b*Nullvec2<=150 for some (a,b)—There are 6 equations in this
         matrix equation. In general, there is no  guarantee of a solution--2 DOF and 6 equations... So, I split this
@@ -1158,7 +1183,7 @@ class UpdateManager(QObject):
     def compensate_with_slow_motors(self):
         """
         When an update is out of bounds, call this function to see if the update can be moved into bounds by moving the
-        slow motors, for now hard coded to be motor1 and 2 3rd channels.
+        slow motors.
 
         take small steps to avoid introducing noise, but at least big enough to bring the control motors in bounds.
         """
@@ -2328,11 +2353,9 @@ class UpdateManager(QObject):
         self.calibration_matrix = calib_mat
         # Run some checks: see if I can reconstruct known voltage changes from dx's induced by the known voltage change.
         self.test_calibration_matrix()
-        # Let the GUI thread know that calibration is done so that it can update GUI information accordingly.
-        self.update_gui_new_calibration_matrix_signal.emit(calib_mat)
+        self.all_motors_matrix = []
         if self._slow_motors.values():
             # This maps from all used motors dV to dx.
-            self.all_motors_matrix = []
             motor_to_check = [1, 1]
             if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
                 self.all_motors_matrix.append(motor1_1)
@@ -2367,6 +2390,11 @@ class UpdateManager(QObject):
                                                                    self.null_vectors[4, :].reshape(1, 2)], axis=0))
             self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[2, :].reshape(1, 2),
                                                                    self.null_vectors[5, :].reshape(1, 2)], axis=0))
+        else:
+            self.all_motors_matrix = np.asarray(self.all_motors_matrix)
+        # Let the GUI thread know that calibration is done so that it can update GUI information accordingly.
+        self.update_gui_new_calibration_matrix_signal.emit(calib_mat, self.all_motors_matrix, self._control_motors,
+                                                           self._slow_motors, [self.motor1_info, self.motor2_info])
         print("Finished calculating calibration matrix.")
         return
 
@@ -2969,6 +2997,24 @@ class UpdateManager(QObject):
             self.motor2.close()
             del self.motor2
             del self.motor2_thread
+        return
+
+    @pyqtSlot(np.ndarray)
+    def set_all_motors_matrix(self, all_motors_matrix: np.ndarray):
+        """
+        Set all motors matrix, and in the process set associated null vectors and null matricies.
+        """
+        self.all_motors_matrix = all_motors_matrix
+        # These vectors tell me how I can move without impacting dx. useful for compensating with the slow motors.
+        self.null_vectors = scipy.linalg.null_space(self.all_motors_matrix)
+        self.null_vectors.reshape(6, int(self.null_vectors.size / 6))
+        # These matricies are convenient for finding how to move the slow motors to bring the fast ones in bounds.
+        self.null_matrix_inv_1 = np.linalg.inv(np.concatenate([self.null_vectors[0, :].reshape(1, 2),
+                                                               self.null_vectors[3, :].reshape(1, 2)], axis=0))
+        self.null_matrix_inv_2 = np.linalg.inv(np.concatenate([self.null_vectors[1, :].reshape(1, 2),
+                                                               self.null_vectors[4, :].reshape(1, 2)], axis=0))
+        self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[2, :].reshape(1, 2),
+                                                               self.null_vectors[5, :].reshape(1, 2)], axis=0))
         return
 
 

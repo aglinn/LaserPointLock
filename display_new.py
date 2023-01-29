@@ -95,12 +95,14 @@ class Window(QMainWindow, Ui_MainWindow):
     connect_motor_signal = pyqtSignal(int, str)
     set_UpdateManager_home_signal = pyqtSignal(np.ndarray)
     set_UpdateManager_calibration_matrix = pyqtSignal(np.ndarray)
+    set_UpdateManager_control_motors = pyqtSignal(dict, dict)
     # This int is +1 for adding and -1 for removing
     update_UpdateManager_num_cameras_connected_signal = pyqtSignal(int)
     create_UpdateManager_timers = pyqtSignal()
     # bool flags whether to force an unlock or keep trying.
     set_UpdateManager_locking_out_of_bounds_params_signal = pyqtSignal(bool, float)
     set_UpdateManager_camera_threshold_signal = pyqtSignal(int, float)
+    set_UpdateManager_all_motors_matrix = pyqtSignal(np.ndarray)
     request_UpdateManager_ping = pyqtSignal(float)
     request_images = pyqtSignal(int)  # Cam number
     set_P = pyqtSignal(float)
@@ -146,6 +148,7 @@ class Window(QMainWindow, Ui_MainWindow):
         # assign item models
         self.cam_model = QtGui.QStandardItemModel()
         self.motor_model = QtGui.QStandardItemModel()
+        self.motor_model_channel_num = QtGui.QStandardItemModel()
         # error dialog, unused so far.
         # self.error_dialog = QtWidgets.QErrorMessage()
         # Motors parameters
@@ -326,6 +329,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.cb_suppress_piezzo_update.clicked.connect(self.toggle_piezo_display)
         self.btn_Align.clicked.connect(self.motors_to_75V_signal.emit)
         self.le_num_points.textEdited.connect(self.set_num_points_to_plot)
+        self.pb_update_control_motors.clicked.connect(self.update_updatemanager_control_motors)
         return
 
     def connect_UpdateManager_signals(self):
@@ -347,6 +351,8 @@ class Window(QMainWindow, Ui_MainWindow):
         self.request_UpdateManager_ping.connect(self.UpdateManager.return_ping)
         self.create_UpdateManager_timers.connect(self.UpdateManager.create_timers)
         self.request_images.connect(self.UpdateManager.set_report_image_to_gui)
+        self.set_UpdateManager_control_motors.connect(self.UpdateManager.set_control_motors)
+        self.set_UpdateManager_all_motors_matrix.connect(self.UpdateManager.set_all_motors_matrix)
         if self.UpdateManager.is_PID:
             self.set_P.connect(self.UpdateManager.set_P)
             self.set_I.connect(self.UpdateManager.set_I)
@@ -360,6 +366,49 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
         self.UpdateManager.update_gui_ping.connect(self.report_UpdateManager_ping)
         self.UpdateManager.request_gui_plot_calibrate_fits.connect(self.plot_calibration_fits)
+        return
+
+    def get_motor_num_channel_num(self, cm_selection: str) -> list:
+        """
+        Convert a given string indicating a motor/channel selection into a list of [motor_num, channel_num]
+        """
+
+        if str(self.cb_motors_1.currentData()) in cm_selection:
+            if '1' in cm_selection[-1]:
+                cm = [1, 1]
+            elif '2' in cm_selection[-1]:
+                cm = [1, 2]
+            elif '3' in cm_selection[-1]:
+                cm = [1, 3]
+        if str(self.cb_motors_2.currentData()) in cm_selection:
+            if '1' in cm_selection[-1]:
+                cm = [2, 1]
+            elif '2' in cm_selection[-1]:
+                cm = [2, 2]
+            elif '3' in cm_selection[-1]:
+                cm = [2, 3]
+        return cm
+
+    @pyqtSlot()
+    def update_updatemanager_control_motors(self):
+        """
+        Set update manager control and slow motors with GUI inputs
+        """
+
+        cm_1 = self.get_motor_num_channel_num(str(self.cb_control_motor_1.currentData()))
+        cm_2 = self.get_motor_num_channel_num(str(self.cb_control_motor_2.currentData()))
+        cm_3 = self.get_motor_num_channel_num(str(self.cb_control_motor_3.currentData()))
+        cm_4 = self.get_motor_num_channel_num(str(self.cb_control_motor_4.currentData()))
+        control_motors = {0: cm_1, 1: cm_2, 2: cm_3, 3: cm_4}
+        slow_motor_selection_1 = str(self.cb_slow_motor_1.currentData())
+        slow_motor_selection_2 = str(self.cb_slow_motor_2.currentData())
+        if 'None' not in slow_motor_selection_1 and 'None' not in slow_motor_selection_2:
+            sm_1 = self.get_motor_num_channel_num(slow_motor_selection_1)
+            sm_2 = self.get_motor_num_channel_num(slow_motor_selection_2)
+            slow_motors = {0: sm_1, 1: sm_2}
+        else:
+            slow_motors = {}
+        self.set_UpdateManager_control_motors.emit(control_motors, slow_motors)
         return
 
     @pyqtSlot(str)
@@ -567,37 +616,48 @@ class Window(QMainWindow, Ui_MainWindow):
         self.motor2_y_plot.setData(self.motor2_y)
         return
 
-    @pyqtSlot(np.ndarray)
-    def handle_calibration_matrix_update(self, calib_mat: np.ndarray):
+    @pyqtSlot(np.ndarray, np.ndarray, dict, dict, list)
+    def handle_calibration_matrix_update(self, calib_mat: np.ndarray, all_motors_matrix: np.ndarray, control_motors,
+                                         slow_motors, motor_names):
         """
-        Save the calibration matrix, compare to old one, etc.
+        Save the calibration matrix, the all_motors matrix, and what channels are control vs slow.
+        And compare to calibration matrix to the old one, etc.
         """
         print('Calibration done!')
         print('New calibration matrix: ', calib_mat)
+        calibration_data = [calib_mat, all_motors_matrix, control_motors, slow_motors, motor_names]
+        calibration_data = np.asarray(calibration_data, dtype='object')
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             # Visible system.
             try:
-                old_calib_mat = np.loadtxt('Most_Recent_Calibration.txt', dtype=float)
+                with open("Most_Recent_Calibration.pkl", 'rb') as f:
+                    old_calib_data = pkl.load(f)
+                old_calib_mat = old_calib_data[0]
                 Change = np.sqrt(np.sum(np.square(calib_mat - old_calib_mat)))
                 RelativeChange = Change / np.sqrt(np.sum(np.square(old_calib_mat)))
                 print('Relative change of calib matrix: ', RelativeChange)
-            except OSError:
+            except FileNotFoundError:
                 pass
-            np.savetxt('Most_Recent_Calibration.txt', calib_mat, fmt='%f')
-            filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat"
-            np.savetxt(filename, calib_mat, fmt='%f')
+            with open("Most_Recent_Calibration.pkl", 'wb') as f:
+                pkl.dump(calibration_data, f)
+            filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_data.pkl"
+            with open(filename, 'wb') as f:
+                pkl.dump(calibration_data, f)
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             try:
-                old_calib_mat = np.loadtxt('Most_Recent_Calibration_IR.txt', dtype=float)
+                with open("Most_Recent_Calibration_IR.pkl", 'rb') as f:
+                    old_calib_data = pkl.load(f)
+                old_calib_mat = old_calib_data[0]
                 Change = np.sqrt(np.sum(np.square(calib_mat - old_calib_mat)))
                 RelativeChange = Change / np.sqrt(np.sum(np.square(old_calib_mat)))
                 print('Relative change of calib matrix: ', RelativeChange)
-            except OSError:
+            except FileNotFoundError:
                 pass
-            # Boson cameras
-            np.savetxt('Most_Recent_Calibration_IR.txt', calib_mat, fmt='%f')
-            filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_mat_IR"
-            np.savetxt(filename, calib_mat, fmt='%f')
+            with open("Most_Recent_Calibration_IR.pkl", 'wb') as f:
+                pkl.dump(calibration_data, f)
+            filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_data_IR.pkl"
+            with open(filename, 'wb') as f:
+                pkl.dump(calibration_data, f)
 
         # Update Lock circles accordingly.
         self.ROICam1_Lock.setVisible(False)
@@ -651,6 +711,9 @@ class Window(QMainWindow, Ui_MainWindow):
                                       ch2='Y')
                 num_motors += 1
                 self.motor_model.appendRow(QtGui.QStandardItem(str("MDT693A" + dev)))
+                self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str("MDT693A" + dev +' Ch X/1')))
+                self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str("MDT693A" + dev + ' Ch Y/2')))
+                self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str("MDT693A" + dev + ' Ch Z/3')))
                 motor.close()
                 del motor
             except:
@@ -666,6 +729,9 @@ class Window(QMainWindow, Ui_MainWindow):
         for dev in mdt693b_dev_list:
             num_motors += 1
             self.motor_model.appendRow(QtGui.QStandardItem(str(dev)))
+            self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str(dev) + ' Ch X/1'))
+            self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str(dev) + ' Ch Y/2'))
+            self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str(dev) + ' Ch Z/3'))
         return num_motors
 
     def find_motors(self):
@@ -684,6 +750,13 @@ class Window(QMainWindow, Ui_MainWindow):
         # Update GUI with motor options
         self.cb_motors_1.setModel(self.motor_model)
         self.cb_motors_2.setModel(self.motor_model)
+        # Update GUI with motor/channel options for control
+        self.cb_control_motor_1.setModel(self.motor_model_channel_num)
+        self.cb_control_motor_2.setModel(self.motor_model_channel_num)
+        self.cb_control_motor_3.setModel(self.motor_model_channel_num)
+        self.cb_control_motor_4.setModel(self.motor_model_channel_num)
+        self.cb_slow_motor_1.setModel(self.motor_model_channel_num)
+        self.cb_slow_motor_2.setModel(self.motor_model_channel_num)
         # If there are 2 motors connected to the computer, update GUI selections to motor 1 and motor 2.
         if num_motors > 1:
             self.cb_motors_1.setCurrentIndex(0)
@@ -961,20 +1034,71 @@ class Window(QMainWindow, Ui_MainWindow):
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             # Load Most Recent Calibration Matrix:
             try:
-                self.set_UpdateManager_calibration_matrix.emit(np.asarray(np.loadtxt(
-                    'Most_Recent_Calibration.txt', dtype=float)))
-            except OSError:
+                with open("Most_Recent_Calibration.pkl", 'rb') as f:
+                    calib_data = pkl.load(f)
+            except FileNotFoundError:
                 print("Hmm there seems to be no saved calibration, run calibration.")
+                return
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
             # Load Most Recent Calibration Matrix:
             try:
-                self.set_UpdateManager_calibration_matrix.emit(
-                    np.asarray(np.loadtxt('Most_Recent_Calibration_IR.txt', dtype=float)))
-            except OSError:
+                with open("Most_Recent_Calibration_IR.pkl", 'rb') as f:
+                    calib_data = pkl.load(f)
+            except FileNotFoundError:
                 print("Hmm there seems to be no saved calibration, run calibration.")
+                return
         else:
             print("Choose a system!")
+            return
+        self.set_UpdateManager_calibration_matrix.emit(calib_data[0])
+        self.set_UpdateManager_control_motors.emit(calib_data[2], calib_data[3])
+        self.set_UpdateManager_all_motors_matrix.emit(calib_data[1])
+        # Set the GUI control motors and motor selections according to what this calibration data works for.
+        motor1_ind = self.cb_motors_1.findText(calib_data[4][0], flags=Qt.MatchExactly)
+        motor2_ind = self.cb_motors_2.findText(calib_data[4][1], flags=Qt.MatchExactly)
+        self.cb_motors_1.setCurrentIndex(motor1_ind)
+        self.cb_motors_2.setCurrentIndex(motor2_ind)
+        cm_1_ind = self.get_control_motor_index(calib_data[2][0], calib_data[4])
+        if cm_1_ind is not None:
+            self.cb_control_motor_1.setCurrentIndex(cm_1_ind)
+        cm_2_ind = self.get_control_motor_index(calib_data[2][1], calib_data[4])
+        if cm_2_ind is not None:
+            self.cb_control_motor_2.setCurrentIndex(cm_2_ind)
+        cm_3_ind = self.get_control_motor_index(calib_data[2][2], calib_data[4])
+        if cm_3_ind is not None:
+            self.cb_control_motor_3.setCurrentIndex(cm_3_ind)
+        cm_4_ind = self.get_control_motor_index(calib_data[2][3], calib_data[4])
+        if cm_4_ind is not None:
+            self.cb_control_motor_4.setCurrentIndex(cm_4_ind)
+        if calib_data[3]:
+            sm_1_ind = self.get_control_motor_index(calib_data[3][0], calib_data[4])
+            if sm_1_ind is not None:
+                self.cb_slow_motor_1.setCurrentIndex(sm_1_ind)
+            sm_2_ind = self.get_control_motor_index(calib_data[3][1], calib_data[4])
+            if sm_2_ind is not None:
+                self.cb_slow_motor_2.setCurrentIndex(sm_2_ind)
         return
+
+    def get_control_motor_index(self, cm_target: list, motor_name_space: list):
+        """
+        Take a target motor in format of [motor_num, channel_num] and convert to the index in motor cb that this
+        represents.
+        """
+        if cm_target[0] == 1:
+            cm_ind_0 = self.cb_control_motor_1.findText(motor_name_space[0], flags=Qt.MatchContains)
+        elif cm_target[0] == 2:
+            cm_ind_0 = self.cb_control_motor_1.findText(motor_name_space[1], flags=Qt.MatchContains)
+        if cm_target[1] == 1:
+            cm_ind_1 = self.cb_control_motor_1.findText('Ch X/1', flags=Qt.MatchContains)
+        elif cm_target[1] == 2:
+            cm_ind_1 = self.cb_control_motor_1.findText('Ch Y/2', flags=Qt.MatchContains)
+        if cm_target[1] == 3:
+            cm_ind_1 = self.cb_control_motor_1.findText('Ch Z/3', flags=Qt.MatchContains)
+        cm_ind = None
+        for item in cm_ind_1:
+            if item in cm_ind_0:
+                cm_ind = item
+        return cm_ind
 
     def update_gui_after_system_chosen(self):
         """
@@ -1572,11 +1696,13 @@ class Window(QMainWindow, Ui_MainWindow):
             if "MDT693B" in self.cb_motors_1.currentData(0):
                 self.connect_motor_signal.emit(1, self.cb_motors_1.currentData(0))
             elif 'MDT693A' in self.cb_motors_1.currentData(0):
-                self.connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)[7:]))
+                self.connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
             if "MDT693B" in self.cb_motors_2.currentData(0):
                 self.connect_motor_signal.emit(2, self.cb_motors_2.currentData(0))
             elif 'MDT693A' in self.cb_motors_2.currentData(0):
-                self.connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0))[7:])
+                self.connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
+        else:
+            print("Connect 2 distinct motors!")
         return
 
     @pyqtSlot()
