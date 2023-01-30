@@ -420,6 +420,8 @@ class Base_Motor(QObject):
         Set the voltage on motor channel number 1 to v. Emit signal to inform success or failure and set value.
         """
         v = np.round(v, 3)
+        if v == 0:
+            v = 0.0
         if self.ch1 == 'X' or self.ch1 == 'x':
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch1 == 'Y' or self.ch1 == 'y':
@@ -440,6 +442,8 @@ class Base_Motor(QObject):
         Set the voltage on motor channel number 2 to v. Emit signal to inform success or failure and set value.
         """
         v = np.round(v, 3)
+        if v == 0:
+            v = 0.0
         if self.ch2 == 'X' or self.ch2 == 'x':
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch2 == 'Y' or self.ch2 == 'y':
@@ -460,6 +464,8 @@ class Base_Motor(QObject):
         Set the voltage on motor channel number 3 to v. Emit signal to inform success or failure and set value.
         """
         v = np.round(v, 3)
+        if v == 0:
+            v = 0.0
         if self.ch3 == 'X' or self.ch3 == 'x':
             rep = mdt.mdtSetXAxisVoltage(self.handle, v)
         elif self.ch3 == 'Y' or self.ch3 == 'y':

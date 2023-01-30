@@ -373,14 +373,14 @@ class Window(QMainWindow, Ui_MainWindow):
         Convert a given string indicating a motor/channel selection into a list of [motor_num, channel_num]
         """
 
-        if str(self.cb_motors_1.currentData()) in cm_selection:
+        if str(self.cb_motors_1.currentText()) in cm_selection:
             if '1' in cm_selection[-1]:
                 cm = [1, 1]
             elif '2' in cm_selection[-1]:
                 cm = [1, 2]
             elif '3' in cm_selection[-1]:
                 cm = [1, 3]
-        if str(self.cb_motors_2.currentData()) in cm_selection:
+        if str(self.cb_motors_2.currentText()) in cm_selection:
             if '1' in cm_selection[-1]:
                 cm = [2, 1]
             elif '2' in cm_selection[-1]:
@@ -395,13 +395,13 @@ class Window(QMainWindow, Ui_MainWindow):
         Set update manager control and slow motors with GUI inputs
         """
 
-        cm_1 = self.get_motor_num_channel_num(str(self.cb_control_motor_1.currentData()))
-        cm_2 = self.get_motor_num_channel_num(str(self.cb_control_motor_2.currentData()))
-        cm_3 = self.get_motor_num_channel_num(str(self.cb_control_motor_3.currentData()))
-        cm_4 = self.get_motor_num_channel_num(str(self.cb_control_motor_4.currentData()))
+        cm_1 = self.get_motor_num_channel_num(str(self.cb_control_motor_1.currentText()))
+        cm_2 = self.get_motor_num_channel_num(str(self.cb_control_motor_2.currentText()))
+        cm_3 = self.get_motor_num_channel_num(str(self.cb_control_motor_3.currentText()))
+        cm_4 = self.get_motor_num_channel_num(str(self.cb_control_motor_4.currentText()))
         control_motors = {0: cm_1, 1: cm_2, 2: cm_3, 3: cm_4}
-        slow_motor_selection_1 = str(self.cb_slow_motor_1.currentData())
-        slow_motor_selection_2 = str(self.cb_slow_motor_2.currentData())
+        slow_motor_selection_1 = str(self.cb_slow_motor_1.currentText())
+        slow_motor_selection_2 = str(self.cb_slow_motor_2.currentText())
         if 'None' not in slow_motor_selection_1 and 'None' not in slow_motor_selection_2:
             sm_1 = self.get_motor_num_channel_num(slow_motor_selection_1)
             sm_2 = self.get_motor_num_channel_num(slow_motor_selection_2)
@@ -508,42 +508,42 @@ class Window(QMainWindow, Ui_MainWindow):
 
         # show the slow_matrix.
         # Fits
-        fig2, ax2 = plt.subplts(2, 4, dpi=200, gridspec_kw={"hspace": 0.5, "wspace": 0.3})
-        ax[0, 0].plot(Voltage_plot, p_mot1_z_cam1_x[0] * Voltage_plot + p_mot1_z_cam1_x[1], linewidth=3)
-        ax[1, 0].plot(Voltage_plot, p_mot2_z_cam1_x[0] * Voltage_plot + p_mot2_z_cam1_x[1], linewidth=3)
-        ax[0, 1].plot(Voltage_plot, p_mot1_z_cam1_y[0] * Voltage_plot + p_mot1_z_cam1_y[1], linewidth=3)
-        ax[1, 1].plot(Voltage_plot, p_mot2_z_cam1_y[0] * Voltage_plot + p_mot2_z_cam1_y[1], linewidth=3)
-        ax[0, 2].plot(Voltage_plot, p_mot1_z_cam2_x[0] * Voltage_plot + p_mot1_z_cam2_x[1], linewidth=3)
-        ax[1, 2].plot(Voltage_plot, p_mot2_z_cam2_x[0] * Voltage_plot + p_mot2_z_cam2_x[1], linewidth=3)
-        ax[0, 3].plot(Voltage_plot, p_mot1_z_cam2_y[0] * Voltage_plot + p_mot1_z_cam2_y[1], linewidth=3)
-        ax[1, 3].plot(Voltage_plot, p_mot2_z_cam2_y[0] * Voltage_plot + p_mot2_z_cam2_y[1], linewidth=3)
+        fig2, ax2 = plt.subplots(2, 4, dpi=200, gridspec_kw={"hspace": 0.5, "wspace": 0.3})
+        ax2[0, 0].plot(Voltage_plot, p_mot1_z_cam1_x[0] * Voltage_plot + p_mot1_z_cam1_x[1], linewidth=3)
+        ax2[1, 0].plot(Voltage_plot, p_mot2_z_cam1_x[0] * Voltage_plot + p_mot2_z_cam1_x[1], linewidth=3)
+        ax2[0, 1].plot(Voltage_plot, p_mot1_z_cam1_y[0] * Voltage_plot + p_mot1_z_cam1_y[1], linewidth=3)
+        ax2[1, 1].plot(Voltage_plot, p_mot2_z_cam1_y[0] * Voltage_plot + p_mot2_z_cam1_y[1], linewidth=3)
+        ax2[0, 2].plot(Voltage_plot, p_mot1_z_cam2_x[0] * Voltage_plot + p_mot1_z_cam2_x[1], linewidth=3)
+        ax2[1, 2].plot(Voltage_plot, p_mot2_z_cam2_x[0] * Voltage_plot + p_mot2_z_cam2_x[1], linewidth=3)
+        ax2[0, 3].plot(Voltage_plot, p_mot1_z_cam2_y[0] * Voltage_plot + p_mot1_z_cam2_y[1], linewidth=3)
+        ax2[1, 3].plot(Voltage_plot, p_mot2_z_cam2_y[0] * Voltage_plot + p_mot2_z_cam2_y[1], linewidth=3)
         # Data
-        ax[0, 0].plot(mot1_z_voltage, mot1_z_cam1_x, 'r', marker='x', markersize=2)
-        ax[1, 0].plot(mot2_z_voltage, mot2_z_cam1_x, 'r', marker='x', markersize=2)
-        ax[0, 1].plot(mot1_z_voltage, mot1_z_cam1_y, 'r', marker='x', markersize=2)
-        ax[1, 1].plot(mot2_z_voltage, mot2_z_cam1_y, 'r', marker='x', markersize=2)
-        ax[0, 2].plot(mot1_z_voltage, mot1_z_cam2_x, 'r', marker='x', markersize=2)
-        ax[1, 2].plot(mot2_z_voltage, mot2_z_cam2_x, 'r', marker='x', markersize=2)
-        ax[0, 3].plot(mot1_z_voltage, mot1_z_cam2_y, 'r', marker='x', markersize=2)
-        ax[1, 3].plot(mot2_z_voltage, mot2_z_cam2_y, 'r', marker='x', markersize=2)
+        ax2[0, 0].plot(mot1_z_voltage, mot1_z_cam1_x, 'r', marker='x', markersize=2)
+        ax2[1, 0].plot(mot2_z_voltage, mot2_z_cam1_x, 'r', marker='x', markersize=2)
+        ax2[0, 1].plot(mot1_z_voltage, mot1_z_cam1_y, 'r', marker='x', markersize=2)
+        ax2[1, 1].plot(mot2_z_voltage, mot2_z_cam1_y, 'r', marker='x', markersize=2)
+        ax2[0, 2].plot(mot1_z_voltage, mot1_z_cam2_x, 'r', marker='x', markersize=2)
+        ax2[1, 2].plot(mot2_z_voltage, mot2_z_cam2_x, 'r', marker='x', markersize=2)
+        ax2[0, 3].plot(mot1_z_voltage, mot1_z_cam2_y, 'r', marker='x', markersize=2)
+        ax2[1, 3].plot(mot2_z_voltage, mot2_z_cam2_y, 'r', marker='x', markersize=2)
         # Label the plots
-        ax[0, 0].set_title("mot 1 z cam 1 x", fontsize=6)
-        ax[1, 0].set_title("mot 2 z cam 1 x", fontsize=6)
-        ax[0, 1].set_title("mot 1 z cam 1 y", fontsize=6)
-        ax[1, 1].set_title("mot 2 z cam 1 y", fontsize=6)
-        ax[0, 2].set_title("mot 1 z cam 2 x", fontsize=6)
-        ax[1, 2].set_title("mot 2 z cam 2 x", fontsize=6)
-        ax[0, 3].set_title("mot 1 z cam 2 y", fontsize=6)
-        ax[1, 3].set_title("mot 2 z cam 2 y", fontsize=6)
+        ax2[0, 0].set_title("mot 1 z cam 1 x", fontsize=6)
+        ax2[1, 0].set_title("mot 2 z cam 1 x", fontsize=6)
+        ax2[0, 1].set_title("mot 1 z cam 1 y", fontsize=6)
+        ax2[1, 1].set_title("mot 2 z cam 1 y", fontsize=6)
+        ax2[0, 2].set_title("mot 1 z cam 2 x", fontsize=6)
+        ax2[1, 2].set_title("mot 2 z cam 2 x", fontsize=6)
+        ax2[0, 3].set_title("mot 1 z cam 2 y", fontsize=6)
+        ax2[1, 3].set_title("mot 2 z cam 2 y", fontsize=6)
         # Adjust the tick parameters for better viewing size
-        ax[0, 0].tick_params(axis='both', which='major', labelsize=6)
-        ax[1, 0].tick_params(axis='both', which='major', labelsize=6)
-        ax[0, 1].tick_params(axis='both', which='major', labelsize=6)
-        ax[1, 1].tick_params(axis='both', which='major', labelsize=6)
-        ax[0, 2].tick_params(axis='both', which='major', labelsize=6)
-        ax[1, 2].tick_params(axis='both', which='major', labelsize=6)
-        ax[0, 3].tick_params(axis='both', which='major', labelsize=6)
-        ax[1, 3].tick_params(axis='both', which='major', labelsize=6)
+        ax2[0, 0].tick_params(axis='both', which='major', labelsize=6)
+        ax2[1, 0].tick_params(axis='both', which='major', labelsize=6)
+        ax2[0, 1].tick_params(axis='both', which='major', labelsize=6)
+        ax2[1, 1].tick_params(axis='both', which='major', labelsize=6)
+        ax2[0, 2].tick_params(axis='both', which='major', labelsize=6)
+        ax2[1, 2].tick_params(axis='both', which='major', labelsize=6)
+        ax2[0, 3].tick_params(axis='both', which='major', labelsize=6)
+        ax2[1, 3].tick_params(axis='both', which='major', labelsize=6)
         # Show the figures
         fig.show()
         fig2.show()
@@ -741,7 +741,7 @@ class Window(QMainWindow, Ui_MainWindow):
         num_motors = 0
         # Find all MDT693B motors
         # Using the Thorlabs SDK is known to throw an error when too many devices are connected to the computer.
-        # num_motors += self.find_MDT693B()
+        num_motors += self.find_MDT693B()
         # Find all MDT693A motors
         num_motors += self.find_MDT693A()
         self.ResourceManager.close()
@@ -1084,20 +1084,26 @@ class Window(QMainWindow, Ui_MainWindow):
         Take a target motor in format of [motor_num, channel_num] and convert to the index in motor cb that this
         represents.
         """
+
         if cm_target[0] == 1:
-            cm_ind_0 = self.cb_control_motor_1.findText(motor_name_space[0], flags=Qt.MatchContains)
+            cm_ind_0 = self.motor_model_channel_num.findItems(motor_name_space[0], flags=Qt.MatchContains)
         elif cm_target[0] == 2:
-            cm_ind_0 = self.cb_control_motor_1.findText(motor_name_space[1], flags=Qt.MatchContains)
+            cm_ind_0 = self.motor_model_channel_num.findItems(motor_name_space[1], flags=Qt.MatchContains)
         if cm_target[1] == 1:
-            cm_ind_1 = self.cb_control_motor_1.findText('Ch X/1', flags=Qt.MatchContains)
+            cm_ind_1 = self.motor_model_channel_num.findItems('Ch X/1', flags=Qt.MatchContains)
         elif cm_target[1] == 2:
-            cm_ind_1 = self.cb_control_motor_1.findText('Ch Y/2', flags=Qt.MatchContains)
+            cm_ind_1 = self.motor_model_channel_num.findItems('Ch Y/2', flags=Qt.MatchContains)
         if cm_target[1] == 3:
-            cm_ind_1 = self.cb_control_motor_1.findText('Ch Z/3', flags=Qt.MatchContains)
+            cm_ind_1 = self.motor_model_channel_num.findItems('Ch Z/3', flags=Qt.MatchContains)
+        cm_item = None
+        for item_1 in cm_ind_1:
+            for item_0 in cm_ind_0:
+                if item_0 == item_1:
+                    cm_item = item_0
         cm_ind = None
-        for item in cm_ind_1:
-            if item in cm_ind_0:
-                cm_ind = item
+        if cm_item is not None:
+            txt0 = cm_item.text()
+            cm_ind = self.cb_control_motor_1.findText(txt0, flags=Qt.MatchExactly)
         return cm_ind
 
     def update_gui_after_system_chosen(self):

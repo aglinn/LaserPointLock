@@ -230,6 +230,13 @@ class UpdateManager(QObject):
         """
         self._control_motors = control_motors
         self._slow_motors = slow_motors
+        self._control_voltage_indexes = []
+        for i in range(1, 3):
+            for j in range(1, 4):
+                motor_to_check = [i, j]
+                if motor_to_check in self._control_motors.values():
+                    self._control_voltage_indexes.append(int(j - 1 + (i - 1) * 3))
+        self._control_voltage_indexes = np.asarray(self._control_voltage_indexes)
         return
 
     @pyqtSlot()
@@ -326,7 +333,9 @@ class UpdateManager(QObject):
             self.get_motor2_ch1V_signal.connect(self.motor2.ch1_v)
             self.set_motor2_ch2V_signal.connect(self.motor2.set_ch2_v)
             self.get_motor2_ch2V_signal.connect(self.motor2.ch2_v)
-            # Motor1 signals to Update Manager
+            self.set_motor2_ch3V_signal.connect(self.motor2.set_ch3_v)
+            self.get_motor2_ch3V_signal.connect(self.motor2.ch3_v)
+            # Motor2 signals to Update Manager
             self.motor2.destroyed.connect(lambda args: self.reconnect_motor(2))
             self.motor2.close_complete_signal.connect(self.accept_motor_close)
             self.motor2.close_fail_signal.connect(self.close_motor_again)
@@ -1198,8 +1207,8 @@ class UpdateManager(QObject):
         if ret:
             # Find the solution with the smallest step size in null vector space.
             if region.type == "Polygon":
-                corners = list(region.exterior.coords)
-                step = corners[np.argmin(np.sum(corners, axis=1))]
+                corners = np.asarray(list(region.exterior.coords))
+                step = corners[np.argmin(np.sum(corners**2, axis=1))]
                 V += step[0]*self.null_vectors[:, 0] + step[1]*self.null_vectors[:, 1]
                 self.update_voltage = V[self._control_voltage_indexes]
                 V_set_index = (self._slow_motors[0][0]-1)*3 + self._slow_motors[0][1] - 1
@@ -1208,8 +1217,8 @@ class UpdateManager(QObject):
                 self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], V[V_set_index])
                 return
             elif region.type == 'Point' or region.type == 'LineString':
-                corners = list(region._get_coords())
-                step = corners[np.argmin(np.sum(corners, axis=1))]
+                corners = np.asarray(list(region._get_coords()))
+                step = corners[np.argmin(np.sum(corners**2, axis=1))]
                 V += step[0] * self.null_vectors[:, 0] + step[1] * self.null_vectors[:, 1]
                 self.update_voltage = V[self._control_voltage_indexes]
                 V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
@@ -1755,6 +1764,7 @@ class UpdateManager(QObject):
         else:
             self.com_found_signal.connect(self.run_calibration)
             self.com_found_signal_handler = 'run_calibration'
+        print("I believe that the handler for com_found_signal is ", self.com_found_signal_handler)
         self._locking = False
         self.calibration_pointing_index = 0
         self.voltage_step = 1  # Start at 1, because index 0 is set on motor1 ch1 as starting voltage
@@ -1790,6 +1800,7 @@ class UpdateManager(QObject):
         motor_to_check = [2, 3]
         if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
             self.request_set_motor(2, 3, self.starting_v[5])
+        print("beginning calibration")
         return
 
     @pyqtSlot()
@@ -2390,6 +2401,7 @@ class UpdateManager(QObject):
                                                                    self.null_vectors[4, :].reshape(1, 2)], axis=0))
             self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[2, :].reshape(1, 2),
                                                                    self.null_vectors[5, :].reshape(1, 2)], axis=0))
+            print(self.null_vectors)
         else:
             self.all_motors_matrix = np.asarray(self.all_motors_matrix)
         # Let the GUI thread know that calibration is done so that it can update GUI information accordingly.
