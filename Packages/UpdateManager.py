@@ -2395,13 +2395,27 @@ class UpdateManager(QObject):
             self.null_vectors = scipy.linalg.null_space(self.all_motors_matrix)
             self.null_vectors.reshape(6, int(self.null_vectors.size/6))
             # These matricies are convenient for finding how to move the slow motors to bring the fast ones in bounds.
-            self.null_matrix_inv_1 = np.linalg.inv(np.concatenate([self.null_vectors[0, :].reshape(1, 2),
-                                                                   self.null_vectors[3, :].reshape(1, 2)], axis=0))
-            self.null_matrix_inv_2 = np.linalg.inv(np.concatenate([self.null_vectors[1, :].reshape(1, 2),
-                                                                   self.null_vectors[4, :].reshape(1, 2)], axis=0))
-            self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[2, :].reshape(1, 2),
-                                                                   self.null_vectors[5, :].reshape(1, 2)], axis=0))
-            print(self.null_vectors)
+            fast_ind_0 = (self._control_motors[0][0] - 1) * 3 + self._control_motors[0][1] - 1
+            fast_ind_1 = (self._control_motors[1][0] - 1) * 3 + self._control_motors[1][1] - 1
+            fast_ind_2 = (self._control_motors[2][0] - 1) * 3 + self._control_motors[2][1] - 1
+            fast_ind_3 = (self._control_motors[3][0] - 1) * 3 + self._control_motors[3][1] - 1
+            self.null_matrix_inv_1 = np.linalg.inv(np.concatenate([self.null_vectors[fast_ind_0, :].reshape(1, 2),
+                                                                   self.null_vectors[fast_ind_1, :].reshape(1, 2)],
+                                                                  axis=0))
+            self.null_matrix_inv_2 = np.linalg.inv(np.concatenate([self.null_vectors[fast_ind_2, :].reshape(1, 2),
+                                                                   self.null_vectors[fast_ind_3, :].reshape(1, 2)],
+                                                                  axis=0))
+            # null_matrix_inv_3 MUST be the slow motors!
+            slow_ind_0 = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+            slow_ind_1 = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+            self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[slow_ind_0, :].reshape(1, 2),
+                                                                   self.null_vectors[slow_ind_1, :].reshape(1, 2)],
+                                                                  axis=0))
+            test_list = [fast_ind_0, fast_ind_1, fast_ind_2, fast_ind_3, slow_ind_0, slow_ind_1]
+            if not len(test_list) == len(set(test_list)):
+                print("Warning! Calibration INVALID! Need 6 unique indicies for fast and slow motors when contructing "
+                      "null_matrix_inv_matricies. Somehow they were not all unique indicies. ", test_list,
+                      set(test_list))
         else:
             self.all_motors_matrix = np.asarray(self.all_motors_matrix)
         # Let the GUI thread know that calibration is done so that it can update GUI information accordingly.
