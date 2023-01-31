@@ -15,7 +15,7 @@ from Packages.pointing_ui import Ui_MainWindow
 
 # Old imports:
 import sys
-import visa
+import pyvisa as visa
 import time
 import numpy as np
 import pyqtgraph as pg

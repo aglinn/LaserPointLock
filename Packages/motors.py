@@ -1,4 +1,4 @@
-import visa
+import pyvisa as visa
 from pyvisa.constants import StopBits, Parity, VI_ASRL_FLOW_NONE
 from pyvisa.errors import InvalidSession
 from typing import NewType
