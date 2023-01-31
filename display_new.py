@@ -1050,8 +1050,9 @@ class Window(QMainWindow, Ui_MainWindow):
         else:
             print("Choose a system!")
             return
-        self.set_UpdateManager_calibration_matrix.emit(calib_data[0])
+        # Must update control motors and then calibration matrix!
         self.set_UpdateManager_control_motors.emit(calib_data[2], calib_data[3])
+        self.set_UpdateManager_calibration_matrix.emit(calib_data[0])
         self.set_UpdateManager_all_motors_matrix.emit(calib_data[1])
         # Set the GUI control motors and motor selections according to what this calibration data works for.
         motor1_ind = self.cb_motors_1.findText(calib_data[4][0], flags=Qt.MatchExactly)

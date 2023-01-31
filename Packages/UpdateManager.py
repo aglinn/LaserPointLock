@@ -20,12 +20,17 @@ from shapely.validation import explain_validity
 class UpdateOutOfBounds(Exception):
     pass
 
+
 class UnableToUpdateInBounds(Exception):
     pass
 
 
 class InsufficientInformation(Exception):
 
+    pass
+
+
+class CannotLock(Exception):
     pass
 
 
@@ -98,8 +103,11 @@ class UpdateManager(QObject):
         self.all_motors_matrix = None
         self.null_vectors = None
         self.null_matrix_inv_1 = None
+        self.null_matrix_inv_1_V_inds = None
         self.null_matrix_inv_2 = None
+        self.null_matrix_inv_2_V_inds = None
         self.null_matrix_inv_3 = None
+        self.null_matrix_inv_3_V_inds = None
         self.motor_channel_to_skip = [[1, 3], [2, 3]]
         self.set_pos = None
         self.dV = None
@@ -1127,10 +1135,14 @@ class UpdateManager(QObject):
         """
         # mot1x, mot2x
         corners1 = []
-        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], low, low))
-        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], low, high))
-        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], high, high))
-        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[[0, 3]], high, low))
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[self.null_matrix_inv_1_V_inds],
+                                                          low, low))
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[self.null_matrix_inv_1_V_inds],
+                                                          low, high))
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[self.null_matrix_inv_1_V_inds],
+                                                          high, high))
+        corners1.append(self.find_solution_region_corners(self.null_matrix_inv_1, V[self.null_matrix_inv_1_V_inds],
+                                                          high, low))
         poly1 = Polygon(corners1)
         if 'Self-intersection' in explain_validity(poly1):
             new_corners = corners1
@@ -1146,10 +1158,14 @@ class UpdateManager(QObject):
                     print("Somehow never built a correct solution polygon, did not think that was possible.")
         # mot1y, mot2y
         corners2 = []
-        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], low, low))
-        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], low, high))
-        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], high, high))
-        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[[1, 4]], high, low))
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[self.null_matrix_inv_2_V_inds],
+                                                          low, low))
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[self.null_matrix_inv_2_V_inds],
+                                                          low, high))
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[self.null_matrix_inv_2_V_inds],
+                                                          high, high))
+        corners2.append(self.find_solution_region_corners(self.null_matrix_inv_2, V[self.null_matrix_inv_2_V_inds],
+                                                          high, low))
         poly2 = Polygon(corners2)
         if 'Self-intersection' in explain_validity(poly2):
             new_corners2 = corners2
@@ -1165,10 +1181,14 @@ class UpdateManager(QObject):
                     print("Somehow never built a correct solution polygon, did not think that was possible.")
         # mot1z, mot2z
         corners3 = []
-        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], low, low))
-        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], low, high))
-        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], high, high))
-        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[[2, 5]], high, low))
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[self.null_matrix_inv_3_V_inds],
+                                                          low, low))
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[self.null_matrix_inv_3_V_inds],
+                                                          low, high))
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[self.null_matrix_inv_3_V_inds],
+                                                          high, high))
+        corners3.append(self.find_solution_region_corners(self.null_matrix_inv_3, V[self.null_matrix_inv_3_V_inds],
+                                                          high, low))
         poly3 = Polygon(corners3)
         if 'Self-intersection' in explain_validity(poly3):
             new_corners3 = corners3
@@ -1235,21 +1255,33 @@ class UpdateManager(QObject):
             low_error = np.where(test_voltages < 0, -test_voltages, 0)
             high_error = np.where(test_voltages > 150, test_voltages-150.0, 0)
             error = low_error + high_error
-            # Grab the voltages with the least error, update V0 with the step that minimized the error and move on to
-            # find best update, but also need to let the program know that when it finds the best update it should also
-            # update the slow motors accordingly. The idea is that moving in null vector space does not affect the dx
-            # at all, hence I can pretend that I am starting from a voltage that is my actual voltage (current V0)
-            # plus some step in null space.
-            step = corners[np.argmin(np.sum(error, axis=0))]
-            delta_V = step[0] * self.null_vectors[:, 0] + step[1] * self.null_vectors[:, 1]
-            self.motor_channel_to_skip = []
-            V_slow_0_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
-            if delta_V[V_slow_0_index] == 0:
-                self.motor_channel_to_skip.append(self._slow_motors[0])
-            V_slow_0_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
-            if delta_V[V_slow_0_index] == 0:
-                self.motor_channel_to_skip.append(self._slow_motors[1])
-            self.V0 += delta_V
+            # Check if the error is reduced appreciably, otherwise do not make the correction as there is some noise
+            # introduced that is not worth accepting:
+            thresh_low_error = np.where(self.update_voltage < -2, -(self.update_voltage+2), 0)
+            thresh_high_error = np.where(self.update_voltage > 152, self.update_voltage-152.0, 0)
+            threshold_error = np.sum(thresh_low_error + thresh_high_error)
+            if np.amin(np.sum(error, axis=0)) <= threshold_error:
+                # Grab the voltages with the least error, update V0 with the step that minimized the error and move on to
+                # find best update, but also need to let the program know that when it finds the best update it should also
+                # update the slow motors accordingly. The idea is that moving in null vector space does not affect the dx
+                # at all, hence I can pretend that I am starting from a voltage that is my actual voltage (current V0)
+                # plus some step in null space.
+                step = corners[np.argmin(np.sum(error, axis=0))]
+                delta_V = step[0] * self.null_vectors[:, 0] + step[1] * self.null_vectors[:, 1]
+                self.motor_channel_to_skip = []
+                V_slow_0_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+                if delta_V[V_slow_0_index] == 0:
+                    self.motor_channel_to_skip.append(self._slow_motors[0])
+                V_slow_0_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+                if delta_V[V_slow_0_index] == 0:
+                    self.motor_channel_to_skip.append(self._slow_motors[1])
+                self.V0 += delta_V
+                if np.any(self.V0[self.null_matrix_inv_3_V_inds] >= 150.0005) or \
+                        np.any(self.V0[self.null_matrix_inv_3_V_inds] <= -0.0005):
+                    print("should have explicitly kept the slow motors in bounds, while minimizing out of bounds... yet, "
+                          "here we are. V0 = ", self.V0)
+            else:
+                self.motor_channel_to_skip = self.null_matrix_inv_3_V_inds
             raise UnableToUpdateInBounds
         """V = self.V0
             V[0:2] = self.update_voltage[0:2]
@@ -1630,7 +1662,10 @@ class UpdateManager(QObject):
         offset of the laser pointing to shift, but we require the pointing direction (slope, angles) to stay locked in.
         So, when the pointing goes out of bounds, the laser beam path is allowed to shift to a parallel but offset path.
         """
-        while True:
+
+        max_attempts = 100
+        attempts = 1
+        while not attempts > max_attempts:
             dV = np.matmul(self.calibration_matrix, self.update_dx)
             self.dV = np.round(dV,
                                decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
@@ -1644,6 +1679,23 @@ class UpdateManager(QObject):
             if self.increment_dx(self.update_voltage):
                 # No further incrementing required. Update is now in bounds.
                 break
+            if max_attempts - 3 < attempts <= max_attempts:
+                print("update voltage inside of while loop in find_best_update ", self.update_voltage,
+                      ". If oscillations are present, then cannot lock any longer! Stop and realign!")
+            attempts += 1
+        if attempts > max_attempts:
+            self.num_out_of_voltage_range = 1
+            self.time_last_unlock = 0
+            # Set all voltages back to 75V
+            self.motors_to_75V()
+            successful_lock_time = time.monotonic() - self.lock_time_start
+            print("Successfully locked pointing for", successful_lock_time)
+            # Tell myself to stop locking.
+            self._locking = False
+            self.lock_pointing(False)
+            print("System has unlocked!")
+            raise CannotLock
+        print("number of attempts in find_best_update ", attempts)
         return
 
     def get_update(self):
@@ -2399,6 +2451,8 @@ class UpdateManager(QObject):
             fast_ind_1 = (self._control_motors[1][0] - 1) * 3 + self._control_motors[1][1] - 1
             fast_ind_2 = (self._control_motors[2][0] - 1) * 3 + self._control_motors[2][1] - 1
             fast_ind_3 = (self._control_motors[3][0] - 1) * 3 + self._control_motors[3][1] - 1
+            self.null_matrix_inv_1_V_inds = [fast_ind_0, fast_ind_1]
+            self.null_matrix_inv_2_V_inds = [fast_ind_2, fast_ind_3]
             self.null_matrix_inv_1 = np.linalg.inv(np.concatenate([self.null_vectors[fast_ind_0, :].reshape(1, 2),
                                                                    self.null_vectors[fast_ind_1, :].reshape(1, 2)],
                                                                   axis=0))
@@ -2408,9 +2462,11 @@ class UpdateManager(QObject):
             # null_matrix_inv_3 MUST be the slow motors!
             slow_ind_0 = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
             slow_ind_1 = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+            self.null_matrix_inv_3_V_inds = [slow_ind_0, slow_ind_1]
             self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[slow_ind_0, :].reshape(1, 2),
                                                                    self.null_vectors[slow_ind_1, :].reshape(1, 2)],
                                                                   axis=0))
+            print("Calculating Claibration Matrix: slow motor indicies ", slow_ind_0, slow_ind_1)
             test_list = [fast_ind_0, fast_ind_1, fast_ind_2, fast_ind_3, slow_ind_0, slow_ind_1]
             if not len(test_list) == len(set(test_list)):
                 print("Warning! Calibration INVALID! Need 6 unique indicies for fast and slow motors when contructing "
@@ -3035,12 +3091,31 @@ class UpdateManager(QObject):
         self.null_vectors = scipy.linalg.null_space(self.all_motors_matrix)
         self.null_vectors.reshape(6, int(self.null_vectors.size / 6))
         # These matricies are convenient for finding how to move the slow motors to bring the fast ones in bounds.
-        self.null_matrix_inv_1 = np.linalg.inv(np.concatenate([self.null_vectors[0, :].reshape(1, 2),
-                                                               self.null_vectors[3, :].reshape(1, 2)], axis=0))
-        self.null_matrix_inv_2 = np.linalg.inv(np.concatenate([self.null_vectors[1, :].reshape(1, 2),
-                                                               self.null_vectors[4, :].reshape(1, 2)], axis=0))
-        self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[2, :].reshape(1, 2),
-                                                               self.null_vectors[5, :].reshape(1, 2)], axis=0))
+        fast_ind_0 = (self._control_motors[0][0] - 1) * 3 + self._control_motors[0][1] - 1
+        fast_ind_1 = (self._control_motors[1][0] - 1) * 3 + self._control_motors[1][1] - 1
+        fast_ind_2 = (self._control_motors[2][0] - 1) * 3 + self._control_motors[2][1] - 1
+        fast_ind_3 = (self._control_motors[3][0] - 1) * 3 + self._control_motors[3][1] - 1
+        self.null_matrix_inv_1_V_inds = [fast_ind_0, fast_ind_1]
+        self.null_matrix_inv_2_V_inds = [fast_ind_2, fast_ind_3]
+        self.null_matrix_inv_1 = np.linalg.inv(np.concatenate([self.null_vectors[fast_ind_0, :].reshape(1, 2),
+                                                               self.null_vectors[fast_ind_1, :].reshape(1, 2)],
+                                                              axis=0))
+        self.null_matrix_inv_2 = np.linalg.inv(np.concatenate([self.null_vectors[fast_ind_2, :].reshape(1, 2),
+                                                               self.null_vectors[fast_ind_3, :].reshape(1, 2)],
+                                                              axis=0))
+        # null_matrix_inv_3 MUST be the slow motors!
+        slow_ind_0 = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+        slow_ind_1 = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+        self.null_matrix_inv_3_V_inds = [slow_ind_0, slow_ind_1]
+        self.null_matrix_inv_3 = np.linalg.inv(np.concatenate([self.null_vectors[slow_ind_0, :].reshape(1, 2),
+                                                               self.null_vectors[slow_ind_1, :].reshape(1, 2)],
+                                                              axis=0))
+        print("Loading Claibration Matrix: slow motor indicies ", slow_ind_0, slow_ind_1)
+        test_list = [fast_ind_0, fast_ind_1, fast_ind_2, fast_ind_3, slow_ind_0, slow_ind_1]
+        if not len(test_list) == len(set(test_list)):
+            print("Warning! Calibration INVALID! Need 6 unique indicies for fast and slow motors when contructing "
+                  "null_matrix_inv_matricies. Somehow they were not all unique indicies. ", test_list,
+                  set(test_list))
         return
 
 
