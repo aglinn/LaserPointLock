@@ -1317,7 +1317,7 @@ class UpdateManager(QObject):
         """
         # TODO: Does not work well at all! Should recalculate update_dx
         P = Parameters()
-        self.V0 = np.round(self.V0, decimals=1)
+        self.V0 = np.round(self.V0, decimals=3)
         P.add('dv_0', 0, min=-150.0 + self.V0[0], max=self.V0[0])
         P.add('dv_1', 0, min=-150.0 + self.V0[1], max=self.V0[1])
         P.add('dv_2', 0, min=-150.0 + self.V0[2], max=self.V0[2])
@@ -1325,7 +1325,7 @@ class UpdateManager(QObject):
         res = minimize(self.residual, P, args=(self.update_dx, self.inv_calibration_matrix))
         dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
                        res.params['dv_3'].value])
-        self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        self.dV = np.round(dV, decimals=3)  # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
 
         # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
@@ -1668,7 +1668,7 @@ class UpdateManager(QObject):
         while not attempts > max_attempts:
             dV = np.matmul(self.calibration_matrix, self.update_dx)
             self.dV = np.round(dV,
-                               decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+                               decimals=3)  # Round down on tenths decimal place, motors do not like more than 1 decimal
             # place.
             # voltage to be set on the motors
             # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
@@ -1706,7 +1706,7 @@ class UpdateManager(QObject):
         # Because of our convention for dX, the meaning of dV is how much would the voltages have changed to result
         # in the change observed in dX
         dV = np.matmul(self.calibration_matrix, self.update_dx)
-        self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        self.dV = np.round(dV, decimals=3)  # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
         # voltage to be set on the motors
         # Of course, the dX is not from a voltage change but from some change in the laser; so we remove the
@@ -1740,7 +1740,7 @@ class UpdateManager(QObject):
         """
         # TODO: Does not work well at all! Should recalculate update_dx
         P = Parameters()
-        self.V0 = np.round(self.V0, decimals=1)
+        self.V0 = np.round(self.V0, decimals=3)
         P.add('dv_0', 0, min=-150.0 + self.V0[0], max=self.V0[0])
         P.add('dv_1', 0, min=-150.0 + self.V0[1], max=self.V0[1])
         P.add('dv_2', 0, min=-150.0 + self.V0[2], max=self.V0[2])
@@ -1748,7 +1748,7 @@ class UpdateManager(QObject):
         res = minimize(self.residual, P, args=(self.update_dx, self.inv_calibration_matrix))
         dV = np.array([res.params['dv_0'].value, res.params['dv_1'].value, res.params['dv_2'].value,
                             res.params['dv_3'].value])
-        self.dV = np.round(dV, decimals=1)  # Round down on tenths decimal place, motors do not like more than 1 decimal
+        self.dV = np.round(dV, decimals=3)  # Round down on tenths decimal place, motors do not like more than 1 decimal
         # place.
 
         # There is a plus sign here instead of a minus, because I am finding and applying a change in voltage that
@@ -3161,7 +3161,6 @@ class PIDUpdateManager(UpdateManager):
                 derivatives = self.calc_derivative()
                 # Add the D term:
                 try:
-                    print(self.update_dx.shape, derivatives.shape)
                     self.update_dx += self.D * derivatives
                 except TypeError:
                     self.update_dx = self.D * derivatives
