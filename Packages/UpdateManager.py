@@ -207,7 +207,7 @@ class UpdateManager(QObject):
         self.cam1_time_motors_updated = None
         self.cam2_time_motors_updated = None
         self.update_dx = None  # Effective dx to use when finding update voltages.
-        self.time_out_interval = 1000.0/55.0  # TODO: Need to set this dynamically.
+        self.time_out_interval = 10*1000.0/55.0  # TODO: Need to set this dynamically.
         self.block_timer = False
         self.is_PID = False
         self.timer = None
@@ -1102,8 +1102,8 @@ class UpdateManager(QObject):
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
             # Effectively bypass the timer in a way that preserves code for time-delay (but thus also preserves bloat)
-            self.apply_update()
-            #self.timer.start(self.time_out_interval)
+            # self.apply_update()
+            self.timer.start(self.time_out_interval)
         return
 
     @staticmethod
@@ -2778,6 +2778,7 @@ class UpdateManager(QObject):
         For now, just find COM, but in the future, do any preprocessing that I want.
         """
         if cam_number == 1:
+            cv2.GaussianBlur(img, (0, 0), sigmaX=10, dst=img, borderType=cv2.BORDER_CONSTANT)
             cv2.subtract(img, self.img1_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
             if com_x is not None:
@@ -2791,6 +2792,7 @@ class UpdateManager(QObject):
                 self.update_gui_img_signal.emit(1, np.asarray(img))
                 self.report_cam1_img_to_gui = False
         elif cam_number == 2:
+            cv2.GaussianBlur(img, (0, 0), sigmaX=10, dst=img, borderType=cv2.BORDER_CONSTANT)
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
             if com_x is not None:
