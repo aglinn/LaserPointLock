@@ -417,15 +417,12 @@ class Window(QMainWindow, Ui_MainWindow):
         pointing_data_cam1 = None
         pointing_data_cam2 = None
         piezo_data = None
-        print("Cam1 x data", self.cam1_x_save)
         if not self.cam1_x_save[0] == -1000:
             pointing_data_cam1 = np.array([self.cam1_x_save, self.cam1_y_save, self.cam1_t_save])
-            print("Cam1 pointing data", pointing_data_cam1)
             pointing_data_cam2 = np.array([self.cam2_x_save, self.cam2_y_save, self.cam2_t_save])
         if not self.motor1_x_save[0] == -1000:
             piezo_data = np.array([self.motor1_x_save, self.motor1_y_save, self.motor2_x_save, self.motor2_y_save])
         if pointing_data_cam1 is not None or pointing_data_cam2 is not None or piezo_data is not None:
-            print("making Directory")
             new_directory_path = 'Data/'+str(np.datetime64('today', 'D'))
             Path(new_directory_path).mkdir(parents=True, exist_ok=True)
             # Store set position with the data
@@ -1593,11 +1590,9 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam1_y_save[0] = cam_com[1]
                     self.cam1_t_save[0] = time_stamp
                 else:
-                    print("Appending data to cam1_x_save")
                     self.cam1_x_save = np.append(self.cam1_x_save, cam_com[0])
                     self.cam1_y_save = np.append(self.cam1_y_save, cam_com[1])
                     self.cam1_t_save = np.append(self.cam1_t_save, time_stamp)
-                    print("cam1x data after append", self.cam1_x_save)
             elif cam_num == 2:
                 # Update the COM data
                 if self.cam2_x_save[0] == -1000:
