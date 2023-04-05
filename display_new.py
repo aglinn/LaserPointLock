@@ -404,13 +404,16 @@ class Window(QMainWindow, Ui_MainWindow):
         self.motor2_x_save = np.ones(1) * (-1000)
         self.motor2_y_save = np.ones(1) * (-1000)
         timer_interval = int((days*24*3600+hours*3600+minutes*60+seconds)*1000)  # integer in ms
+        print("timer interval for acquisition set to ", timer_interval)
         self.acquisition_timer.start(timer_interval)
+        print("Timer is active, ", self.acquisition_timer.isActive())
         return
 
     def save_data(self):
         """
         Called once the acquisition time is completed. Save the data that has been acquired during this interval.
         """
+        print("Called Save data")
         pointing_data_cam1 = None
         pointing_data_cam2 = None
         piezo_data = None
@@ -420,7 +423,8 @@ class Window(QMainWindow, Ui_MainWindow):
         if not self.motor1_x_save[0] == -1000:
             piezo_data = np.array([self.motor1_x_save, self.motor1_y_save, self.motor2_x_save, self.motor2_y_save])
         if pointing_data_cam1 is not None or pointing_data_cam2 is not None or piezo_data is not None:
-            new_directory_path = '/Data/'+str(np.datetime64('today', 'D'))
+            print("Should be making directory")
+            new_directory_path = 'Data/'+str(np.datetime64('today', 'D'))
             Path(new_directory_path).mkdir(parents=True, exist_ok=True)
             # Store set position with the data
             home_file_name = new_directory_path+'/HomePosition.txt'
@@ -429,6 +433,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
                 np.savetxt(home_file_name, HomePosition, fmt='%f')
             if pointing_data_cam1 is not None:
+                print("Should be saving cam1 pointing data")
                 if self.btn_lock.isChecked():
                     file_name = new_directory_path+'/pointing_cam1_locked'
                 else:
@@ -753,23 +758,23 @@ class Window(QMainWindow, Ui_MainWindow):
                     if self.motor1_x_save[0] == -1000:
                         self.motor1_x_save[0] = voltage
                     else:
-                        self.motor1_x_save.append(voltage)
+                        np.append(self.motor1_x_save, voltage)
                 elif channel_num == 2:
                     if self.motor1_y_save[0] == -1000:
                         self.motor1_y_save[0] = voltage
                     else:
-                        self.motor1_y_save.append(voltage)
+                        np.append(self.motor1_y_save, voltage)
             elif motor_num == 2:
                 if channel_num == 1:
                     if self.motor2_x_save[0] == -1000:
                         self.motor2_x_save[0] = voltage
                     else:
-                        self.motor2_x_save.append(voltage)
+                        np.append(self.motor2_x_save, voltage)
                 elif channel_num == 2:
                     if self.motor2_y_save[0] == -1000:
                         self.motor2_y_save[0] = voltage
                     else:
-                        self.motor2_y_save.append(voltage)
+                        np.append(self.motor2_y_save, voltage)
         return
 
     @pyqtSlot()
@@ -1586,9 +1591,9 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam1_y_save[0] = cam_com[1]
                     self.cam1_t_save[0] = time_stamp
                 else:
-                    self.cam1_x_save.append(cam_com[0])
-                    self.cam1_y_save.append(cam_com[1])
-                    self.cam1_t_save.append(time_stamp)
+                    np.append(self.cam1_x_save, cam_com[0])
+                    np.append(self.cam1_y_save, cam_com[1])
+                    np.append(self.cam1_t_save, time_stamp)
             elif cam_num == 2:
                 # Update the COM data
                 if self.cam2_x_save[0] == -1000:
@@ -1596,9 +1601,9 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam2_y_save[0] = cam_com[1]
                     self.cam2_t_save[0] = time_stamp
                 else:
-                    self.cam2_x_save.append(cam_com[0])
-                    self.cam2_y_save.append(cam_com[1])
-                    self.cam2_t_save.append(time_stamp)
+                    np.append(self.cam2_x_save, cam_com[0])
+                    np.append(self.cam2_y_save, cam_com[1])
+                    np.append(self.cam2_t_save, time_stamp)
         return
 
     @pyqtSlot()

@@ -573,7 +573,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QCheckBox" name="cb_acquirepointing">
+        <widget class="QCheckBox" name="cb_acquire_pointing">
          <property name="text">
           <string>Collect All pointing information</string>
          </property>
@@ -587,7 +587,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton">
+        <widget class="QPushButton" name="btn_begin_acquisition">
          <property name="text">
           <string>Begin Acquisition</string>
          </property>

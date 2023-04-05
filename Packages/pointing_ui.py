@@ -2,13 +2,11 @@
 
 # Form implementation generated from reading ui file 'pointing_stability.ui'
 #
-# Created by: PyQt5 UI code generator 5.12.3
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
-
 from PyQt5 import QtCore, QtGui, QtWidgets
-
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -249,15 +247,15 @@ class Ui_MainWindow(object):
         self.le_data_acquisition_time = QtWidgets.QLineEdit(self.verticalLayoutWidget)
         self.le_data_acquisition_time.setObjectName("le_data_acquisition_time")
         self.verticalLayout.addWidget(self.le_data_acquisition_time)
-        self.cb_acquirepointing = QtWidgets.QCheckBox(self.verticalLayoutWidget)
-        self.cb_acquirepointing.setObjectName("cb_acquirepointing")
-        self.verticalLayout.addWidget(self.cb_acquirepointing)
+        self.cb_acquire_pointing = QtWidgets.QCheckBox(self.verticalLayoutWidget)
+        self.cb_acquire_pointing.setObjectName("cb_acquire_pointing")
+        self.verticalLayout.addWidget(self.cb_acquire_pointing)
         self.cb_acquire_voltages = QtWidgets.QCheckBox(self.verticalLayoutWidget)
         self.cb_acquire_voltages.setObjectName("cb_acquire_voltages")
         self.verticalLayout.addWidget(self.cb_acquire_voltages)
-        self.pushButton = QtWidgets.QPushButton(self.verticalLayoutWidget)
-        self.pushButton.setObjectName("pushButton")
-        self.verticalLayout.addWidget(self.pushButton)
+        self.btn_begin_acquisition = QtWidgets.QPushButton(self.verticalLayoutWidget)
+        self.btn_begin_acquisition.setObjectName("btn_begin_acquisition")
+        self.verticalLayout.addWidget(self.btn_begin_acquisition)
         self.label_21 = QtWidgets.QLabel(self.tab_2)
         self.label_21.setGeometry(QtCore.QRect(-80, 830, 47, 13))
         self.label_21.setObjectName("label_21")
@@ -521,9 +519,9 @@ class Ui_MainWindow(object):
         self.label_22.setText(_translate("MainWindow", "Data Acquisition Controls:"))
         self.label_23.setText(_translate("MainWindow", "Acquisition Time"))
         self.le_data_acquisition_time.setText(_translate("MainWindow", "[days, hours, mins, secs]"))
-        self.cb_acquirepointing.setText(_translate("MainWindow", "Collect All pointing information"))
+        self.cb_acquire_pointing.setText(_translate("MainWindow", "Collect All pointing information"))
         self.cb_acquire_voltages.setText(_translate("MainWindow", "Collect All piezo voltage data"))
-        self.pushButton.setText(_translate("MainWindow", "Begin Acquisition"))
+        self.btn_begin_acquisition.setText(_translate("MainWindow", "Begin Acquisition"))
         self.label_21.setText(_translate("MainWindow", "TextLabel"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("MainWindow", "Pointing View"))
         self.label_12.setText(_translate("MainWindow", "Motor 1"))
@@ -558,4 +556,5 @@ class Ui_MainWindow(object):
         self.actionLoad_Old_Home.setText(_translate("MainWindow", "Load Old Home"))
         self.actionSave_State.setText(_translate("MainWindow", "Save State"))
         self.actionLoad_State.setText(_translate("MainWindow", "Load State"))
+
 from pyqtgraph import GraphicsLayoutWidget, ImageView

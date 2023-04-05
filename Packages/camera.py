@@ -19,7 +19,7 @@ class MightexEngine:
     try:
         if (platform.system() != "Windows"):
             raise OSError('This program requires a Windows system to interface with the Mightex cameras.')
-        folder_containing_Mightex_CDROM = r"C:\Users\Kingdel\Documents"
+        folder_containing_Mightex_CDROM = r"C:\Users\Garri\OneDrive\Documents\Laser_Point_Lock_Software"
         lib = ctypes.WinDLL(folder_containing_Mightex_CDROM + r'\Mightex_SCX_CDROM_20190104\SDK\Lib\x64\NewClassic_USBCamera_SDK.dll')
     except FileNotFoundError:
         raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
