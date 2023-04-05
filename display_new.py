@@ -12,7 +12,7 @@
 # TODO: I need to make sure that the older piezzo controllers still work with this code!
 from PyQt5.QtWidgets import QMainWindow
 from Packages.pointing_ui import Ui_MainWindow
-
+from pathlib import Path
 # Old imports:
 import sys
 import pyvisa as visa
@@ -183,16 +183,14 @@ class Window(QMainWindow, Ui_MainWindow):
         self.cam2_r0 = np.array([0, 0])
         self.cam1_x = np.zeros(1)
         self.cam1_y = np.zeros(1)
+        self.cam1_t = np.zeros(1)
         self.cam2_x = np.zeros(1)
         self.cam2_y = np.zeros(1)
-        self.cam1_x_time = np.zeros(1)
-        self.cam1_y_time = np.zeros(1)
-        self.cam2_x_time = np.zeros(1)
-        self.cam2_y_time = np.zeros(1)
-        self.cam1_x_PlotItem = self.gv_cam_xy.addPlot(row=0, col=0, labels={'left': 'Cam 1 X'})
-        self.cam1_y_PlotItem = self.gv_cam_xy.addPlot(row=1, col=0, labels={'left': 'Cam 1 Y'})
-        self.cam2_x_PlotItem = self.gv_cam_xy.addPlot(row=2, col=0, labels={'left': 'Cam 2 X'})
-        self.cam2_y_PlotItem = self.gv_cam_xy.addPlot(row=3, col=0, labels={'left': 'Cam 2 Y'})
+        self.cam2_t = np.zeros(1)
+        self.cam1_x_PlotItem = self.gv_cam_xy.addPlot(row=0, col=0, labels={'left': 'Cam 1 X', 'bottom': 'time (ms)'})
+        self.cam1_y_PlotItem = self.gv_cam_xy.addPlot(row=1, col=0, labels={'left': 'Cam 1 Y', 'bottom': 'time (ms)'})
+        self.cam2_x_PlotItem = self.gv_cam_xy.addPlot(row=2, col=0, labels={'left': 'Cam 2 X', 'bottom': 'time (ms)'})
+        self.cam2_y_PlotItem = self.gv_cam_xy.addPlot(row=3, col=0, labels={'left': 'Cam 2 Y', 'bottom': 'time (ms)'})
         self.cam1_x_plot = self.cam1_x_PlotItem.plot()
         self.cam1_y_plot = self.cam1_y_PlotItem.plot()
         self.cam2_x_plot = self.cam2_x_PlotItem.plot()
@@ -283,6 +281,21 @@ class Window(QMainWindow, Ui_MainWindow):
         self.timer_connected_to_cam2 = False
         # Number of points to keep to display in the line plots:
         self.num_points_to_plot = int(self.le_num_points.text())
+
+        # Initialize the parameters to save the pointing information
+        self.acquisition_timer = QTimer(self)
+        self.acquisition_timer.setSingleShot(True)
+        self.acquisition_timer.timeout.connect(self.save_data)
+        self.cam1_x_save = np.ones(1)*(-1000)
+        self.cam1_y_save = np.ones(1)*(-1000)
+        self.cam1_t_save = np.ones(1)*(-1000)
+        self.cam2_x_save = np.ones(1)*(-1000)
+        self.cam2_y_save = np.ones(1)*(-1000)
+        self.cam2_t_save = np.ones(1) * (-1000)
+        self.motor1_x_save = np.ones(1)*(-1000)
+        self.motor1_y_save = np.ones(1)*(-1000)
+        self.motor2_x_save = np.ones(1)*(-1000)
+        self.motor2_y_save = np.ones(1)*(-1000)
         return
 
     @pyqtSlot()
@@ -330,7 +343,138 @@ class Window(QMainWindow, Ui_MainWindow):
         self.btn_Align.clicked.connect(self.motors_to_75V_signal.emit)
         self.le_num_points.textEdited.connect(self.set_num_points_to_plot)
         self.pb_update_control_motors.clicked.connect(self.update_updatemanager_control_motors)
+        self.btn_begin_acquisition.clicked.connect(self.begin_acquisition)
         return
+
+    def begin_acquisition(self):
+        """Tell the system to start saving data to the arrays and start a timer.
+        When timer ends, save the arrays."""
+        time_string = self.le_data_acquisition_time.text()
+        i = 0
+        index_commas = []
+        index_bracket = []
+        for s in time_string:
+            if s == ',':
+                index_commas.append(i)
+            if s == '(' or s == '[' or s == ')' or s == ']':
+                index_bracket.append(i)
+            i += 1
+        seconds = 0
+        minutes = 0
+        hours = 0
+        days = 0
+        if not index_commas:
+            if not index_bracket:
+                seconds = float(time_string)
+            else:
+                seconds = float(time_string[index_bracket[0]+1:index_bracket[1]])
+        elif len(index_commas) == 1:
+            if not index_bracket:
+                seconds = float(time_string[index_commas[0]+1:])
+                minutes = float(time_string[0:index_commas[0]])
+            else:
+                seconds = float(time_string[index_commas[0] + 1:index_bracket[1]])
+                minutes = float(time_string[index_bracket[0]+1:index_commas[0]])
+        elif len(index_commas) == 2:
+            if not index_bracket:
+                seconds = float(time_string[index_commas[1]+1:])
+                minutes = float(time_string[index_commas[0]+1:index_commas[1]])
+                hours = float(time_string[0:index_commas[0]])
+            else:
+                seconds = float(time_string[index_commas[1] + 1:index_bracket[1]])
+                minutes = float(time_string[index_commas[0]+1:index_commas[1]])
+                hours = float(time_string[index_bracket[0]+1:index_commas[0]])
+        elif len(index_commas) == 3:
+            if not index_bracket:
+                seconds = float(time_string[index_commas[2]+1:])
+                minutes = float(time_string[index_commas[1]+1:index_commas[2]])
+                hours = float(time_string[index_commas[0] + 1:index_commas[1]])
+                days = float(time_string[0:index_commas[0]])
+            else:
+                seconds = float(time_string[index_commas[2] + 1:index_bracket[1]])
+                minutes = float(time_string[index_commas[1]+1:index_commas[2]])
+                hours = float(time_string[index_commas[0] + 1:index_commas[1]])
+                days = float(time_string[index_bracket[0]+1:index_commas[0]])
+        self.cam1_x_save = np.ones(1) * (-1000)
+        self.cam1_y_save = np.ones(1) * (-1000)
+        self.cam2_x_save = np.ones(1) * (-1000)
+        self.cam2_y_save = np.ones(1) * (-1000)
+        self.motor1_x_save = np.ones(1) * (-1000)
+        self.motor1_y_save = np.ones(1) * (-1000)
+        self.motor2_x_save = np.ones(1) * (-1000)
+        self.motor2_y_save = np.ones(1) * (-1000)
+        timer_interval = int((days*24*3600+hours*3600+minutes*60+seconds)*1000)  # integer in ms
+        self.acquisition_timer.start(timer_interval)
+        return
+
+    def save_data(self):
+        """
+        Called once the acquisition time is completed. Save the data that has been acquired during this interval.
+        """
+        pointing_data_cam1 = None
+        pointing_data_cam2 = None
+        piezo_data = None
+        if not self.cam1_x_save[0] == -1000:
+            pointing_data_cam1 = np.array([self.cam1_x_save, self.cam1_y_save, self.cam1_t_save])
+            pointing_data_cam2 = np.array([self.cam2_x_save, self.cam2_y_save, self.cam2_t_save])
+        if not self.motor1_x_save[0] == -1000:
+            piezo_data = np.array([self.motor1_x_save, self.motor1_y_save, self.motor2_x_save, self.motor2_y_save])
+        if pointing_data_cam1 is not None or pointing_data_cam2 is not None or piezo_data is not None:
+            new_directory_path = '/Data/'+str(np.datetime64('today', 'D'))
+            Path(new_directory_path).mkdir(parents=True, exist_ok=True)
+            # Store set position with the data
+            home_file_name = new_directory_path+'/HomePosition.txt'
+            file_to_check = Path(home_file_name)
+            if not file_to_check.is_file():
+                HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
+                np.savetxt(home_file_name, HomePosition, fmt='%f')
+            if pointing_data_cam1 is not None:
+                if self.btn_lock.isChecked():
+                    file_name = new_directory_path+'/pointing_cam1_locked'
+                else:
+                    file_name = new_directory_path + '/pointing_cam1_unlocked'
+                file_to_check = Path(file_name)
+                new_file_name = file_name
+                i = 2
+                while file_to_check.is_file():
+                    new_file_name = file_name + '_' + str(i)
+                    file_to_check = Path(new_file_name)
+                    i += 1
+                pointing_data_cam1_fp = np.memmap(new_file_name, dtype='float64', mode='w+',
+                                                  shape=pointing_data_cam1.shape, order='C')
+                pointing_data_cam1_fp[:] = pointing_data_cam1[:]
+                pointing_data_cam1_fp.flush()
+            if pointing_data_cam2 is not None:
+                if self.btn_lock.isChecked():
+                    file_name = new_directory_path+'/pointing_cam2_locked'
+                else:
+                    file_name = new_directory_path + '/pointing_cam2_unlocked'
+                file_to_check = Path(file_name)
+                new_file_name = file_name
+                i = 2
+                while file_to_check.is_file():
+                    new_file_name = file_name + '_' + str(i)
+                    file_to_check = Path(new_file_name)
+                    i += 1
+                pointing_data_cam2_fp = np.memmap(new_file_name, dtype='float64', mode='w+',
+                                                  shape=pointing_data_cam2.shape, order='C')
+                pointing_data_cam2_fp[:] = pointing_data_cam2[:]
+                pointing_data_cam2_fp.flush()
+            if piezo_data is not None:
+                file_name = new_directory_path + '/piezo_data'
+                file_to_check = Path(file_name)
+                new_file_name = file_name
+                i = 2
+                while file_to_check.is_file():
+                    new_file_name = file_name + '_' + str(i)
+                    file_to_check = Path(new_file_name)
+                    i += 1
+                piezo_data_fp = np.memmap(new_file_name, dtype='float64', mode='w+',
+                                                  shape=piezo_data.shape, order='C')
+                piezo_data_fp[:] = piezo_data[:]
+                piezo_data_fp.flush()
+        return
+
 
     def connect_UpdateManager_signals(self):
         """
@@ -603,6 +747,29 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.motor2_x = self.add_point_to_data(self.motor2_x, voltage, maxSize=self.num_points_to_plot)
                 elif channel_num == 2:
                     self.motor2_y = self.add_point_to_data(self.motor2_y, voltage, maxSize=self.num_points_to_plot)
+        if self.acquisition_timer.isActive() and self.cb_acquire_voltages.isChecked():
+            if motor_num == 1:
+                if channel_num == 1:
+                    if self.motor1_x_save[0] == -1000:
+                        self.motor1_x_save[0] = voltage
+                    else:
+                        self.motor1_x_save.append(voltage)
+                elif channel_num == 2:
+                    if self.motor1_y_save[0] == -1000:
+                        self.motor1_y_save[0] = voltage
+                    else:
+                        self.motor1_y_save.append(voltage)
+            elif motor_num == 2:
+                if channel_num == 1:
+                    if self.motor2_x_save[0] == -1000:
+                        self.motor2_x_save[0] = voltage
+                    else:
+                        self.motor2_x_save.append(voltage)
+                elif channel_num == 2:
+                    if self.motor2_y_save[0] == -1000:
+                        self.motor2_y_save[0] = voltage
+                    else:
+                        self.motor2_y_save.append(voltage)
         return
 
     @pyqtSlot()
@@ -1396,8 +1563,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam2_y_line.setVisible(True)
         return
 
-    @pyqtSlot(int, np.ndarray)
-    def update_cam_com_data(self, cam_num: int, cam_com: np.ndarray):
+    @pyqtSlot(int, np.ndarray, float)
+    def update_cam_com_data(self, cam_num: int, cam_com: np.ndarray, time_stamp: float):
         """
         Keep up with COM data sent from Update Manager, storing only a max num of points.
         """
@@ -1405,10 +1572,33 @@ class Window(QMainWindow, Ui_MainWindow):
             # Update the COM data
             self.cam1_x = self.add_point_to_data(self.cam1_x, cam_com[0], maxSize=self.num_points_to_plot)
             self.cam1_y = self.add_point_to_data(self.cam1_y, cam_com[1], maxSize=self.num_points_to_plot)
+            self.cam1_t = self.add_point_to_data(self.cam1_t, time_stamp, maxSize=self.num_points_to_plot)
         elif cam_num == 2:
             # Update the COM data
             self.cam2_x = self.add_point_to_data(self.cam2_x, cam_com[0], maxSize=self.num_points_to_plot)
             self.cam2_y = self.add_point_to_data(self.cam2_y, cam_com[1], maxSize=self.num_points_to_plot)
+            self.cam2_t = self.add_point_to_data(self.cam2_t, time_stamp, maxSize=self.num_points_to_plot)
+        if self.acquisition_timer.isActive() and self.cb_acquire_voltages.isChecked():
+            if cam_num == 1:
+                # Update the COM data
+                if self.cam1_x_save[0] == -1000:
+                    self.cam1_x_save[0] = cam_com[0]
+                    self.cam1_y_save[0] = cam_com[1]
+                    self.cam1_t_save[0] = time_stamp
+                else:
+                    self.cam1_x_save.append(cam_com[0])
+                    self.cam1_y_save.append(cam_com[1])
+                    self.cam1_t_save.append(time_stamp)
+            elif cam_num == 2:
+                # Update the COM data
+                if self.cam2_x_save[0] == -1000:
+                    self.cam2_x_save[0] = cam_com[0]
+                    self.cam2_y_save[0] = cam_com[1]
+                    self.cam2_t_save[0] = time_stamp
+                else:
+                    self.cam2_x_save.append(cam_com[0])
+                    self.cam2_y_save.append(cam_com[1])
+                    self.cam2_t_save.append(time_stamp)
         return
 
     @pyqtSlot()
@@ -1421,20 +1611,20 @@ class Window(QMainWindow, Ui_MainWindow):
             self.update_gui_std(1)
             self.update_gui_std(2)
             if not self.suppress_pointing_display:
-                self.cam1_x_plot.setData(self.cam1_x)
-                self.cam1_y_plot.setData(self.cam1_y)
-                self.cam2_x_plot.setData(self.cam2_x)
-                self.cam2_y_plot.setData(self.cam2_y)
+                self.cam1_x_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_x)
+                self.cam1_y_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_y)
+                self.cam2_x_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_x)
+                self.cam2_y_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_y)
         elif self.cam1 is not None:
             self.update_gui_std(1)
             if not self.suppress_pointing_display:
-                self.cam1_x_plot.setData(self.cam1_x)
-                self.cam1_y_plot.setData(self.cam1_y)
+                self.cam1_x_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_x)
+                self.cam1_y_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_y)
         elif self.cam2 is not None:
             self.update_gui_std(2)
             if not self.suppress_pointing_display:
-                self.cam2_x_plot.setData(self.cam2_x)
-                self.cam2_y_plot.setData(self.cam2_y)
+                self.cam2_x_plot.setData(self.cam1_t-self.cam1_t.min(),self.cam2_x)
+                self.cam2_y_plot.setData(self.cam1_t-self.cam1_t.min(),self.cam2_y)
         return
 
     def convert_img(self, img):
@@ -1760,6 +1950,10 @@ class Window(QMainWindow, Ui_MainWindow):
             self.ROICam2_Lock.setVisible(False)
             self.ROICam1_Unlock.setVisible(True)
             self.ROICam2_Unlock.setVisible(True)
+            # Tell UpdateManager to unlock.
+            self.toggle_UpdateManager_lock_signal.emit(False)
+            # Stop the timer for updating Piezo plots:
+            self.update_piezo_plots_timer.stop()
         return
 
     @pyqtSlot()

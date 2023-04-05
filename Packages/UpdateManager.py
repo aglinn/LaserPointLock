@@ -63,7 +63,7 @@ class UpdateManager(QObject):
     # Signals emitted by Update Manager to the GUI
     update_gui_img_signal = pyqtSignal(int, np.ndarray)
     # This reports all COM found regardless of motor status to GUI.
-    update_gui_cam_com_signal = pyqtSignal(int, np.ndarray)
+    update_gui_cam_com_signal = pyqtSignal(int, np.ndarray, float)
     # send this to GUI for GUI thread to save
     update_gui_new_calibration_matrix_signal = pyqtSignal(np.ndarray, np.ndarray, dict, dict, list)
     update_gui_piezo_voltage_signal = pyqtSignal(int, int, float)
@@ -2787,7 +2787,7 @@ class UpdateManager(QObject):
                 self.cam1_dx = np.asarray([com_x, com_y]) - self.set_pos[0:2]
                 self.t1 = timestamp
                 self.cam_1_com = np.asarray([com_x, com_y])
-                self.update_gui_cam_com_signal.emit(1, np.asarray([com_x, com_y]))
+                self.update_gui_cam_com_signal.emit(1, np.asarray([com_x, com_y]), timestamp)
             if self.report_cam1_img_to_gui:
                 self.update_gui_img_signal.emit(1, np.asarray(img))
                 self.report_cam1_img_to_gui = False
@@ -2801,7 +2801,7 @@ class UpdateManager(QObject):
                 self.cam2_dx = np.asarray([com_x, com_y]) - self.set_pos[2:]
                 self.t2 = timestamp
                 self.cam_2_com = np.asarray([com_x, com_y])
-                self.update_gui_cam_com_signal.emit(2, np.asarray([com_x, com_y]))
+                self.update_gui_cam_com_signal.emit(2, np.asarray([com_x, com_y]),timestamp)
             if self.report_cam2_img_to_gui:
                 self.update_gui_img_signal.emit(2, np.asarray(img))
                 self.report_cam2_img_to_gui = False
