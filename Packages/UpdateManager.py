@@ -329,7 +329,7 @@ class UpdateManager(QObject):
                                                                                                    voltage))
             self.motor1.set_ch3V_failed_signal.connect(self.receive_motor_set_V_failed_signal)
             self.motor1.get_ch3V_failed_signal.connect(lambda motor_num, motor_ch:
-                                                       self.receive_V_failed_signal(motor_num, motor_ch))
+                                                       self.receive_v_failed_signal(motor_num, motor_ch))
             self.motor1.returning_ch3V_signal.connect(self.set_V_from_get)
             self.motor1.returning_ch3V_signal.connect(lambda motor_num, motor_ch, voltage:
                                                       self.update_gui_piezo_voltage_signal.emit(motor_num, motor_ch,
