@@ -423,7 +423,7 @@ class Window(QMainWindow, Ui_MainWindow):
         if not self.motor1_x_save[0] == -1000:
             piezo_data = np.array([self.motor1_x_save, self.motor1_y_save, self.motor2_x_save, self.motor2_y_save])
         if pointing_data_cam1 is not None or pointing_data_cam2 is not None or piezo_data is not None:
-            print("Should be making directory")
+            print("making Directory")
             new_directory_path = 'Data/'+str(np.datetime64('today', 'D'))
             Path(new_directory_path).mkdir(parents=True, exist_ok=True)
             # Store set position with the data
