@@ -417,8 +417,10 @@ class Window(QMainWindow, Ui_MainWindow):
         pointing_data_cam1 = None
         pointing_data_cam2 = None
         piezo_data = None
+        print("Cam1 x data", self.cam1_x_save)
         if not self.cam1_x_save[0] == -1000:
             pointing_data_cam1 = np.array([self.cam1_x_save, self.cam1_y_save, self.cam1_t_save])
+            print("Cam1 pointing data", pointing_data_cam1)
             pointing_data_cam2 = np.array([self.cam2_x_save, self.cam2_y_save, self.cam2_t_save])
         if not self.motor1_x_save[0] == -1000:
             piezo_data = np.array([self.motor1_x_save, self.motor1_y_save, self.motor2_x_save, self.motor2_y_save])
@@ -758,23 +760,23 @@ class Window(QMainWindow, Ui_MainWindow):
                     if self.motor1_x_save[0] == -1000:
                         self.motor1_x_save[0] = voltage
                     else:
-                        np.append(self.motor1_x_save, voltage)
+                        self.motor1_x_save = np.append(self.motor1_x_save, voltage)
                 elif channel_num == 2:
                     if self.motor1_y_save[0] == -1000:
                         self.motor1_y_save[0] = voltage
                     else:
-                        np.append(self.motor1_y_save, voltage)
+                        self.motor1_y_save = np.append(self.motor1_y_save, voltage)
             elif motor_num == 2:
                 if channel_num == 1:
                     if self.motor2_x_save[0] == -1000:
                         self.motor2_x_save[0] = voltage
                     else:
-                        np.append(self.motor2_x_save, voltage)
+                        self.motor2_x_save = np.append(self.motor2_x_save, voltage)
                 elif channel_num == 2:
                     if self.motor2_y_save[0] == -1000:
                         self.motor2_y_save[0] = voltage
                     else:
-                        np.append(self.motor2_y_save, voltage)
+                        self.motor2_y_save = np.append(self.motor2_y_save, voltage)
         return
 
     @pyqtSlot()
@@ -1591,9 +1593,11 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam1_y_save[0] = cam_com[1]
                     self.cam1_t_save[0] = time_stamp
                 else:
-                    np.append(self.cam1_x_save, cam_com[0])
-                    np.append(self.cam1_y_save, cam_com[1])
-                    np.append(self.cam1_t_save, time_stamp)
+                    print("Appending data to cam1_x_save")
+                    self.cam1_x_save = np.append(self.cam1_x_save, cam_com[0])
+                    self.cam1_y_save = np.append(self.cam1_y_save, cam_com[1])
+                    self.cam1_t_save = np.append(self.cam1_t_save, time_stamp)
+                    print("cam1x data after append", self.cam1_x_save)
             elif cam_num == 2:
                 # Update the COM data
                 if self.cam2_x_save[0] == -1000:
@@ -1601,9 +1605,9 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam2_y_save[0] = cam_com[1]
                     self.cam2_t_save[0] = time_stamp
                 else:
-                    np.append(self.cam2_x_save, cam_com[0])
-                    np.append(self.cam2_y_save, cam_com[1])
-                    np.append(self.cam2_t_save, time_stamp)
+                    self.cam2_x_save = np.append(self.cam2_x_save, cam_com[0])
+                    self.cam2_y_save = np.append(self.cam2_y_save, cam_com[1])
+                    self.cam2_t_save = np.append(self.cam2_t_save, time_stamp)
         return
 
     @pyqtSlot()
