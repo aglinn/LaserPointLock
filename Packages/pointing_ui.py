@@ -2,11 +2,13 @@
 
 # Form implementation generated from reading ui file 'pointing_stability.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.12.3
 #
 # WARNING! All changes made in this file will be lost!
 
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -556,5 +558,4 @@ class Ui_MainWindow(object):
         self.actionLoad_Old_Home.setText(_translate("MainWindow", "Load Old Home"))
         self.actionSave_State.setText(_translate("MainWindow", "Save State"))
         self.actionLoad_State.setText(_translate("MainWindow", "Load State"))
-
 from pyqtgraph import GraphicsLayoutWidget, ImageView
