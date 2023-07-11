@@ -227,6 +227,13 @@ class UpdateManager(QObject):
         self._2_step_dx1_V_under = None
         self._max_V_attempted = 0
         self._min_V_attempted = 0
+        self.cam1_video_file = None
+        self.cam2_video_file = None
+        self.recording = False
+        self.cam1_frame_size = None
+        self.cam2_frame_size = None
+        self.cam1_fps = None
+        self.cam2_fps = None
         return
 
     @pyqtSlot(dict, dict)
@@ -261,21 +268,23 @@ class UpdateManager(QObject):
         self.timer.timeout.connect(self.apply_update)
         return
 
-    @pyqtSlot(int, float)
-    def update_cam_timer_interval(self, cam_num: int, interval_time: float):
+    @pyqtSlot(int, float, float)
+    def update_cam_timer_interval(self, cam_num: int, interval_time: float, fps: float):
         """
-        Update camera interval at which frames are grabbed
+        Update camera interval at which frames are grabbed and fps.
         """
         if cam_num == 1:
             if self.cam1_timer.isActive():
                 self.cam1_timer.stop()
             self.cam1_timer.setInterval(interval_time)
             self.cam1_timer.start()
+            self.cam1_fps = fps
         elif cam_num == 2:
             if self.cam2_timer.isActive():
                 self.cam2_timer.stop()
             self.cam2_timer.setInterval(interval_time)
             self.cam2_timer.start()
+            self.cam2_fps = fps
         return
 
     @pyqtSlot(float)
@@ -2745,6 +2754,8 @@ class UpdateManager(QObject):
         For now, just find COM, but in the future, do any preprocessing that I want.
         """
         if cam_number == 1:
+            if self.recording:
+                self.cam1_video_file.write(img)
             cv2.GaussianBlur(img, (0, 0), sigmaX=10, dst=img, borderType=cv2.BORDER_CONSTANT)
             cv2.subtract(img, self.img1_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
@@ -2759,6 +2770,8 @@ class UpdateManager(QObject):
                 self.update_gui_img_signal.emit(1, np.asarray(img))
                 self.report_cam1_img_to_gui = False
         elif cam_number == 2:
+            if self.recording:
+                self.cam2_video_file.write(img)
             cv2.GaussianBlur(img, (0, 0), sigmaX=10, dst=img, borderType=cv2.BORDER_CONSTANT)
             cv2.subtract(img, self.img2_threshold, img)  # Because I am using uint, any negative result is set to 0
             com_x, com_y = self.find_com(img)
@@ -2772,6 +2785,45 @@ class UpdateManager(QObject):
             if self.report_cam2_img_to_gui:
                 self.update_gui_img_signal.emit(2, np.asarray(img))
                 self.report_cam2_img_to_gui = False
+        return
+
+    @pyqtSlot(str)
+    def start_recording(self, dir_path: str):
+        """
+        Start recording frames to a video file.
+        Sets flag to let update manager know to record and creates the video files to write to.
+        """
+        self.recording = True
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Save the file as an mp4??
+        if self.cam1_frame_size is not None:
+            self.cam1_video_file = cv2.VideoWriter(dir_path+'/cam1.mp4', fourcc, self.cam1_fps, self.cam1_frame_size,
+                                                   False)
+        elif self.cam2_frame_size is not None:
+            self.cam2_video_file = cv2.VideoWriter(dir_path+'/cam2.mp4', fourcc, self.cam2_fps, self.cam2_frame_size,
+                                                   False)
+        return
+
+    @pyqtSlot()
+    def stop_recording(self):
+        """
+        Stop recording video if recording.
+        """
+        if self.recording:
+            self.recording = False
+            self.cam1_video_file.release()
+            self.cam2_video_file.release()
+        return
+
+    @pyqtSlot(int, int, int)
+    def update_frame_size(self, cam_num, frame_width, frame_height):
+        """
+        Keep track of the current expected frame size from the cameras.
+        """
+        size = (frame_width, frame_height)
+        if cam_num == 1:
+            self.cam1_frame_size = size
+        elif cam_num == 2:
+            self.cam2_frame_size = size
         return
 
     @pyqtSlot(int)

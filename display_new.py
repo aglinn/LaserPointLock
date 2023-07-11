@@ -109,6 +109,7 @@ class Window(QMainWindow, Ui_MainWindow):
     set_P = pyqtSignal(float)
     set_I = pyqtSignal(float)
     set_D = pyqtSignal(float)
+    request_UpdateManager_start_recording_video = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -287,6 +288,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.acquisition_timer = QTimer(self)
         self.acquisition_timer.setSingleShot(True)
         self.acquisition_timer.timeout.connect(self.save_data)
+        self.acquisition_timer.timeout.connect(self.UpdateManager.stop_recording)
         self.acquiring_data_multipart = False
         self.batch_number_save_data = None  # Sequences parts of a single acquisition
         self.save_data_directory = None  # Where to save files for a given acquisition
@@ -351,8 +353,24 @@ class Window(QMainWindow, Ui_MainWindow):
         return
 
     def begin_acquisition(self):
-        """Tell the system to start saving data to the arrays and start a timer.
-        When timer ends, save the arrays."""
+        """Tell the system to start saving data and start a timer.
+        Save data in chunks until timer ends."""
+        # Initialize all parameters for acquisition series.
+        self.make_save_directory()
+        self.batch_number_save_data = 1
+        self.acquiring_data_multipart = False
+        self.save_data_directory = None
+        self.cam1_x_save = np.ones(1) * (-1000)
+        self.cam1_y_save = np.ones(1) * (-1000)
+        self.cam1_t_save = np.ones(1) * (-1000)
+        self.cam2_x_save = np.ones(1) * (-1000)
+        self.cam2_y_save = np.ones(1) * (-1000)
+        self.cam2_t_save = np.ones(1) * (-1000)
+        self.motor1_x_save = np.ones(1) * (-1000)
+        self.motor1_y_save = np.ones(1) * (-1000)
+        self.motor2_x_save = np.ones(1) * (-1000)
+        self.motor2_y_save = np.ones(1) * (-1000)
+        # Find timer interval and start QTimer
         time_string = self.le_data_acquisition_time.text()
         i = 0
         index_commas = []
@@ -399,23 +417,12 @@ class Window(QMainWindow, Ui_MainWindow):
                 minutes = float(time_string[index_commas[1]+1:index_commas[2]])
                 hours = float(time_string[index_commas[0] + 1:index_commas[1]])
                 days = float(time_string[index_bracket[0]+1:index_commas[0]])
-        self.batch_number_save_data = 1
-        self.acquiring_data_multipart = False
-        self.save_data_directory = None
-        self.cam1_x_save = np.ones(1) * (-1000)
-        self.cam1_y_save = np.ones(1) * (-1000)
-        self.cam1_t_save = np.ones(1) * (-1000)
-        self.cam2_x_save = np.ones(1) * (-1000)
-        self.cam2_y_save = np.ones(1) * (-1000)
-        self.cam2_t_save = np.ones(1) * (-1000)
-        self.motor1_x_save = np.ones(1) * (-1000)
-        self.motor1_y_save = np.ones(1) * (-1000)
-        self.motor2_x_save = np.ones(1) * (-1000)
-        self.motor2_y_save = np.ones(1) * (-1000)
         timer_interval = int((days*24*3600+hours*3600+minutes*60+seconds)*1000)  # integer in ms
         print("timer interval for acquisition set to ", timer_interval)
         self.acquisition_timer.start(timer_interval)
         print("Timer is active, ", self.acquisition_timer.isActive())
+        if self.cb_acquire_video:
+            self.request_UpdateManager_start_recording_video.emit(self.save_data_directory)
         return
 
     def make_save_directory(self):
@@ -479,15 +486,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 # Saving additional batch
                 self.batch_number_save_data += 1
             elif self.acquisition_timer.isActive():
-                # Saving first batch or single batch
-                self.batch_number_save_data = 1
-                self.make_save_directory()
+                # Saving first batch
                 self.acquiring_data_multipart = True
-            else:
-                # Single batch acquisition
-                self.batch_number_save_data = 1
-                self.acquiring_data_multipart = False
-                self.make_save_directory()
             if pointing_data_cam1 is not None:
                 if self.acquiring_data_multipart:
                     file_name = self.save_data_directory + '/pointing_cam1_part_'+str(self.batch_number_save_data)
@@ -528,7 +528,6 @@ class Window(QMainWindow, Ui_MainWindow):
             self.motor2_y_save = np.ones(1) * (-1000)
         return
 
-
     def connect_UpdateManager_signals(self):
         """
         Connect all update manager signals to appropriate slots.
@@ -554,6 +553,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.set_P.connect(self.UpdateManager.set_P)
             self.set_I.connect(self.UpdateManager.set_I)
             self.set_D.connect(self.UpdateManager.set_D)
+        self.request_UpdateManager_start_recording_video.connect(self.UpdateManager.start_recording)
         # Back to GUI from Update Manager.
         self.UpdateManager.update_gui_img_signal.connect(self.update_cam_img)
         self.UpdateManager.update_gui_cam_com_signal.connect(self.update_cam_com_data)
@@ -971,6 +971,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.cb_motors_1.setModel(self.motor_model)
         self.cb_motors_2.setModel(self.motor_model)
         # Update GUI with motor/channel options for control
+        # TODO: Give user None option for slow motor usage.
         self.cb_control_motor_1.setModel(self.motor_model_channel_num)
         self.cb_control_motor_2.setModel(self.motor_model_channel_num)
         self.cb_control_motor_3.setModel(self.motor_model_channel_num)
@@ -1400,8 +1401,14 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.destroyed.connect(lambda args: self.update_UpdateManager_num_cameras_connected_signal.emit(-1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
             self.cam1.request_update_timer_interval_signal.connect(
-                lambda interval: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
-                                                          Qt.QueuedConnection, Q_ARG(int, 1), Q_ARG(float, interval)))
+                lambda interval, fps: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
+                                                          Qt.QueuedConnection, Q_ARG(int, 1), Q_ARG(float, interval),
+                                                                      Q_ARG(float, fps)))
+            self.cam1.updated_image_size.connect(lambda frame_width, frame_height:
+                                                  QMetaObject.invokeMethod(self.UpdateManager, 'update_frame_size',
+                                                                           Qt.QueuedConnection, Q_ARG(int, 1),
+                                                                           Q_ARG(int, frame_width),
+                                                                           Q_ARG(int, frame_height)))
         elif cam_number == 2:
             # To Update Manager, once cameras exist:
             if not self.timer_connected_to_cam2:
@@ -1439,8 +1446,15 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam2.destroyed.connect(lambda args: self.update_UpdateManager_num_cameras_connected_signal.emit(-1))
             self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
             self.cam2.request_update_timer_interval_signal.connect(
-                lambda interval: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
-                                                          Qt.QueuedConnection, Q_ARG(int, 2), Q_ARG(float, interval)))
+                lambda interval, fps: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
+                                                               Qt.QueuedConnection, Q_ARG(int, 2),
+                                                               Q_ARG(float, interval),
+                                                               Q_ARG(float, fps)))
+            self.cam2.updated_image_size.connect(lambda frame_width, frame_height:
+                                                 QMetaObject.invokeMethod(self.UpdateManager, 'update_frame_size',
+                                                                          Qt.QueuedConnection, Q_ARG(int, 2),
+                                                                          Q_ARG(int, frame_width),
+                                                                          Q_ARG(int, frame_height)))
         return
 
     @pyqtSlot(int)

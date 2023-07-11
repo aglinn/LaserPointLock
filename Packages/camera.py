@@ -559,10 +559,14 @@ class BaseCamera(QObject):
     gain_updated_signal = pyqtSignal(float)
     ROI_applied = pyqtSignal(bool)
     r0_updated_signal = pyqtSignal(np.ndarray)
-    request_update_timer_interval_signal = pyqtSignal(float)
+    request_update_timer_interval_signal = pyqtSignal(float, float)
+    updated_image_size = pyqtSignal(int,int)
 
     def __init__(self, dev_id: int):
         super().__init__()
+        frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.updated_image_size.emit(frame_width, frame_height)
         # Assume the camera is ready to acquire by the end of init function, override if neccessary.
         self._ready_to_acquire = True
         # Need to appropriately set a serial number for the camera, which is used in the camera device list of GUI to
@@ -619,7 +623,7 @@ class BaseCamera(QObject):
             self.frame_rate = frame_rate
             self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
             self.timeout_time = int(self.timeout_time)
-            self.request_update_timer_interval_signal.emit(self.timeout_time)
+            self.request_update_timer_interval_signal.emit(self.timeout_time, frame_rate)
         self.exposure_updated_signal.emit(self.exposure_time)
         return
 
@@ -755,7 +759,10 @@ class BaseCamera(QObject):
                 self.frame_rate = frame_rate
                 self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
                 self.timeout_time = int(self.timeout_time)
-                self.request_update_timer_interval_signal.emit(self.timeout_time)
+                self.request_update_timer_interval_signal.emit(self.timeout_time, frame_rate)
+            frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            self.updated_image_size.emit(frame_width, frame_height)
         return
 
     @property
