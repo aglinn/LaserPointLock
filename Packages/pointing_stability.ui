@@ -30,7 +30,7 @@
      <enum>QTabWidget::Rounded</enum>
     </property>
     <property name="currentIndex">
-     <number>1</number>
+     <number>2</number>
     </property>
     <property name="elideMode">
      <enum>Qt::ElideNone</enum>
@@ -547,7 +547,7 @@
         <x>770</x>
         <y>280</y>
         <width>169</width>
-        <height>135</height>
+        <height>158</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout">
@@ -575,7 +575,20 @@
        <item>
         <widget class="QCheckBox" name="cb_acquire_pointing">
          <property name="text">
-          <string>Collect All pointing information</string>
+          <string>Collect All COM Data</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="cb_acquire_video">
+         <property name="text">
+          <string>Acquire Video</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -583,6 +596,9 @@
         <widget class="QCheckBox" name="cb_acquire_voltages">
          <property name="text">
           <string>Collect All piezo voltage data</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
