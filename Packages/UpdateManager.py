@@ -9,8 +9,11 @@ import time
 import scipy.linalg
 from lmfit import Parameters, minimize
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer
-from Packages.motors import MDT693BMotor as MDT693B_Motor
-from Packages.motors import MDT693AMotor as MDT693A_Motor
+import platform
+if (platform.system() == "Windows"):
+    # Must be on windows to use MDT motor
+    from Packages.motors import MDT693BMotor as MDT693B_Motor
+    from Packages.motors import MDT693AMotor as MDT693A_Motor
 from datetime import datetime
 import cv2
 from shapely.geometry import Polygon
@@ -2607,42 +2610,6 @@ class UpdateManager(QObject):
                 print("Failed on linear combination of dx. Anticipated dV ", dV_known, "calculated dV ", dV)
         return
 
-    # Analysis/convenience methods.
-    def store_data(self, state, IR):
-        """
-        Store pointing data for analysis later.
-        """
-        # TODO: Reimplement storing data.
-        if IR:
-            if state == 0:
-                state = "_Measure_IR"
-            elif state == 1:
-                state = "_Calibrate_IR"
-            elif state == 2:
-                state = "_Locked_IR"
-            elif state == 3:
-                state = "_Align_IR"
-        else:
-            if state == 0:
-                state = "_Measure_Vis"
-            elif state == 1:
-                state = "_Calibrate_Vis"
-            elif state == 2:
-                state = "_Locked_Vis"
-            elif state == 3:
-                state = "_Align_Vis"
-        date = str(np.datetime64('today', 'D'))
-        if len(self.dx) > 0:
-            filename = 'Data/' + date + state + '_dx'
-            np.savetxt(filename, self.dx, fmt='%f')
-        if len(self.t1) > 0:
-            filename = 'Data/' + date + state + '_t1'
-            np.savetxt(filename, self.t1, fmt='%f')
-        if len(self.t2) > 0:
-            filename = 'Data/' + date + state + '_t2'
-            np.savetxt(filename, self.t2, fmt='%f')
-        return
-
     def reset_data(self):
         """
         Re-init dx, t1, and t2 to empty
@@ -2652,11 +2619,12 @@ class UpdateManager(QObject):
         self._t2 = []
         return
 
-    def load_data(self, dx, t1, t2):
+    def load_data(self, dx1, dx2, t1, t2):
         """
         Set dx, t1, t2 from loaded data. This allows convenient analysis of pointing data outside of the app.
         """
-        self._dx = dx
+        self._cam1_dx = dx1
+        self._cam2_dx = dx2
         self._t1 = t1
         self._t2 = t2
         return
@@ -2689,7 +2657,7 @@ class UpdateManager(QObject):
 
         Set the frequency domain property and return a list of frequency data.
         """
-        dt1 = self.t1[1:] - self.t1[0:-1]
+        dt1 = self.t1[1:] - self.t1[0:-1] # Time is in ms
         dt1_min = np.amin(dt1)
         dt2 = self.t2[1:] - self.t2[0:-1]
         dt2_min = np.amin(dt2)
@@ -2703,15 +2671,15 @@ class UpdateManager(QObject):
         N2 = int(np.floor(T2 / dt2_min))
         if N2 % 2 == 1:
             N2 = N2 - 1
-        dNu1 = 1 / T1
+        dNu1 = 1 / T1  # Here mHz
         dNu2 = 1 / T2
         Nu1 = np.linspace(-N1 / 2, N1 / 2 - 1, N1) * dNu1 * 1000.0  # Hz
         Nu2 = np.linspace(-N2 / 2, N2 / 2 - 1, N2) * dNu2 * 1000.0  # Hz
         self.frequency_domain = [Nu1, Nu2]
-        FT_cam1_dx = nfft.nfft_adjoint(time1 / T1, self.dx[:, 0], N1) * T1 / len(self.t1)
-        FT_cam1_dy = nfft.nfft_adjoint(time1 / T1, self.dx[:, 1], N1) * T1 / len(self.t1)
-        FT_cam2_dx = nfft.nfft_adjoint(time2 / T2, self.dx[:, 2], N2) * T2 / len(self.t2)
-        FT_cam2_dy = nfft.nfft_adjoint(time2 / T2, self.dx[:, 3], N2) * T2 / len(self.t2)
+        FT_cam1_dx = nfft.nfft_adjoint(time1 / T1, self.cam1_dx[:, 0], N1) * T1 / len(self.t1)
+        FT_cam1_dy = nfft.nfft_adjoint(time1 / T1, self.cam1_dx[:, 1], N1) * T1 / len(self.t1)
+        FT_cam2_dx = nfft.nfft_adjoint(time2 / T2, self.cam2_dx[:, 0], N2) * T2 / len(self.t2)
+        FT_cam2_dy = nfft.nfft_adjoint(time2 / T2, self.cam2_dx[:, 1], N2) * T2 / len(self.t2)
         return [FT_cam1_dx, FT_cam1_dy, FT_cam2_dx, FT_cam2_dy]
 
     @property
