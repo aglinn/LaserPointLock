@@ -18,6 +18,7 @@ import sys
 import pyvisa as visa
 import time
 import numpy as np
+import os
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread, QTimer, QMetaObject, Qt, Q_ARG
@@ -286,6 +287,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.acquisition_timer = QTimer(self)
         self.acquisition_timer.setSingleShot(True)
         self.acquisition_timer.timeout.connect(self.save_data)
+        self.acquiring_data_multipart = False
+        self.batch_number_save_data = None  # Sequences parts of a single acquisition
+        self.save_data_directory = None  # Where to save files for a given acquisition
         self.cam1_x_save = np.ones(1)*(-1000)
         self.cam1_y_save = np.ones(1)*(-1000)
         self.cam1_t_save = np.ones(1)*(-1000)
@@ -395,10 +399,15 @@ class Window(QMainWindow, Ui_MainWindow):
                 minutes = float(time_string[index_commas[1]+1:index_commas[2]])
                 hours = float(time_string[index_commas[0] + 1:index_commas[1]])
                 days = float(time_string[index_bracket[0]+1:index_commas[0]])
+        self.batch_number_save_data = 1
+        self.acquiring_data_multipart = False
+        self.save_data_directory = None
         self.cam1_x_save = np.ones(1) * (-1000)
         self.cam1_y_save = np.ones(1) * (-1000)
+        self.cam1_t_save = np.ones(1) * (-1000)
         self.cam2_x_save = np.ones(1) * (-1000)
         self.cam2_y_save = np.ones(1) * (-1000)
+        self.cam2_t_save = np.ones(1) * (-1000)
         self.motor1_x_save = np.ones(1) * (-1000)
         self.motor1_y_save = np.ones(1) * (-1000)
         self.motor2_x_save = np.ones(1) * (-1000)
@@ -407,6 +416,49 @@ class Window(QMainWindow, Ui_MainWindow):
         print("timer interval for acquisition set to ", timer_interval)
         self.acquisition_timer.start(timer_interval)
         print("Timer is active, ", self.acquisition_timer.isActive())
+        return
+
+    def make_save_directory(self):
+        """
+        Get and create the save directory
+        Returns: None
+        Sets: self.save_data_directory
+        Creates: Directory
+        """
+        new_directory_path = 'Data/' + str(np.datetime64('today', 'D'))
+        Path(new_directory_path).mkdir(parents=True, exist_ok=True)
+        folders = 1
+        for _, dirnames, _ in os.walk(new_directory_path):
+            folders += len(dirnames)
+        if self.btn_lock.isChecked():
+            self.save_data_directory = new_directory_path +'/acquisition_' +str(folders)+'_locked'
+        else:
+            self.save_data_directory = new_directory_path +'/acquisition_' +str(folders)+'_unlocked'
+        try:
+            Path(self.save_data_directory).mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            print("Woah creating a save directory that already exists. Did not think this was possible. Fail to save "
+                  "data.")
+            self.acquisition_timer.stop()
+            self.cam1_x_save = np.ones(1) * (-1000)
+            self.cam1_y_save = np.ones(1) * (-1000)
+            self.cam1_t_save = np.ones(1) * (-1000)
+            self.cam2_x_save = np.ones(1) * (-1000)
+            self.cam2_y_save = np.ones(1) * (-1000)
+            self.cam2_t_save = np.ones(1) * (-1000)
+            self.motor1_x_save = np.ones(1) * (-1000)
+            self.motor1_y_save = np.ones(1) * (-1000)
+            self.motor2_x_save = np.ones(1) * (-1000)
+            self.motor2_y_save = np.ones(1) * (-1000)
+            self.acquiring_data_multipart = False
+            self.batch_number_save_data = 1  # Sequences parts of a single acquisition
+            self.save_data_directory = None  # Where to save files for a given acquisition
+        # Store set position with the data
+        home_file_name = self.save_data_directory + '/HomePosition.txt'
+        file_to_check = Path(home_file_name)
+        if not file_to_check.is_file():
+            HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
+            np.savetxt(home_file_name, HomePosition, fmt='%f')
         return
 
     def save_data(self):
@@ -423,60 +475,57 @@ class Window(QMainWindow, Ui_MainWindow):
         if not self.motor1_x_save[0] == -1000:
             piezo_data = np.array([self.motor1_x_save, self.motor1_y_save, self.motor2_x_save, self.motor2_y_save])
         if pointing_data_cam1 is not None or pointing_data_cam2 is not None or piezo_data is not None:
-            new_directory_path = 'Data/'+str(np.datetime64('today', 'D'))
-            Path(new_directory_path).mkdir(parents=True, exist_ok=True)
-            # Store set position with the data
-            home_file_name = new_directory_path+'/HomePosition.txt'
-            file_to_check = Path(home_file_name)
-            if not file_to_check.is_file():
-                HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
-                np.savetxt(home_file_name, HomePosition, fmt='%f')
+            if self.acquiring_data_multipart:
+                # Saving additional batch
+                self.batch_number_save_data += 1
+            elif self.acquisition_timer.isActive():
+                # Saving first batch or single batch
+                self.batch_number_save_data = 1
+                self.make_save_directory()
+                self.acquiring_data_multipart = True
+            else:
+                # Single batch acquisition
+                self.batch_number_save_data = 1
+                self.acquiring_data_multipart = False
+                self.make_save_directory()
             if pointing_data_cam1 is not None:
-                print("Should be saving cam1 pointing data")
-                if self.btn_lock.isChecked():
-                    file_name = new_directory_path+'/pointing_cam1_locked'
+                if self.acquiring_data_multipart:
+                    file_name = self.save_data_directory + '/pointing_cam1_part_'+str(self.batch_number_save_data)
                 else:
-                    file_name = new_directory_path + '/pointing_cam1_unlocked'
-                file_to_check = Path(file_name)
-                new_file_name = file_name
-                i = 2
-                while file_to_check.is_file():
-                    new_file_name = file_name + '_' + str(i)
-                    file_to_check = Path(new_file_name)
-                    i += 1
-                pointing_data_cam1_fp = np.memmap(new_file_name, dtype='float64', mode='w+',
+                    file_name = self.save_data_directory + '/pointing_cam1'
+                pointing_data_cam1_fp = np.memmap(file_name, dtype='float64', mode='w+',
                                                   shape=pointing_data_cam1.shape, order='C')
                 pointing_data_cam1_fp[:] = pointing_data_cam1[:]
                 pointing_data_cam1_fp.flush()
             if pointing_data_cam2 is not None:
-                if self.btn_lock.isChecked():
-                    file_name = new_directory_path+'/pointing_cam2_locked'
+                if self.acquiring_data_multipart:
+                    file_name = self.save_data_directory + '/pointing_cam2_part_'+str(self.batch_number_save_data)
                 else:
-                    file_name = new_directory_path + '/pointing_cam2_unlocked'
-                file_to_check = Path(file_name)
-                new_file_name = file_name
-                i = 2
-                while file_to_check.is_file():
-                    new_file_name = file_name + '_' + str(i)
-                    file_to_check = Path(new_file_name)
-                    i += 1
-                pointing_data_cam2_fp = np.memmap(new_file_name, dtype='float64', mode='w+',
+                    file_name = self.save_data_directory + '/pointing_cam2'
+                pointing_data_cam2_fp = np.memmap(file_name, dtype='float64', mode='w+',
                                                   shape=pointing_data_cam2.shape, order='C')
                 pointing_data_cam2_fp[:] = pointing_data_cam2[:]
                 pointing_data_cam2_fp.flush()
             if piezo_data is not None:
-                file_name = new_directory_path + '/piezo_data'
-                file_to_check = Path(file_name)
-                new_file_name = file_name
-                i = 2
-                while file_to_check.is_file():
-                    new_file_name = file_name + '_' + str(i)
-                    file_to_check = Path(new_file_name)
-                    i += 1
-                piezo_data_fp = np.memmap(new_file_name, dtype='float64', mode='w+',
-                                                  shape=piezo_data.shape, order='C')
+                if self.acquiring_data_multipart:
+                    file_name = self.save_data_directory + '/piezo_data_part_'+str(self.batch_number_save_data)
+                else:
+                    file_name = self.save_data_directory + '/piezo_data'
+                piezo_data_fp = np.memmap(file_name, dtype='float64', mode='w+',
+                                          shape=piezo_data.shape, order='C')
                 piezo_data_fp[:] = piezo_data[:]
                 piezo_data_fp.flush()
+            # Release last batch of data and prep save variables for logging next batch
+            self.cam1_x_save = np.ones(1) * (-1000)
+            self.cam1_y_save = np.ones(1) * (-1000)
+            self.cam1_t_save = np.ones(1) * (-1000)
+            self.cam2_x_save = np.ones(1) * (-1000)
+            self.cam2_y_save = np.ones(1) * (-1000)
+            self.cam2_t_save = np.ones(1) * (-1000)
+            self.motor1_x_save = np.ones(1) * (-1000)
+            self.motor1_y_save = np.ones(1) * (-1000)
+            self.motor2_x_save = np.ones(1) * (-1000)
+            self.motor2_y_save = np.ones(1) * (-1000)
         return
 
 
@@ -1582,7 +1631,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam2_x = self.add_point_to_data(self.cam2_x, cam_com[0], maxSize=self.num_points_to_plot)
             self.cam2_y = self.add_point_to_data(self.cam2_y, cam_com[1], maxSize=self.num_points_to_plot)
             self.cam2_t = self.add_point_to_data(self.cam2_t, time_stamp, maxSize=self.num_points_to_plot)
-        if self.acquisition_timer.isActive() and self.cb_acquire_voltages.isChecked():
+        if self.acquisition_timer.isActive() and self.cb_acquire_pointing.isChecked():
             if cam_num == 1:
                 # Update the COM data
                 if self.cam1_x_save[0] == -1000:
@@ -1603,6 +1652,11 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam2_x_save = np.append(self.cam2_x_save, cam_com[0])
                     self.cam2_y_save = np.append(self.cam2_y_save, cam_com[1])
                     self.cam2_t_save = np.append(self.cam2_t_save, time_stamp)
+            if self.cam2_x_save.size >= 99000 and self.cam1_x_save.size >= 99000:
+                """Then, COM data has been logged for roughly 30 minutes at the lowest expected frame rate from the 
+                 and there is roughly 792 KB in memory per DOF logged (6 DOF for 2 cameras + 4DOF for 4 Piezo voltages.
+                 So, let's save what we have and start logging in a new batch to release memory."""
+                self.save_data()
         return
 
     @pyqtSlot()

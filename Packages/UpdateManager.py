@@ -1102,8 +1102,8 @@ class UpdateManager(QObject):
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
             # Effectively bypass the timer in a way that preserves code for time-delay (but thus also preserves bloat)
-            # self.apply_update()
-            self.timer.start(self.time_out_interval)
+            self.apply_update()
+            # self.timer.start(self.time_out_interval)
         return
 
     @staticmethod
@@ -1507,7 +1507,6 @@ class UpdateManager(QObject):
 
     @pyqtSlot(bool)
     def lock_pointing(self, lock: bool):
-        # TODO: Should be able to transition out of locking by GUI button! Not working though!
         """
         Prepare the update manager to begin locking the pointing. And also tell the update manager to prepare to stop
         locking as well.
