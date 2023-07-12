@@ -564,9 +564,6 @@ class BaseCamera(QObject):
 
     def __init__(self, dev_id: int):
         super().__init__()
-        frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.updated_image_size.emit(frame_width, frame_height)
         # Assume the camera is ready to acquire by the end of init function, override if neccessary.
         self._ready_to_acquire = True
         # Need to appropriately set a serial number for the camera, which is used in the camera device list of GUI to
@@ -625,6 +622,9 @@ class BaseCamera(QObject):
             self.timeout_time = int(self.timeout_time)
             self.request_update_timer_interval_signal.emit(self.timeout_time, frame_rate)
         self.exposure_updated_signal.emit(self.exposure_time)
+        frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.updated_image_size.emit(frame_width, frame_height)
         return
 
     @pyqtSlot(float)

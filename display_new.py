@@ -290,7 +290,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.acquisition_timer.timeout.connect(self.save_data)
         self.acquisition_timer.timeout.connect(self.UpdateManager.stop_recording)
         self.acquiring_data_multipart = False
-        self.batch_number_save_data = None  # Sequences parts of a single acquisition
+        self.batch_number_save_data = 1  # Sequences parts of a single acquisition
         self.save_data_directory = None  # Where to save files for a given acquisition
         self.cam1_x_save = np.ones(1)*(-1000)
         self.cam1_y_save = np.ones(1)*(-1000)
@@ -359,7 +359,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.make_save_directory()
         self.batch_number_save_data = 1
         self.acquiring_data_multipart = False
-        self.save_data_directory = None
         self.cam1_x_save = np.ones(1) * (-1000)
         self.cam1_y_save = np.ones(1) * (-1000)
         self.cam1_t_save = np.ones(1) * (-1000)
@@ -421,7 +420,7 @@ class Window(QMainWindow, Ui_MainWindow):
         print("timer interval for acquisition set to ", timer_interval)
         self.acquisition_timer.start(timer_interval)
         print("Timer is active, ", self.acquisition_timer.isActive())
-        if self.cb_acquire_video:
+        if self.cb_acquire_video.isChecked():
             self.request_UpdateManager_start_recording_video.emit(self.save_data_directory)
         return
 
@@ -432,7 +431,8 @@ class Window(QMainWindow, Ui_MainWindow):
         Sets: self.save_data_directory
         Creates: Directory
         """
-        new_directory_path = 'Data/' + str(np.datetime64('today', 'D'))
+        current_path = os.getcwd()
+        new_directory_path = current_path+'/Data/' + str(np.datetime64('today', 'D'))
         Path(new_directory_path).mkdir(parents=True, exist_ok=True)
         folders = 1
         for _, dirnames, _ in os.walk(new_directory_path):

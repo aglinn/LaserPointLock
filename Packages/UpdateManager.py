@@ -2,6 +2,8 @@
 # TODO: Implement timing synchronization?
 # TODO: Implement triggering of cameras?
 # TODO: Remove time delayed udpate.
+import os
+
 import numpy as np
 import nfft
 import time
@@ -2793,14 +2795,22 @@ class UpdateManager(QObject):
         Start recording frames to a video file.
         Sets flag to let update manager know to record and creates the video files to write to.
         """
+        print("full path is ", dir_path)
         self.recording = True
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Save the file as an mp4??
+        fourcc = cv2.VideoWriter_fourcc(*'FFV1')  # Save the file as an mp4??
         if self.cam1_frame_size is not None:
-            self.cam1_video_file = cv2.VideoWriter(dir_path+'/cam1.mp4', fourcc, self.cam1_fps, self.cam1_frame_size,
+            self.cam1_video_file = cv2.VideoWriter(dir_path+'/cam1.avi', fourcc, self.cam1_fps, self.cam1_frame_size,
                                                    False)
-        elif self.cam2_frame_size is not None:
-            self.cam2_video_file = cv2.VideoWriter(dir_path+'/cam2.mp4', fourcc, self.cam2_fps, self.cam2_frame_size,
+            print(self.cam1_video_file.isOpened())
+        if self.cam2_frame_size is not None:
+            self.cam2_video_file = cv2.VideoWriter(dir_path+'/cam2.avi', fourcc, self.cam2_fps, self.cam2_frame_size,
                                                    False)
+            """ret = self.cam2_video_file.open(dir_path+'/cam2.avi', fourcc, self.cam2_fps, self.cam2_frame_size,
+                                                   False)
+            print("open returned ", ret)"""
+            print(self.cam2_video_file.isOpened())
+            print(self.cam2_video_file.getBackendName())
+        print(self.cam1_fps, self.cam2_fps)
         return
 
     @pyqtSlot()
@@ -2812,6 +2822,7 @@ class UpdateManager(QObject):
             self.recording = False
             self.cam1_video_file.release()
             self.cam2_video_file.release()
+        print("Stopped recording.")
         return
 
     @pyqtSlot(int, int, int)
