@@ -12,6 +12,28 @@ from scipy.stats import skew
 import gc
 from sys import getsizeof
 import multiprocessing
+import threading
+import queue
+from tqdm import tqdm
+from .Processing import ProcessingMultithread as Processing
+
+
+def get_skew_x_y(frame):
+    """
+    Get the average skew along x and y coordinates of a frame.
+    """
+    skew_x = skew(frame, axis=1)
+    skew_y = skew(frame, axis=0)
+    return np.asarray([skew_x.mean(), skew_y.mean()])
+
+
+def get_skew_x_y_multithread(frames):
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        for result in executor.map(get_skew_x_y, frames):
+            results.append(result)
+    return results
+
 
 class DataAnalyzer():
 
@@ -277,19 +299,10 @@ class DataAnalyzer():
             self._cam_2_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
         return
 
-    def fit_gaussians(self, cam_num, initial_guess: dict = None, get_residuals=False):
-        self.gaussian_model = Gaussian2dModel()
-        self.params = self.gaussian_model.make_params()
-        if cam_num == 1:
-            length = int(self._cam_1_video.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.cam_1_gaussian_results = []
-        elif cam_num == 2:
-            length = int(self._cam_2_video.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.cam_2_gaussian_results = []
-        tenths = np.arange(0, step=int(length / 10), stop=length)
-        if length not in tenths:
-            tenths = np.append(tenths, length)
-        # Read in all frames for parallel fitting
+    def get_frames(self, cam_num, num_frames=1024):
+        """
+        Read next num_frames frames in a capture object into a list of images. return that list of images.
+        """
         frames = []
         while True:
             if cam_num == 1:
@@ -299,14 +312,64 @@ class DataAnalyzer():
             if ret:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 frames.append(frame)
+                if len(frames) == num_frames:
+                    break
             else:
                 break
-        if len(frames) != length:
-            print("Wait a second did not read all frames. Len frames: ", len(frames), " and length: ", length)
+        if frames:
+            return True, frames
+        else:
+            return False, None
+
+    @staticmethod
+    def get_workers_frames(frames):
+        num_workers = os.cpu_count()
+        frames_per_worker = int(np.floor(len(frames) / num_workers))
+        workers_frames = []
+        start_frame = 0
+        for i in range(num_workers):
+            if i + 1 <= len(frames) % num_workers:
+                workers_frames.append(frames[start_frame:start_frame + frames_per_worker + 1])
+                start_frame += frames_per_worker + 1
+            else:
+                workers_frames.append(frames[start_frame:start_frame + frames_per_worker])
+                start_frame += frames_per_worker
+        return workers_frames
+
+    def get_length_of_video(self, cam_num):
+        """
+        return the number of frames in a capture object for cam_num.
+        """
+        if cam_num == 1:
+            length = int(self._cam_1_video.get(cv2.CAP_PROP_FRAME_COUNT))
+        elif cam_num == 2:
+            length = int(self._cam_2_video.get(cv2.CAP_PROP_FRAME_COUNT))
+        return length
+
+    def fit_gaussians(self, cam_num, initial_guess: dict = None, get_residuals=False, num_reports: int = 10,
+                      num_frames_in_batch: int = 1000):
+
+        # Clear the variables if they are already fit, presumably user is intentionally refitting.
+        if cam_num == 1:
+            self.cam_1_gaussian_results = []
+        elif cam_num == 2:
+            self.cam_2_gaussian_results = []
+        # Get the total number of frames to process
+        length = self.get_length_of_video(cam_num)
+        # Get frames numbers at which to print progress report.
+        frame_numbers_to_report = self.prepare_to_report(cam_num=cam_num, num_reports=num_reports)
+        # Read in batch of frames for parallel fitting
+        ret, frames = self.get_frames(cam_num, num_frames_in_batch)
+        if not ret:
+            print("Whoops no frames to read?")
+            return
+        # Initialize objects for fitting
+        self.gaussian_model = Gaussian2dModel()
+        self.params = self.gaussian_model.make_params()
         X, Y = np.meshgrid(np.arange(frames[0].shape[1]), np.arange(frames[0].shape[0]))
         # Fit first frame to get initial guesses for all other frames
         if initial_guess is None:
-            initial_guess = {'amplitude': 1, 'centerx': frame.shape[0] / 2, 'centery': frame.shape[1] / 2,
+            initial_guess = {'amplitude': 1, 'centerx': frames[0].shape[0] / 2, 'centery': frames[0].shape[1] / 2,
                              'sigmax': 10, 'sigmay': 10}
         for key in initial_guess.keys():
             if 'fwhm' in key or 'height' in key:
@@ -328,71 +391,233 @@ class DataAnalyzer():
                 continue
             self.params[key].value = initial_guess[key]
         del frames[0]
-        print("Starting parallel computing")
         processed_imgs = 1
         t_start = time.monotonic()
-        t_0 = time.monotonic()
+        t_start_chunk = copy.deepcopy(t_start)
         f = partial(self.gaussian_model.fit, params=self.params, x=X, y=Y)
+        # executor = concurrent.futures.ThreadPoolExecutor()
         executor = concurrent.futures.ProcessPoolExecutor()
-        for result in executor.map(f, frames):
-            if cam_num == 1:
-                self.cam_1_gaussian_results.append(result.params)
-                if get_residuals:
-                    self.cam_1_gaussian_residual.append(np.sum(np.abs(result.residual)) /
-                                                        np.sum(np.abs(frames[processed_imgs-1])))
-            elif cam_num == 2:
-                self.cam_2_gaussian_results.append(result.params)
-                if get_residuals:
-                    self.cam_2_gaussian_residual.append(np.sum(np.abs(result.residual)) /
-                                                        np.sum(np.abs(frames[processed_imgs-1])))
-            if processed_imgs in tenths:
-                percent = np.round(100 * processed_imgs / length, decimals=1)
-                print("percent complete: ", percent, "total frames: ", length)
-                print("time to complete chunk is ", time.monotonic() - t_start)
-                t_start = time.monotonic()
-            processed_imgs += 1
-            del result
+        index = 0
+        while True:
+            for result in executor.map(f, frames):
+                if cam_num == 1:
+                    self.cam_1_gaussian_results.append(result.params)
+                    if get_residuals:
+                        self.cam_1_gaussian_residual.append(np.sum(np.abs(result.residual)) /
+                                                            np.sum(np.abs(frames[index])))
+                elif cam_num == 2:
+                    self.cam_2_gaussian_results.append(result.params)
+                    if get_residuals:
+                        self.cam_2_gaussian_residual.append(np.sum(np.abs(result.residual)) /
+                                                            np.sum(np.abs(frames[index])))
+                index += 1
+                processed_imgs += 1
+                t_start_chunk = self.report_progress(processed_imgs, frame_numbers_to_report, t_start, t_start_chunk)
+                del result
+            del frames
+            ret, frames = self.get_frames(cam_num, num_frames_in_batch)
+            index = 0
+            if not ret:
+                break
         executor.shutdown()
-        # Was the above faster?
-        print("total time was ", time.monotonic() - t_0)
+        # Make sure I fit every frame and reset captures to first frame
         if cam_num == 1 and len(self.cam_1_gaussian_results) != length:
+            self._cam_1_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
             print("Wait a second did not fit all frames. Len results: ", len(self.cam_1_gaussian_results),
                   " and length: ", length)
         if cam_num == 2 and len(self.cam_2_gaussian_results) != length:
+            self._cam_2_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
             print("Wait a second did not fit all frames. Len results: ", len(self.cam_2_gaussian_results),
                   " and length: ", length)
-        if cam_num == 1:
-            self._cam_1_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
-        elif cam_num == 2:
-            self._cam_2_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
         return
 
-    def get_skewness(self, cam_num):
+    def prepare_to_report(self, cam_num, num_reports: int = 10):
         """
-        Get the average skewness along the two axes of every image in a video file.
+        Get parameters needed to provide reporting on processing progress.
+        Will get the frame numbers at which to print the reports.
+        inputs: cam_num: Which camera stream is being processed?
+        num_reports: num of times reports are made throughout the processing.
+        return:
+        The integer frame numbers at which to print a report. This will represent total_num_frames/num_reports
         """
         if cam_num == 1:
             length = int(self._cam_1_video.get(cv2.CAP_PROP_FRAME_COUNT))
-            self._cam_1_skewness = []
         elif cam_num == 2:
             length = int(self._cam_2_video.get(cv2.CAP_PROP_FRAME_COUNT))
+        frame_numbers_to_report = np.arange(0, step=int(length / num_reports), stop=length)
+        # Always report on last frame being processed.
+        if length not in frame_numbers_to_report:
+            frame_numbers_to_report = np.append(frame_numbers_to_report, length)
+        return frame_numbers_to_report
+
+    def report_progress(self, num_processed_frames, frame_numbers_to_report, t_start, t_start_chunk):
+        """
+        When processing videos frame by frame, print an update when num_frames_in_stream/num_reports frames have been
+        processed.
+        Thus, if num_reports=10 there will be an update at every 10% of the processing.
+        Updates should have time between reports, and percent complete.
+        inputs: num_frames_in_stream: total frames in video file
+        num_reports: num of times reports are made throughout the processing.
+        """
+        if num_processed_frames in frame_numbers_to_report[:-1]:
+            percent = np.round(100 * num_processed_frames / frame_numbers_to_report[-1], decimals=1)
+            print("percent complete: ", percent, "total frames: ", frame_numbers_to_report[-1])
+            print("time to complete chunk is ", time.monotonic() - t_start_chunk)
+            t_start_chunk = time.monotonic()
+        elif num_processed_frames == frame_numbers_to_report[-1]:
+            percent = np.round(100 * num_processed_frames / frame_numbers_to_report[-1], decimals=1)
+            print("percent complete: ", percent, "total frames: ", frame_numbers_to_report[-1])
+            print("time to complete chunk is ", time.monotonic() - t_start_chunk)
+            print("time to complete all processing is ", time.monotonic()-t_start)
+        return t_start_chunk
+
+    def report_progress_multithread(self, num_processed_frames, batch_size, frame_numbers_to_report, t_start,
+                                    t_start_chunk):
+        """
+        Since multithreading means batches of images will be returned all at once, see if that batch crossed the
+        number of frames threshold to report.
+        When processing videos frame by frame, print an update when num_frames_in_stream/num_reports frames have been
+        processed.
+        Thus, if num_reports=10 there will be an update at every 10% of the processing.
+        Updates should have time between reports, and percent complete.
+        inputs: num_frames_in_stream: total frames in video file
+        num_reports: num of times reports are made throughout the processing.
+        """
+        chk1 = num_processed_frames<frame_numbers_to_report
+        chk2 = (num_processed_frames+batch_size)>=frame_numbers_to_report
+        chk = chk1 & chk2
+        if chk[:-1].any():
+            percent = np.round(100 * num_processed_frames / frame_numbers_to_report[-1], decimals=1)
+            print("percent complete: ", percent, "total frames: ", frame_numbers_to_report[-1])
+            print("time to complete chunk is ", time.monotonic() - t_start_chunk)
+            t_start_chunk = time.monotonic()
+        elif chk[-1]:
+            percent = np.round(100 * num_processed_frames / frame_numbers_to_report[-1], decimals=1)
+            print("percent complete: ", percent, "total frames: ", frame_numbers_to_report[-1])
+            print("time to complete chunk is ", time.monotonic() - t_start_chunk)
+            print("time to complete all processing is ", time.monotonic()-t_start)
+        return t_start_chunk
+
+    def get_skewness_processor(self, cam_num, processing_kws):
+        """
+        Get the average skewness along the two axes of every image in a video file.
+        """
+        t_start = time.monotonic()
+        # Make sure variables are empty since user requested calculation and select which camera cap to use
+        if cam_num == 1:
+            self._cam_1_skewness = []
+            cap = self._cam_1_video
+        elif cam_num == 2:
             self._cam_2_skewness = []
-        # Read in all frames and calculate skewness
+            cap = self._cam_2_video
+
+        # Get the total number of frames in the video
+        total_frames = self.get_length_of_video(cam_num)
+
+        # Instantiate the processing class with the capture object and the method of processing on each frame
+        processing_instance = Processing(get_skew_x_y, **processing_kws)
+        # Run the frame processing with a progress bar
+        with tqdm(total=total_frames, desc="Processing Frames", unit="frame") as pbar:
+            processed_frames = processing_instance.run_processing(capture=cap)
+            pbar.update(total_frames)
+
+        # Did I get skewness of every frame.
+        if cam_num == 1:
+            self._cam_1_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
+            self._cam_1_skewness = processed_frames
+            if total_frames != len(self._cam_1_skewness):
+                print("Whoops did not find the skew of every frame. len skew=", len(self._cam_1_skewness),
+                      "num frames=", total_frames)
+        elif cam_num == 2:
+            self._cam_2_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
+            self._cam_2_skewness = processed_frames
+            if total_frames != len(self._cam_2_skewness):
+                print("Whoops did not find the skew of every frame. len skew=", len(self._cam_2_skewness),
+                      "num frames=", total_frames)
+        print("The total processing time was ", time.monotonic()-t_start)
+        return
+
+    def get_skewness(self, cam_num, num_reports: int = 10, num_frames_in_batch: int = 1000):
+        """
+        Get the average skewness along the two axes of every image in a video file.
+        """
+        t_start = time.monotonic()
+        t_start_last_chunk = copy.deepcopy(t_start)
+        if cam_num == 1:
+            self._cam_1_skewness = []
+        elif cam_num == 2:
+            self._cam_2_skewness = []
+        length = self.get_length_of_video(cam_num)
+        frame_numbers_to_report = self.prepare_to_report(cam_num=cam_num, num_reports=num_reports)
+        # Read in batch of frames
+        ret, frames = self.get_frames(cam_num, num_frames_in_batch)
+        if not ret:
+            print("Whoops no frames to read?")
+            return
+        # Get average skewness for all frames
+        executor = concurrent.futures.ThreadPoolExecutor()
+        results = []
+        processed_imgs = 0
         while True:
-            if cam_num == 1:
-                ret, frame = self._cam_1_video.read()
-            elif cam_num == 2:
-                ret, frame = self._cam_2_video.read()
+            for result in executor.map(get_skew_x_y, frames):
+                results.append(result)
+                processed_imgs += 1
+                t_start_last_chunk = self.report_progress(processed_imgs, frame_numbers_to_report, t_start, t_start_last_chunk)
+                del result
+            del frames
+            ret, frames = self.get_frames(cam_num, num_frames_in_batch)
+            if not ret:
+                break
+        # Store the results
+        if cam_num == 1:
+            self._cam_1_skewness = results
+        elif cam_num == 2:
+            self._cam_2_skewness = results
+        executor.shutdown()
+        # Did I get skewness of every frame.
+        if cam_num == 1:
+            self._cam_1_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
+            if length != len(self._cam_1_skewness):
+                print("Whoops did not find the skew of every frame. len skew=", len(self._cam_1_skewness),
+                      "num frames=", length)
+        elif cam_num == 2:
+            self._cam_2_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
+            if length != len(self._cam_2_skewness):
+                print("Whoops did not find the skew of every frame. len skew=", len(self._cam_2_skewness),
+                      "num frames=", length)
+        return
+
+    def get_skewness_slow(self, cam_num, num_reports: int = 10):
+        """
+        Get the average skewness along the two axes of every image in a video file.
+        """
+        t_start = time.monotonic()
+        t_start_last_chunk = copy.deepcopy(t_start)
+        if cam_num == 1:
+            self._cam_1_skewness = []
+            capture = self._cam_1_video
+        elif cam_num == 2:
+            self._cam_2_skewness = []
+            capture = self._cam_2_video
+        length = self.get_length_of_video(cam_num)
+        frame_numbers_to_report = self.prepare_to_report(cam_num=cam_num, num_reports=num_reports)
+        results = []
+        processed_imgs = 0
+        while True:
+            ret, frame = capture.read()
             if ret:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                skew_x = skew(frame, axis=1)
-                skew_y = skew(frame, axis=0)
-                if cam_num == 1:
-                    self._cam_1_skewness.append(np.asarray([skew_x.mean(), skew_y.mean()]))
-                elif cam_num == 2:
-                    self._cam_2_skewness.append(np.asarray([skew_x.mean(), skew_y.mean()]))
+                results.append(get_skew_x_y(frame))
+                processed_imgs += 1
+                t_start_last_chunk = self.report_progress(processed_imgs, frame_numbers_to_report, t_start,
+                                                          t_start_last_chunk)
             else:
                 break
+        # Store the results
+        if cam_num == 1:
+            self._cam_1_skewness = results
+        elif cam_num == 2:
+            self._cam_2_skewness = results
+        # Did I get skewness of every frame.
         if cam_num == 1:
             self._cam_1_video.set(cv2.CAP_PROP_POS_FRAMES, 1 - 1)
             if length != len(self._cam_1_skewness):
