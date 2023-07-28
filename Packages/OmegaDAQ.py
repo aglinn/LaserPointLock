@@ -1,279 +1,167 @@
 """
-File:                       DaqInScan03.py
+File:                       ULTI02.py
 
-Library Call Demonstrated:  mcculw.ul.daq_in_scan()
-                            mcculw.ul.get_tc_values()
+Library Call Demonstrated:  mcculw.ul.t_in_scan()
 
-Purpose:                    Synchronously scans Analog channels, Digital ports,
-                            and Thermocouple channels in the foreground.
+Purpose:                    Scans temperature input channels.
 
-Demonstration:              Collects data on Analog Channels 5, FirstPortA,
-                            CJCs 0, 1 and Thermocouple channels 0, 1.
+Demonstration:              Displays the temperature inputs on a
+                            range of channels.
 
-Other Library Calls:        mcculw.ul.win_buf_alloc()
-                            mcculw.ul.win_buf_free()
-                            mcculw.ul.d_config_port()
-                            mcculw.ul.c_config_scan()
-
-Special Requirements:       Device must support mcculw.ul.daq_in_scan() and
-                            temperature inputs.
-                            Thermocouples must be wired to temperature channels
-                            selected.
+Special Requirements:       Unless the board at BoardNum(=0) does not use
+                            EXP boards for temperature measurements(the
+                            CIO-DAS-TC or USB-2001-TC for example), it must
+                            have an A/D converter with an attached EXP
+                            board.  Thermocouples must be wired to EXP
+                            channels selected.
 """
 from __future__ import absolute_import, division, print_function
 from builtins import *  # @UnusedWildImport
-
-import tkinter as tk
-from tkinter import messagebox
-from enum import Enum
-from ctypes import cast, POINTER, c_ushort
-
+import time
+import numpy as np
 from mcculw import ul
-from mcculw.enums import (DigitalPortType, ChannelType, ULRange, CounterMode,
-                          CounterDebounceTime, CounterEdgeDetection,
-                          DigitalIODirection, TempScale, ErrorCode,
-                          CounterTickSize)
+from mcculw.enums import TempScale, ErrorCode
+import matplotlib.pyplot as plt
+from mcculw.enums import InterfaceType
 from mcculw.ul import ULError
 from mcculw.device_info import DaqDeviceInfo
 
-try:
-    from ui_examples_util import UIExample, show_ul_error
-except ImportError:
-    from .ui_examples_util import UIExample, show_ul_error
-
-
-class DaqInScan03(UIExample):
-    def __init__(self, master=None):
-        super(DaqInScan03, self).__init__(master)
-        # By default, the example detects all available devices and selects the
-        # first device listed.
+class TemperatureLogger:
+    def __init__(self, board_num=0, use_device_detection=False, temp_scale='C'):
+        # By default, the system relies on Instacal configured devices and connects to the one specified by board num
         # If use_device_detection is set to False, the board_num property needs
         # to match the desired board number configured with Instacal.
-        use_device_detection = True
-        self.board_num = 0
+        # Instead, can provide the board number and use_device_detection=true to connect to the board number-th device
+        if 'c' in temp_scale or 'C' in temp_scale:
+            self.temp_scale = TempScale.CELSIUS
+        elif 'f' in temp_scale or 'F' in temp_scale:
+            self.temp_scale = TempScale.FAHRENHEIT
+        elif 'k' in temp_scale or 'K' in temp_scale:
+            self.temp_scale = TempScale.KELVIN
+        else:
+            self.temp_scale = None
+            raise Exception("Must set temp scale to farenheight, kelvin, or celsius with first letter of temp_scale"
+                            " mattering.")
+        self.board_num = board_num
 
-        self.num_chans = 6
-        self.chan_list = []
-        self.chan_type_list = []
-        self.gain_list = []
+        self.running = False
 
-        try:
-            if use_device_detection:
-                self.configure_first_detected_device()
+        if use_device_detection:
+            self.configure_device()
 
-            self.device_info = DaqDeviceInfo(self.board_num)
-            if (self.device_info.supports_daq_input
-                    and self.device_info.supports_temp_input):
-                self.init_scan_channel_info()
-                self.create_widgets()
+        self.device_info = DaqDeviceInfo(self.board_num)
+        self.ai_info = self.device_info.get_ai_info()
+        if not self.ai_info.temp_supported:
+            print("Whoops need a temperature logging device that is temp_supported, e.g. OM-NET-TC or OM-USB-TC")
+
+        # get the channels to read
+        self.scan = False
+        self.low_chan = []
+        self.high_chan = []
+        ret = self.get_scan_range()
+        if not ret:
+            print("Whoops temperature logging device has no channels with a Thermocouple properly connected.")
+        return
+
+    def get_scan_range(self):
+        """
+        Figure out the range of channels to scan and set self.low_channels and self.high_channels as a list of starting
+        and stopping values of channels that are connected between start and stop value. Set self.scan to false if only
+        one value to read.
+        Returns
+        -------
+        Bool True if there are channels with Tc to read otherwise False.
+        """
+        connected_channels = []
+        for channel in range(10):
+            try:
+                value = ul.t_in(self.board_num, channel, self.temp_scale)
+                connected_channels.append(channel)
+            except ULError:
+                pass
+        if not connected_channels:
+            return False
+        elif len(connected_channels) == 1:
+            self.low_chan = connected_channels
+            self.high_chan = connected_channels
+            self.scan = False
+            return True
+        self.low_chan = [connected_channels[0]]
+        self.high_chan = []
+        last_channel = connected_channels[0]
+        for channel in connected_channels[1:]:
+            if channel - 1 == last_channel:
+                last_channel = channel
             else:
-                self.create_unsupported_widgets()
-        except ULError:
-            self.create_unsupported_widgets(True)
+                self.high_chan.append(last_channel)
+                self.low_chan.append(channel)
+                last_channel = channel
+        self.high_chan.append(channel)
+        return True
 
-    def init_scan_channel_info(self):
-        # For accurate thermocouple readings, the CJC channels and TC channels
-        # must be associated properly. The TC channels must immediately follow
-        # their associated CJCs in the channel list. Other channel types may be
-        # placed in the channel list as long as they do not fall between a CJC
-        # channel and its associated thermocouple channel.
+    def update_values(self):
+        for i in range(len(self.low_chan)):
+            l = self.low_chan[i]
+            h = self.high_chan[i]
+            data_array = np.array([])
+            try:
+                # Get the values from the device (optional parameters omitted)
+                err_code, data = ul.t_in_scan(self.board_num, l, h, self.temp_scale)
 
-        # Add an analog input channel
-        self.chan_list.append(4)
-        self.chan_type_list.append(ChannelType.ANALOG)
-        self.gain_list.append(ULRange.BIP10VOLTS)
-
-        # Add a digital input channel
-        self.chan_list.append(DigitalPortType.FIRSTPORTA)
-        self.chan_type_list.append(ChannelType.DIGITAL8)
-        self.gain_list.append(ULRange.NOTUSED)
-
-        # Add a CJC channel
-        self.chan_list.append(0)
-        self.chan_type_list.append(ChannelType.CJC)
-        self.gain_list.append(ULRange.NOTUSED)
-
-        # Add a TC channel
-        self.chan_list.append(0)
-        self.chan_type_list.append(ChannelType.TC)
-        self.gain_list.append(ULRange.NOTUSED)
-
-        # Add a CJC channel
-        self.chan_list.append(1)
-        self.chan_type_list.append(ChannelType.CJC)
-        self.gain_list.append(ULRange.NOTUSED)
-
-        # Add a TC channel
-        self.chan_list.append(1)
-        self.chan_type_list.append(ChannelType.TC)
-        self.gain_list.append(ULRange.NOTUSED)
-
-    def start_scan(self):
-        rate = 100
-        points_per_channel = 10
-        total_count = points_per_channel * self.num_chans
-
-        # Allocate a buffer for the scan
-        memhandle = ul.win_buf_alloc(total_count)
-
-        # Check if the buffer was successfully allocated
-        if not memhandle:
-            messagebox.showerror("Error", "Failed to allocate memory")
-            self.start_button["state"] = tk.NORMAL
-            return
-
-        try:
-            # Configure the digital port for input
-            ul.d_config_port(self.board_num, DigitalPortType.FIRSTPORTA,
-                             DigitalIODirection.IN)
-
-            # Configure the counter channel
-            ul.c_config_scan(self.board_num, 0, CounterMode.STOP_AT_MAX,
-                             CounterDebounceTime.DEBOUNCE_NONE, 0,
-                             CounterEdgeDetection.RISING_EDGE,
-                             CounterTickSize.TICK20PT83ns, 0)
-
-            # Run the scan
-            ul.daq_in_scan(self.board_num, self.chan_list, self.chan_type_list,
-                           self.gain_list, self.num_chans, rate, 0, total_count,
-                           memhandle, 0)
-
-            # Convert the TC values (optional parameter omitted)
-            err, temp_data_array = ul.get_tc_values(
-                self.board_num, self.chan_list, self.chan_type_list,
-                self.num_chans, memhandle, 0, points_per_channel,
-                TempScale.CELSIUS)
-
-            if err == ErrorCode.OUTOFRANGE:
-                messagebox.showwarning("Warning",
-                                       "Temperature data is out of range")
-
-            # Cast the memhandle to a ctypes pointer
-            # Note: the ctypes array will only be valid until win_buf_free
-            # is called.
-            array = cast(memhandle, POINTER(c_ushort))
-
-            # Display the values
-            self.display_values(array, temp_data_array, total_count)
-        except ULError as e:
-            show_ul_error(e)
-        finally:
-            # Free the allocated memory
-            ul.win_buf_free(memhandle)
-            self.start_button["state"] = tk.NORMAL
-
-    def display_values(self, array, temp_data_array, total_count):
-        channel_text = {}
-
-        # Add a string to the dictionary for each channel (excluding CJC
-        # channels)
-        for chan_num in range(0, self.num_chans):
-            if self.chan_type_list[chan_num] != ChannelType.CJC:
-                channel_text[chan_num] = ""
-
-        # Add (up to) the first 10 values for each channel to the text
-        # (excluding CJC channels)
-        chan_num = 0
-        temp_array_index = 0
-        for data_index in range(0, min(self.num_chans * 10, total_count)):
-            if self.chan_type_list[chan_num] != ChannelType.CJC:
-                if self.chan_type_list[chan_num] == ChannelType.TC:
-                    channel_text[chan_num] += str(
-                        round(temp_data_array[temp_array_index], 3)) + "\n"
-                    temp_array_index += 1
-                else:
-                    channel_text[chan_num] += str(array[data_index]) + "\n"
-            if chan_num == self.num_chans - 1:
-                chan_num = 0
-            else:
-                chan_num += 1
-
-        # Update the labels for each channel
-        for chan_num in channel_text:
-            self.data_labels[chan_num]["text"] = channel_text[chan_num]
+                # Check err_code for OUTOFRANGE or OPENCONNECTION. All other
+                # error codes will raise a ULError and are checked by the except
+                # clause.
+                if err_code == ErrorCode.OUTOFRANGE:
+                    print(
+                        "A thermocouple input is out of range.")
+                elif err_code == ErrorCode.OPENCONNECTION:
+                    print(
+                        "A thermocouple input has an open connection.")
+                data_array = np.concatenate((data_array, np.asarray(data)), axis=0)
+            except ULError as e:
+                self.stop()
+                self.show_ul_error(e)
+            return data_array
 
     def start(self):
-        self.start_button["state"] = tk.DISABLED
-        self.start_scan()
+        self.timer.start()
+        return
 
-    def create_widgets(self):
-        '''Create the tkinter UI'''
-        self.device_label = tk.Label(self)
-        self.device_label.pack(fill=tk.NONE, anchor=tk.NW)
-        self.device_label["text"] = ('Board Number ' + str(self.board_num)
-                                     + ": " + self.device_info.product_name
-                                     + " (" + self.device_info.unique_id + ")")
+    def stop(self):
+        self.timer.stop()
+        return
 
-        main_frame = tk.Frame(self)
-        main_frame.pack(fill=tk.X, anchor=tk.NW)
+    def configure_device(self):
+        ul.ignore_instacal()
+        devices = ul.get_daq_device_inventory(InterfaceType.ANY)
+        if not devices:
+            raise ULError(ErrorCode.BADBOARD)
 
-        self.results_group = tk.LabelFrame(
-            self, text="Results", padx=3, pady=3)
-        self.results_group.pack(fill=tk.X, anchor=tk.NW, padx=3, pady=3)
+        # Add the first DAQ device to the UL with the specified board number
+        ul.create_daq_device(self.board_num, devices[0])
 
-        self.data_frame = tk.Frame(self.results_group)
-        self.data_frame.grid()
-
-        chan_header_label = tk.Label(
-            self.data_frame, justify=tk.LEFT, padx=3)
-        chan_header_label["text"] = "Channel:"
-        chan_header_label.grid(row=0, column=0)
-
-        type_header_label = tk.Label(
-            self.data_frame, justify=tk.LEFT, padx=3)
-        type_header_label["text"] = "Type:"
-        type_header_label.grid(row=1, column=0)
-
-        range_header_label = tk.Label(
-            self.data_frame, justify=tk.LEFT, padx=3)
-        range_header_label["text"] = "Range:"
-        range_header_label.grid(row=2, column=0)
-
-        self.data_labels = {}
-        column = 0
-        for chan_num in range(0, self.num_chans):
-            # Don't display the CJC channels
-            if self.chan_type_list[chan_num] != ChannelType.CJC:
-                chan_label = tk.Label(
-                    self.data_frame, justify=tk.LEFT, padx=3)
-                chan_num_item = self.chan_list[chan_num]
-                if isinstance(chan_num_item, Enum):
-                    chan_label["text"] = self.chan_list[chan_num].name
-                else:
-                    chan_label["text"] = str(self.chan_list[chan_num])
-                chan_label.grid(row=0, column=column)
-
-                type_label = tk.Label(
-                    self.data_frame, justify=tk.LEFT, padx=3)
-                type_label["text"] = self.chan_type_list[chan_num].name
-                type_label.grid(row=1, column=column)
-
-                range_label = tk.Label(
-                    self.data_frame, justify=tk.LEFT, padx=3)
-                range_label["text"] = self.gain_list[chan_num].name
-                range_label.grid(row=2, column=column)
-
-                data_label = tk.Label(
-                    self.data_frame, justify=tk.LEFT, padx=3)
-                data_label.grid(row=3, column=column)
-                self.data_labels[chan_num] = data_label
-
-                column += 1
-
-        button_frame = tk.Frame(self)
-        button_frame.pack(fill=tk.X, side=tk.RIGHT, anchor=tk.SE)
-
-        self.start_button = tk.Button(button_frame)
-        self.start_button["text"] = "Start"
-        self.start_button["command"] = self.start
-        self.start_button.grid(row=0, column=0, padx=3, pady=3)
-
-        quit_button = tk.Button(button_frame)
-        quit_button["text"] = "Quit"
-        quit_button["command"] = self.master.destroy
-        quit_button.grid(row=0, column=1, padx=3, pady=3)
+    @staticmethod
+    def show_ul_error(ul_error):
+        message = 'A UL Error occurred.\n\n' + str(ul_error)
+        print(message)
+        return
 
 
+# Start the example if this module is being run
 if __name__ == "__main__":
     # Start the example
-    DaqInScan03(master=tk.Tk()).mainloop()
+    temp_log = TemperatureLogger()
+    data_scan = temp_log.update_values()
+    data_scan = data_scan.reshape(4, 1)
+    for i in range(100):
+        time.sleep(0.1)
+        data = temp_log.update_values()
+        data = data.reshape(4, 1)
+        data_scan = np.concatenate((data_scan, data), axis=1)
+    print(data_scan.shape)
+    fig, ax = plt.subplots(dpi=200)
+    ax.plot(data_scan[0, :])
+    ax.plot(data_scan[1, :])
+    ax.plot(data_scan[2, :])
+    ax.plot(data_scan[3, :])
+    plt.show()
