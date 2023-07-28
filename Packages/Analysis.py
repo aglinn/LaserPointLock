@@ -352,8 +352,12 @@ class DataAnalyzer():
         # Clear the variables if they are already fit, presumably user is intentionally refitting.
         if cam_num == 1:
             self.cam_1_gaussian_results = []
+            if get_residuals:
+                self.cam_1_gaussian_residual = []
         elif cam_num == 2:
             self.cam_2_gaussian_results = []
+            if get_residuals:
+                self.cam_2_gaussian_residual = []
         # Get the total number of frames to process
         length = self.get_length_of_video(cam_num)
         # Get frames numbers at which to print progress report.
