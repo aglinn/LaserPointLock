@@ -34,7 +34,6 @@ class TemperatureLogger:
         # If use_device_detection is set to False, the board_num property needs
         # to match the desired board number configured with Instacal.
         # Instead, can provide the board number and use_device_detection=true to connect to the board number-th device
-        print("Init temperature Logger")
         if 'c' in temp_scale or 'C' in temp_scale:
             self.temp_scale = TempScale.CELSIUS
         elif 'f' in temp_scale or 'F' in temp_scale:
@@ -171,7 +170,7 @@ class QTemperatureLogger(TemperatureLogger, QObject):
         self.data = np.concatenate((self.data, data), axis=0)
         return
 
-    @pyqtSlot()
+    @pyqtSlot(str)
     def start(self, save_directory):
         data = self.update_values()
         data = data.reshape(1, data.size)

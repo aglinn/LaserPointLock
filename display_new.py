@@ -444,6 +444,7 @@ class Window(QMainWindow, Ui_MainWindow):
     def connect_temp_logger_signals(self):
         # To temp logger
         self.acquisition_timer.timeout.connect(self.temp_logger.stop)
+        self.start_temp_logger.connect(self.temp_logger.start)
         # From temp logger
         """self.temp_logger.data_return.connect(self.store_temperature_data)"""
         self.temp_logger.finished_logging.connect(self.temp_logger_done)
