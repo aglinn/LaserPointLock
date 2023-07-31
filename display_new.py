@@ -27,6 +27,7 @@ from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError
 from Packages.camera import Blackfly_S as BlackflyS
 from Packages.camera import Boson_QObject as Boson
 from Packages.motors import MDT693AMotor as MDT693A_Motor
+from Packages.OmegaDAQ import QTemperatureLogger
 from Packages.motors import MDT693BMotor as MDT693B_Motor
 from Packages.CameraThread import CameraThread
 import tkinter as tk
@@ -87,6 +88,10 @@ class Window(QMainWindow, Ui_MainWindow):
     close_cam2_signal = pyqtSignal(bool)
     set_cam2_ROI_bounds_signal = pyqtSignal(list)
 
+    # Temperature Logger related
+    start_temp_logger = pyqtSignal(str)
+    stop_temp_logger = pyqtSignal()
+
     # Update Manager signals:
     toggle_UpdateManager_lock_signal = pyqtSignal(bool)
     motors_to_75V_signal = pyqtSignal()
@@ -137,6 +142,9 @@ class Window(QMainWindow, Ui_MainWindow):
         # Set priority as high. When Locking, I probably want to update the priority to time sensitive.
         self.UpdateManager_thread.start(priority=6)
         self.create_UpdateManager_timers.emit()
+        # Params for handling temperature logger:
+        self.temp_logger = None
+        self.temp_logger_thread = None
         # params for Handle threading of cameras:
         self.cam1_thread = None
         self.cam2_thread = None
@@ -417,12 +425,43 @@ class Window(QMainWindow, Ui_MainWindow):
                 hours = float(time_string[index_commas[0] + 1:index_commas[1]])
                 days = float(time_string[index_bracket[0]+1:index_commas[0]])
         timer_interval = int((days*24*3600+hours*3600+minutes*60+seconds)*1000)  # integer in ms
-        print("timer interval for acquisition set to ", timer_interval)
+        # Create the temperature logger and start appropriately
+        # TODO: Add GUI checkbox .ischeked for below True.
+        if True:
+            if self.temp_logger_thread is None:
+                self.temp_logger_thread = QThread()
+                self.temp_logger = QTemperatureLogger()
+                self.temp_logger.moveToThread(self.temp_logger_thread)
+                self.connect_temp_logger_signals()
+            self.temp_logger_thread.start()
+            self.start_temp_logger.emit(self.save_data_directory)
+        # Start the acquisition timer
         self.acquisition_timer.start(timer_interval)
-        print("Timer is active, ", self.acquisition_timer.isActive())
         if self.cb_acquire_video.isChecked():
             self.request_UpdateManager_start_recording_video.emit(self.save_data_directory)
         return
+
+    def connect_temp_logger_signals(self):
+        # To temp logger
+        self.acquisition_timer.timeout.connect(self.temp_logger.stop)
+        # From temp logger
+        """self.temp_logger.data_return.connect(self.store_temperature_data)"""
+        self.temp_logger.finished_logging.connect(self.temp_logger_done)
+        pass
+
+    @pyqtSlot()
+    def temp_logger_done(self):
+        self.temp_logger_thread.quit()
+        return
+
+    @pyqtSlot(np.ndarray)
+    def store_temperature_data(self):
+        """
+        store logged temperature data and shut down the temp_logger because we are done.
+        #TODO: Should I have the GUI thread store the data or maybe I should just be saving the data on hte Temperature
+        Logger thread??
+        """
+        pass
 
     def make_save_directory(self):
         """

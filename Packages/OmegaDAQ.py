@@ -25,6 +25,8 @@ import matplotlib.pyplot as plt
 from mcculw.enums import InterfaceType
 from mcculw.ul import ULError
 from mcculw.device_info import DaqDeviceInfo
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
+
 
 class TemperatureLogger:
     def __init__(self, board_num=0, use_device_detection=False, temp_scale='C'):
@@ -32,6 +34,7 @@ class TemperatureLogger:
         # If use_device_detection is set to False, the board_num property needs
         # to match the desired board number configured with Instacal.
         # Instead, can provide the board number and use_device_detection=true to connect to the board number-th device
+        print("Init temperature Logger")
         if 'c' in temp_scale or 'C' in temp_scale:
             self.temp_scale = TempScale.CELSIUS
         elif 'f' in temp_scale or 'F' in temp_scale:
@@ -123,14 +126,6 @@ class TemperatureLogger:
                 self.show_ul_error(e)
             return data_array
 
-    def start(self):
-        self.timer.start()
-        return
-
-    def stop(self):
-        self.timer.stop()
-        return
-
     def configure_device(self):
         ul.ignore_instacal()
         devices = ul.get_daq_device_inventory(InterfaceType.ANY)
@@ -147,8 +142,68 @@ class TemperatureLogger:
         return
 
 
-# Start the example if this module is being run
-if __name__ == "__main__":
+class QTemperatureLogger(TemperatureLogger, QObject):
+    """data_return = pyqtSignal(np.ndarray)"""
+    finished_logging = pyqtSignal()
+
+    def __init__(self, board_num=0, use_device_detection=False, temp_scale='C', sampling_frequency: float = 10):
+        """
+        sampling frequency is in Hz
+        """
+        # init temperature logger
+        super(QTemperatureLogger, self).__init__(board_num, use_device_detection, temp_scale)
+        # init QObject
+        super(TemperatureLogger, self).__init__()
+        # Create timer to run the logger
+        self.timer = QTimer(self)
+        interval = int(1000/sampling_frequency)  # ms
+        self.timer.setInterval(interval)
+        self.timer.setSingleShot(False)
+        self.timer.timeout.connect(self.log_data)
+        self.data = None
+        self.file_path = None
+        return
+
+    @pyqtSlot()
+    def log_data(self):
+        data = self.update_values()
+        data = data.reshape(1, data.size)
+        self.data = np.concatenate((self.data, data), axis=0)
+        return
+
+    @pyqtSlot()
+    def start(self, save_directory):
+        data = self.update_values()
+        data = data.reshape(1, data.size)
+        self.data = data
+        self.timer.start()
+        self.file_path = save_directory + '/temperature'
+        return
+
+    @pyqtSlot()
+    def stop(self):
+        """
+        Stop logging data.
+        """
+        self.timer.stop()
+        # self.data_return.emit(self.data)
+        self.store_data()
+        self.data = None
+        self.file_path = None
+        self.finished_logging.emit()
+        return
+
+    def store_data(self):
+        """
+        Write the data to file.
+        """
+        temperature_data = np.memmap(self.file_path, dtype='float64', mode='w+',
+                                     shape=self.data.shape, order='C')
+        temperature_data[:] = self.data[:]
+        temperature_data.flush()
+        return
+
+def test_logger():
     # Start the example
     temp_log = TemperatureLogger()
     data_scan = temp_log.update_values()
@@ -165,3 +220,8 @@ if __name__ == "__main__":
     ax.plot(data_scan[2, :])
     ax.plot(data_scan[3, :])
     plt.show()
+    return
+
+# Start the example if this module is being run
+if __name__ == "__main__":
+    test_logger()

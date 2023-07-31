@@ -10,9 +10,17 @@ from typing import List, Dict, Set, Tuple
 from abc import ABC, abstractmethod
 import PySpin
 import EasyPySpin
+from PyQt5 import QtCore
+from PyQt5.QtCore import QObject, QThread
+import time
+from flirpy.camera.boson import Boson
+from flirpy.camera.core import Core
+from PyQt5.QtCore import pyqtSlot, pyqtSignal
+
 
 class DeviceNotFoundError(Exception):
     pass
+
 
 class MightexEngine:
 
@@ -219,13 +227,6 @@ class MightexEngine:
 
     def update_resolution(self, serial_no, res):
         self.resolution[serial_no] = res
-
-from PyQt5 import QtCore
-from PyQt5.QtCore import QObject, QThread
-import time
-from flirpy.camera.boson import Boson
-from flirpy.camera.core import Core
-from PyQt5.QtCore import pyqtSlot, pyqtSignal
 
 
 lock = QtCore.QReadWriteLock()
