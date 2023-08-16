@@ -67,6 +67,7 @@ target/
 flirpy
 
 #Data
+Data
 Stored States
 HomePositionStored
 CalibrationMatrixStored
