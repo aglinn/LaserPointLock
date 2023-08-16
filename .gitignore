@@ -65,3 +65,14 @@ target/
 
 # Matthew Stuff
 flirpy
+
+#Data
+Data
+Stored States
+HomePositionStored
+CalibrationMatrixStored
+Most_Recent_Calibration.pkl
+Most_Recent_Calibration_IR.pkl
+Most_Recent_Calibration.txt
+Most_Recent_Home.txt
+Most_Recent_Home_IR.txt
