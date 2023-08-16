@@ -35,6 +35,7 @@ if __name__ == "__main__":
     from Packages.pointing_ui import Ui_MainWindow
     from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
     from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError, BosonCamera
+    from Packages.camera import BlackflyS_EasyPySpin as BlackflyS
     from Packages.motors import MDT693A_Motor
     from Packages.motors import MDT693B_Motor
     import tkinter as tk
@@ -42,12 +43,13 @@ if __name__ == "__main__":
     from serial.tools import list_ports
     # from Packages.UpdateManager import UpdateManager
     from Packages.UpdateManager import PIDUpdateManager as UpdateManager
-    from Packages.UpdateManager import InsufficientInformation, update_out_of_bounds
+    from Packages.UpdateManager import InsufficientInformation, UpdateOutOfBounds
     import copy
     import pickle as pkl
     import gc
     import matplotlib.pyplot as plt
     from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
+    import PySpin
 
     STATE_MEASURE = 0
     STATE_CALIBRATE = 1
@@ -1154,7 +1156,7 @@ if __name__ == "__main__":
                 update_voltage = UpdateManager.get_update()
                 # update voltages
                 #print(update_voltage)
-            except update_out_of_bounds:
+            except UpdateOutOfBounds:
                 # This section of code keeps the update voltage in bounds, by setting anything out of bounds to the
                 # limit of the bounds. Additionally, it tracks the number of times that the voltages went out of
                 # bounds in less than 1 minute since the last out of bounds (i.e. if it goes out of bounds once but
@@ -1436,6 +1438,7 @@ if __name__ == "__main__":
             cam1_exp_time = float(ui.le_cam1_exp_time.text())
             cam1_gain = float(ui.le_cam1_gain.text())
             cam1_threshold = float(ui.le_cam1_threshold.text())
+            cam_list[cam1_index].setup_camera_for_image_acquisition()
             cam_list[cam1_index].set_gain(cam1_gain)
             cam_list[cam1_index].set_exposure_time(cam1_exp_time)
             cam_list[cam1_index].update_frame()
@@ -1459,6 +1462,7 @@ if __name__ == "__main__":
             cam2_exp_time = float(ui.le_cam2_exp_time.text())
             cam2_gain = float(ui.le_cam2_gain.text())
             cam2_threshold = float(ui.le_cam2_threshold.text())
+            cam_list[cam1_index].setup_camera_for_image_acquisition()
             cam_list[cam2_index].set_gain(cam2_gain)
             cam_list[cam2_index].set_exposure_time(cam2_exp_time)
             cam_list[cam1_index].update_frame()
@@ -1742,18 +1746,62 @@ if __name__ == "__main__":
             ROICam2_Lock.setVisible(False)
 
     def find_cameras():
-        global cam_list
+        global cam_list, pyspin_system
         if int(ui.cb_SystemSelection.currentIndex()) == 1:
+            num_cameras = 0
+            cam_list = []
+            """
+            Commented out for testing blackfly cameras.
             # Find the Mightex cameras
             mightex_engine = MightexEngine()
-            cam_list = []
             if len(mightex_engine.serial_no) == 0:
-                raise DeviceNotFoundError('Could not find any Mightex cameras!')
+                del mightex_engine
             else:
                 for i, serial_no in enumerate(mightex_engine.serial_no):
+                    num_cameras += 1
                     c = MightexCamera(mightex_engine, serial_no)
                     cam_list.append(c)
                     cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            
+            # Find blackfly s cameras:
+            # Retrieve singleton reference to system object
+            pyspin_system = PySpin.System.GetInstance()
+
+            # Get current library version
+            pyspin_version = pyspin_system.GetLibraryVersion()
+            print('Library version: %d.%d.%d.%d' % (pyspin_version.major, pyspin_version.minor, pyspin_version.type,
+                                                    pyspin_version.build))
+
+            # Retrieve list of cameras from the system
+            pyspin_cam_list = pyspin_system.GetCameras()
+
+            num_pyspin_cameras = pyspin_cam_list.GetSize()
+            num_cameras += num_pyspin_cameras
+
+            print('Number of cameras detected: %d' % num_pyspin_cameras)
+
+            # Finish if there are no cameras
+            if num_pyspin_cameras == 0:
+                # Clear camera list before releasing system
+                pyspin_cam_list.Clear()
+
+                # Release system instance
+                pyspin_system.ReleaseInstance()
+                return
+            else:
+                for i, cam in enumerate(pyspin_cam_list):
+                    c = BlackflyS(cam)
+                    cam_list.append(c)
+                    cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            if num_cameras == 0:
+                raise DeviceNotFoundError("No visible cameras found.")
+            """
+            c = BlackflyS(0)
+            cam_list.append(c)
+            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
+            c = BlackflyS(1)
+            cam_list.append(c)
+            cam_model.appendRow(QtGui.QStandardItem(c.serial_no))
             # Make appropriate Camera Settings available in GUI:
             toggle_BOSON_cam_settings_ui_vis(False)
             toggle_mightex_cam_settings_ui_vis(True)
@@ -1906,9 +1954,48 @@ if __name__ == "__main__":
         elif cam_index == cam2_index:
             ui.label_19.setText(str(fpa_temp))
 
+    def release_hardware():
+        global cam_list, motor_list
+        try:
+            for cam in cam_list:
+                cam.close()
+        except NameError:
+            pass
+
+        try:
+            for motor in motor_list:
+                motor.close()
+        except NameError:
+            pass
+        return
+
+    def close():
+        global pyspin_system, pyspin_cam_list
+        release_hardware()
+
+        try:
+            for i, cam in enumerate(pyspin_cam_list):
+                # Release reference to camera
+                # NOTE: Unlike the C++ examples, we cannot rely on pointer objects being automatically
+                # cleaned up when going out of scope.
+                # The usage of del is preferred to assigning the variable to None.
+                del cam
+
+            # Clear camera list before releasing system
+            pyspin_cam_list.Clear()
+        except NameError:
+            pass
+
+        try:
+            #Must kill anything with a reference to the camera before releasing PySping System
+            # Release system instance
+            pyspin_system.ReleaseInstance()
+        except NameError:
+            pass
+        return
+
     def shut_down():
         global state
-        pass
         """
         if int(ui.cb_SystemSelection.currentIndex()) == 1:
             IR = 0
@@ -2130,6 +2217,7 @@ if __name__ == "__main__":
     ui.btn_cam2_gen_ROI.clicked.connect(gen_cam2_ROI)
     ui.btn_cam2_apply_ROI.clicked.connect(apply_cam2_ROI)
     ui.list_unlock_report.clicked.connect(display_unlock_report)
+    app.aboutToQuit.connect(close)
 
 
     timer = QtCore.QTimer()
