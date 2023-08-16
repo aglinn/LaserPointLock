@@ -29,7 +29,6 @@ from Packages.camera import Boson_QObject as Boson
 from Packages.motors import MDT693AMotor as MDT693A_Motor
 from Packages.OmegaDAQ import QTemperatureLogger
 from Packages.motors import MDT693BMotor as MDT693B_Motor
-from Packages.CameraThread import CameraThread
 import tkinter as tk
 from tkinter import filedialog
 from serial.tools import list_ports

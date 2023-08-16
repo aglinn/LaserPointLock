@@ -1,3 +1,12 @@
+"""
+Enable import from Packages.
+"""
+import os.path
+import sys
+# go up one directory level from this file's directory:
+path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+# prepend parent directory to the system path:
+sys.path.insert(0, path)
 from Packages.camera import BlackflyS_EasyPySpin_QObject as camera
 from PyQt5.QtCore import pyqtSlot, QThread, QObject, pyqtSignal
 from PyQt5.QtWidgets import QApplication

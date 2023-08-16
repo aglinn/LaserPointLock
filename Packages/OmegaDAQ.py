@@ -202,6 +202,7 @@ class QTemperatureLogger(TemperatureLogger, QObject):
         temperature_data.flush()
         return
 
+
 def test_logger():
     # Start the example
     temp_log = TemperatureLogger()
@@ -220,6 +221,7 @@ def test_logger():
     ax.plot(data_scan[3, :])
     plt.show()
     return
+
 
 # Start the example if this module is being run
 if __name__ == "__main__":
