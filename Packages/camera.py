@@ -8,10 +8,9 @@ import cv2
 from functools import reduce
 from typing import List, Dict, Set, Tuple
 from abc import ABC, abstractmethod
-import PySpin
 import EasyPySpin
 from PyQt5 import QtCore
-from PyQt5.QtCore import QObject, QThread
+from PyQt5.QtCore import QObject
 import time
 from flirpy.camera.boson import Boson
 from flirpy.camera.core import Core
@@ -475,67 +474,6 @@ class FakeCamera(Camera):
         return 0
 
 
-class BosonCamera(Boson):
-    def __init__(self, port=None, device_id=None):
-        self.port = port
-        super().__init__(port=self.port)
-        self.frame = None
-        self.serial_no = str(self.get_camera_serial())
-        # self.set_ffc_manual()
-        self.set_ffc_auto()
-        print("FFC Mode:", self.get_ffc_mode())
-        if not self.get_gao_ffc_mode():
-            print("The ffc correction is not being applied.")
-        if not self.get_ffc_mode() == 0:
-            print("The IR cameras need to be run in manual FFC mode.")
-        self.device_id = self.find_video_device(device_id=device_id)
-        self._time = 0
-        self._ROI_bounds = (0, 1024, 0, 1280)
-        self.is_boson = True
-
-    def get_frame(self):
-        return self.frame[int(self.ROI_bounds[0]):int(self.ROI_bounds[1]+1),
-               int(self.ROI_bounds[2]):int(self.ROI_bounds[3]+1)]
-
-    def update_frame(self):
-        """
-        Grab a frame from the camera and store it as a uint16.
-        """
-        self.frame = self.grab(device_id=self.device_id)
-        return
-
-    @property
-    def time(self):
-        return self._time
-
-    @time.setter
-    def time(self, value):
-        self._time = value
-        return
-
-    @property
-    def startXY(self):
-        return (self._ROI_bounds[2], self._ROI_bounds[0])
-
-    def apply_ROI(self):
-        pass
-
-    @property
-    def ROI_bounds(self):
-        # xmin, xmax, ymin, ymax
-        return self._ROI_bounds
-
-    @ROI_bounds.setter
-    def ROI_bounds(self, roi: list):
-        self._ROI_bounds = np.round(roi)
-
-    def service(self):
-        pass
-
-    def setup_camera_for_image_acquisition(self):
-        pass
-
-
 class TriggerType:
     SOFTWARE = 1
     HARDWARE = 2
@@ -548,10 +486,10 @@ class BaseCamera(QObject):
     were written for the blackfly_S to provide a bit of a guide, but they should be overwritten.
 
 
-    BaseCamera was written to essentially operate the Blackfly_S, but with an init function that was generic, which
+    BaseCamera was written to essentially operate the BlackflyS, but with an init function that was generic, which
     allows other cameras to inherit from BaseCamera, where other cameras may overwrite all methods of BaseCamera, but
-    Blackfly_S by design only needs to add a bit to the init function to operate correctly. Also, this means updates to
-    Blackfly_S Should be done through the BaseCamera.
+    BlackflyS by design only needs to add a bit to the init function to operate correctly. Also, this means updates to
+    BlackflyS Should be done through the BaseCamera.
 
     """
     # signals needed to run a camera object on its own thread.
@@ -580,7 +518,7 @@ class BaseCamera(QObject):
         self.timeout_time = int(self.timeout_time)
         self.starting = True
         self._ROI_bounds = None
-        # Unused for Blackfly_S, but handle wrapping time stamps when necessary.
+        # Unused for BlackflyS, but handle wrapping time stamps when necessary.
         self._time = 0
         self._time_offset = 0
         self.is_boson = False
@@ -691,7 +629,7 @@ class BaseCamera(QObject):
     def t(self, value):
         """
         Make sure that the timestamp of the camera is set as a monotonic function. So, you may need to be applying an
-        offset if your timestamp is wrapping. For Blackfly_S That wrapping time is years... so, no need and this is
+        offset if your timestamp is wrapping. For BlackflyS That wrapping time is years... so, no need and this is
         unused.
         """
         self._time = self._time_offset + value
@@ -705,7 +643,7 @@ class BaseCamera(QObject):
         image.
 
         Use the self.ROI_bounds that are set graphically in the GUI by the user to then apply that ROI on your actual
-        camera however that is done. E.G. For Blackfly_S, the acquisition had to be stopped to apply an ROI, so do
+        camera however that is done. E.G. For BlackflyS, the acquisition had to be stopped to apply an ROI, so do
         appropriate things as needed.
         Update the start_XY as necessary, so that the measured position is the same when there is no ROI and after you
         apply an ROI.
@@ -818,23 +756,23 @@ class BaseCamera(QObject):
         return
 
 
-class Blackfly_S(BaseCamera):
+class BlackflyS(BaseCamera):
     """
-    BaseCamera was written to essentially operate the Blackfly_S, but with an init function that was generic, which
+    BaseCamera was written to essentially operate the BlackflyS, but with an init function that was generic, which
     allows other cameras to inherit from BaseCamera, where other cameras may overwrite all methods of BaseCamera, but
-    Blackfly_S by design only needs to add a bit to the init function to operate correctly. Also, this means updates to
-    Blackfly_S Should be done through the BaseCamera.
+    BlackflyS by design only needs to add a bit to the init function to operate correctly. Also, this means updates to
+    BlackflyS Should be done through the BaseCamera.
     """
 
     def __init__(self, dev_id: int):
         """
-        Construct the Blackfly_S camera object.
+        Construct the BlackflyS camera object.
         """
         # Init the base camera. which inits QObject.
         super().__init__(dev_id)
 
         ########################################
-        # Additional Init steps for Blackfly_S #
+        # Additional Init steps for BlackflyS #
         ########################################
         # Open Capture object
         self.cap = EasyPySpin.VideoCapture(dev_id)
@@ -858,421 +796,6 @@ class Blackfly_S(BaseCamera):
         self._ROI_bounds = None
         # Setup camera to be full view rather than in ROI mode.
         self.ensure_full_view()
-        return
-
-
-class BlackflyS_EasyPySpin_QObject(QObject):
-    # TODO: Delete this once I confirm that Blackfly_S works correctly.
-
-    # signals needed to run Blackfly S camera object on its own thread.
-    img_captured_signal = pyqtSignal(np.ndarray, float)
-    exposure_updated_signal = pyqtSignal(float)
-    gain_updated_signal = pyqtSignal(float)
-    ROI_applied = pyqtSignal(bool)
-    r0_updated_signal = pyqtSignal(np.ndarray)
-    request_update_timer_interval_signal = pyqtSignal(float)
-
-    def __init__(self, dev_id: int):
-        super().__init__()
-        self.cap = EasyPySpin.VideoCapture(dev_id)
-
-        if not self.cap.isOpened():
-            print("Camera can't open\nexit")
-            return -1
-        self.ensure_full_view()
-        self.cap.set(cv2.CAP_PROP_EXPOSURE, -1)  # -1 sets exposure_time to auto
-        self.cap.set(cv2.CAP_PROP_GAIN, -1)  # -1 sets gain to auto
-        self._ready_to_acquire = True
-        self.serial_no = str(dev_id)
-        self._startXY = [0, 0]
-        self.cap.set_pyspin_value("GammaEnable", False)
-        print("Gamma is ", self.cap.get(cv2.CAP_PROP_GAMMA))
-        self._exposure_time = 'Auto'
-        self.ROI_full_bounds = [0, 100000, 0, 100000] # This is static and only ever called by the GUI thread.
-        self._gain = 1
-        self._keep_capturing = True
-        self._app_closing = False
-        self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        self.timeout_time = np.floor((1 / self.frame_rate)*1000) # in ms
-        self.timeout_time = int(self.timeout_time)
-        self.starting = True
-        self._ROI_bounds = None
-        return
-
-    @pyqtSlot()
-    def get_frame(self):
-        ret, frame, time_stamp = self.cap.read()
-        if ret:
-            # Timestamp in ns as int convert to ms as float int-->floaot automatic.
-            time_stamp = time_stamp*10**-6
-            self.img_captured_signal.emit(frame, time_stamp)
-        return
-
-    @pyqtSlot(float)
-    def set_exposure_time(self, t):
-        """
-        Not implemented because auto exposure loop on camera is probably better than manually setting.
-        """
-        t *= 1000  # Convert from ms to us
-        self.cap.set(cv2.CAP_PROP_EXPOSURE, t)
-        self._exposure_time = self.cap.get(cv2.CAP_PROP_EXPOSURE)/1000.0  # Convert back to ms
-        # Update the timer interval as needed.
-        frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-        if self.frame_rate != frame_rate or self.starting:
-            self.starting = False
-            self.frame_rate = frame_rate
-            self.timeout_time = np.floor((1 / self.frame_rate) * 1000)  # in ms
-            self.timeout_time = int(self.timeout_time)
-            self.request_update_timer_interval_signal.emit(self.timeout_time)
-        self.exposure_updated_signal.emit(self.exposure_time)
-        return
-
-    def set_resolution(self, res):
-        pass
-
-    @pyqtSlot(float)
-    def set_gain(self, gain):
-        self.cap.set(cv2.CAP_PROP_GAIN, gain)
-        self._gain = self.cap.get(cv2.CAP_PROP_GAIN)
-        self.gain_updated_signal.emit(self.gain)
-        return
-
-    def set_decimation(self, decimation):
-        return
-
-    @property
-    def exposure_time(self):
-        return self._exposure_time
-
-    @property
-    def gain(self):
-        return self._gain
-
-    @staticmethod
-    def configure_trig(cam, CHOSEN_TRIGGER):
-        """
-            This function configures the camera to use a trigger. First, trigger mode is
-            set to off in order to select the trigger source. Once the trigger source
-            has been selected, trigger mode is then enabled, which has the camera
-            capture only a single image upon the execution of the chosen trigger.
-
-             :param cam: Camera to configure trigger for.
-             :type cam: CameraPtr
-             :return: True if successful, False otherwise.
-             :rtype: bool
-            """
-        result = True
-
-        print('*** CONFIGURING TRIGGER ***\n')
-
-        print(
-            'Note that if the application / user software triggers faster than frame time, the trigger may be dropped / skipped by the camera.\n')
-        print(
-            'If several frames are needed per trigger, a more reliable alternative for such case, is to use the multi-frame mode.\n\n')
-
-        if CHOSEN_TRIGGER == TriggerType.SOFTWARE:
-            print('Software trigger chosen ...')
-        elif CHOSEN_TRIGGER == TriggerType.HARDWARE:
-            print('Hardware trigger chose ...')
-
-        try:
-            # Ensure trigger mode off
-            # The trigger must be disabled in order to configure whether the source
-            # is software or hardware.
-            nodemap = cam.GetNodeMap()
-            node_trigger_mode = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerMode'))
-            if not PySpin.IsAvailable(node_trigger_mode) or not PySpin.IsReadable(node_trigger_mode):
-                print('Unable to disable trigger mode (node retrieval). Aborting...')
-                return False
-
-            node_trigger_mode_off = node_trigger_mode.GetEntryByName('Off')
-            if not PySpin.IsAvailable(node_trigger_mode_off) or not PySpin.IsReadable(node_trigger_mode_off):
-                print('Unable to disable trigger mode (enum entry retrieval). Aborting...')
-                return False
-
-            node_trigger_mode.SetIntValue(node_trigger_mode_off.GetValue())
-
-            print('Trigger mode disabled...')
-
-            # Set TriggerSelector to FrameStart
-            # For this example, the trigger selector should be set to frame start.
-            # This is the default for most cameras.
-            node_trigger_selector = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerSelector'))
-            if not PySpin.IsAvailable(node_trigger_selector) or not PySpin.IsWritable(node_trigger_selector):
-                print('Unable to get trigger selector (node retrieval). Aborting...')
-                return False
-
-            node_trigger_selector_framestart = node_trigger_selector.GetEntryByName('FrameStart')
-            if not PySpin.IsAvailable(node_trigger_selector_framestart) or not PySpin.IsReadable(
-                    node_trigger_selector_framestart):
-                print('Unable to set trigger selector (enum entry retrieval). Aborting...')
-                return False
-            node_trigger_selector.SetIntValue(node_trigger_selector_framestart.GetValue())
-
-            print('Trigger selector set to frame start...')
-
-            # Select trigger source
-            # The trigger source must be set to hardware or software while trigger
-            # mode is off.
-            node_trigger_source = PySpin.CEnumerationPtr(nodemap.GetNode('TriggerSource'))
-            if not PySpin.IsAvailable(node_trigger_source) or not PySpin.IsWritable(node_trigger_source):
-                print('Unable to get trigger source (node retrieval). Aborting...')
-                return False
-
-            if CHOSEN_TRIGGER == TriggerType.SOFTWARE:
-                node_trigger_source_software = node_trigger_source.GetEntryByName('Software')
-                if not PySpin.IsAvailable(node_trigger_source_software) or not PySpin.IsReadable(
-                        node_trigger_source_software):
-                    print('Unable to set trigger source (enum entry retrieval). Aborting...')
-                    return False
-                node_trigger_source.SetIntValue(node_trigger_source_software.GetValue())
-                print('Trigger source set to software...')
-
-            elif CHOSEN_TRIGGER == TriggerType.HARDWARE:
-                node_trigger_source_hardware = node_trigger_source.GetEntryByName('Line0')
-                if not PySpin.IsAvailable(node_trigger_source_hardware) or not PySpin.IsReadable(
-                        node_trigger_source_hardware):
-                    print('Unable to set trigger source (enum entry retrieval). Aborting...')
-                    return False
-                node_trigger_source.SetIntValue(node_trigger_source_hardware.GetValue())
-                print('Trigger source set to hardware...')
-
-            # Turn trigger mode on
-            # Once the appropriate trigger source has been set, turn trigger mode
-            # on in order to retrieve images using the trigger.
-            node_trigger_mode_on = node_trigger_mode.GetEntryByName('On')
-            if not PySpin.IsAvailable(node_trigger_mode_on) or not PySpin.IsReadable(node_trigger_mode_on):
-                print('Unable to enable trigger mode (enum entry retrieval). Aborting...')
-                return False
-
-            node_trigger_mode.SetIntValue(node_trigger_mode_on.GetValue())
-            print('Trigger mode turned back on...')
-
-        except PySpin.SpinnakerException as ex:
-            print('Error: %s' % ex)
-            return False
-
-        return result
-
-    def setup_camera_for_image_acquisition(self):
-
-        if not self._ready_to_acquire:
-
-            # Apply mono 8 pixel format
-            #
-            # *** NOTES ***
-            # Enumeration nodes are slightly more complicated to set than other
-            # nodes. This is because setting an enumeration node requires working
-            # with two nodes instead of the usual one.
-            #
-            # As such, there are a number of steps to setting an enumeration node:
-            # retrieve the enumeration node from the nodemap, retrieve the desired
-            # entry node from the enumeration node, retrieve the integer value from
-            # the entry node, and set the new value of the enumeration node with
-            # the integer value from the entry node.
-            #
-            # Retrieve the enumeration node from the nodemap
-            node_pixel_format = PySpin.CEnumerationPtr(self.nodemap.GetNode('PixelFormat'))
-            if PySpin.IsAvailable(node_pixel_format) and PySpin.IsWritable(node_pixel_format):
-
-                # Retrieve the desired entry node from the enumeration node
-                node_pixel_format_mono8 = PySpin.CEnumEntryPtr(node_pixel_format.GetEntryByName('Mono8'))
-                if PySpin.IsAvailable(node_pixel_format_mono8) and PySpin.IsReadable(node_pixel_format_mono8):
-
-                    # Retrieve the integer value from the entry node
-                    pixel_format_mono8 = node_pixel_format_mono8.GetValue()
-
-                    # Set integer as new value for enumeration node
-                    node_pixel_format.SetIntValue(pixel_format_mono8)
-
-                    print('Pixel format set to %s...' % node_pixel_format.GetCurrentEntry().GetSymbolic())
-
-                else:
-                    print('Pixel format mono 8 not available...')
-
-            else:
-                print('Pixel format not available...')
-
-            # Change bufferhandling mode to NewestOnly
-            node_bufferhandling_mode = PySpin.CEnumerationPtr(self.sNodemap.GetNode('StreamBufferHandlingMode'))
-            if not PySpin.IsAvailable(node_bufferhandling_mode) or not PySpin.IsWritable(node_bufferhandling_mode):
-                print('Unable to set stream buffer handling mode.. Aborting...')
-                return False
-
-            # Retrieve entry node from enumeration node
-            node_newestonly = node_bufferhandling_mode.GetEntryByName('NewestOnly')
-            if not PySpin.IsAvailable(node_newestonly) or not PySpin.IsReadable(node_newestonly):
-                print('Unable to set stream buffer handling mode.. Aborting...')
-                return False
-
-            # Retrieve integer value from entry node
-            node_newestonly_mode = node_newestonly.GetValue()
-
-            # Set integer value from entry node as new value of enumeration node
-            node_bufferhandling_mode.SetIntValue(node_newestonly_mode)
-
-            print('*** IMAGE ACQUISITION ***\n')
-            try:
-                node_acquisition_mode = PySpin.CEnumerationPtr(self.nodemap.GetNode('AcquisitionMode'))
-                if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
-                    print('Unable to set acquisition mode to continuous (enum retrieval). Aborting...')
-                    return False
-
-                # Retrieve entry node from enumeration node
-                node_acquisition_mode_continuous = node_acquisition_mode.GetEntryByName('Continuous')
-                if not PySpin.IsAvailable(node_acquisition_mode_continuous) or not PySpin.IsReadable(
-                        node_acquisition_mode_continuous):
-                    print('Unable to set acquisition mode to continuous (entry retrieval). Aborting...')
-                    return False
-
-                # Retrieve integer value from entry node
-                acquisition_mode_continuous = node_acquisition_mode_continuous.GetValue()
-
-                # Set integer value from entry node as new value of enumeration node
-                node_acquisition_mode.SetIntValue(acquisition_mode_continuous)
-
-                print('Acquisition mode set to continuous...')
-
-                #  Begin acquiring images
-                #
-                #  *** NOTES ***
-                #  What happens when the camera begins acquiring images depends on the
-                #  acquisition mode. Single frame captures only a single image, multi
-                #  frame catures a set number of images, and continuous captures a
-                #  continuous stream of images.
-                #
-                #  *** LATER ***
-                #  Image acquisition must be ended when no more images are needed.
-                self.cam.BeginAcquisition()
-
-                self._ready_to_acquire = True
-
-                print('Acquiring images...')
-                return
-            except PySpin.SpinnakerException as ex:
-                print('Error: %s' % ex)
-                return
-
-    def update_settings(self):
-        pass
-
-    @pyqtSlot(bool)
-    def stop_capturing(self, app_closing=False):
-        # end the infinite capture loop by telling camera to not keep capturing
-        # TODO: Tell timer to stop.
-        # return to event loop, and upon next grab_frame emit signal to release cap.
-        self._app_closing = app_closing
-        return
-
-    @pyqtSlot()
-    def close(self):
-        self.cap.release()
-        if not self._app_closing:
-            # So far only calling like this to disconnect the camera in an effort to reconnect another. So, delete this
-            # object, but do not delete the thread, which is what emitting cap_released signal does.
-            self.deleteLater()
-        return
-
-    @property
-    def t(self):
-        """
-        time that the image was acquired at in ms.
-        """
-        return self._time
-
-    @t.setter
-    def t(self, value):
-        self._time = self._time_offset + value
-        return
-
-    @pyqtSlot()
-    def apply_ROI(self):
-        if self.ROI_bounds is not None:
-            # Get parameters to apply to the ROI settings of Camera
-            width = int(np.round(self.ROI_bounds[1] - self.ROI_bounds[0]))
-            height = int(np.round(self.ROI_bounds[3] - self.ROI_bounds[2]))
-            width -= (width - 8) % 4  # make this difference divisible by 4
-            height -= (height - 6) % 2
-            x = int(np.round(self.ROI_bounds[2]))
-            y = int(np.round(self.ROI_bounds[0]))
-            x -= x % 4
-            y -= y % 2
-            # Must make changes while not acquiring images. So, end acquisition, apply changes, begin acquisition
-            self.cap.cam.EndAcquisition()
-            self._ready_to_acquire = False
-
-            x_offset = self.cap.get_pyspin_value('OffsetX')
-            y_offset = self.cap.get_pyspin_value('OffsetY')
-            print(x, y, width, height)
-            if (x_offset == 0 and x != 0) or \
-                    (y_offset == 0 and y != 0):
-                # Then, I am trying to apply an offset and there is no offset yet, so it is better to apply the widths
-                # first, so that I can apply the appropriate offset. If full width/height, then offset can only be (0,0)
-                self.cap.set_pyspin_value('Width', width)
-                self.cap.set_pyspin_value('Height', height)
-                self.cap.set_pyspin_value('OffsetX', x)
-                self.cap.set_pyspin_value('OffsetY', y)
-            elif x_offset == x and y_offset == y:
-                self.cap.set_pyspin_value('Width', width)
-                self.cap.set_pyspin_value('Height', height)
-            elif (x_offset != 0 and x == 0) or (y_offset != 0 and y == 0):
-                # Then, I need to apply the offsets first, so that I am allowed to set full width/height
-                self.cap.set_pyspin_value('OffsetX', x)
-                self.cap.set_pyspin_value('OffsetY', y)
-                self.cap.set_pyspin_value('Width', width)
-                self.cap.set_pyspin_value('Height', height)
-
-            self.startXY = [self.cap.get_pyspin_value('OffsetX'), self.cap.get_pyspin_value('OffsetY')]
-            # Restart Acquisition/resetup camera to acquire images:
-            self.cap.cam.BeginAcquisition()
-            self._ready_to_acquire = True
-            self.ROI_applied.emit(True)
-            frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
-            if frame_rate != self.frame_rate:
-                self.frame_rate = frame_rate
-                self.timeout_time = np.floor((1 / self.frame_rate)*1000)  # in ms
-                self.timeout_time = int(self.timeout_time)
-                self.request_update_timer_interval_signal.emit(self.timeout_time)
-        return
-
-    @property
-    def ROI_bounds(self):
-        # xmin, xmax, ymin, ymax
-        return self._ROI_bounds
-
-    @pyqtSlot(list)
-    def set_ROI_bounds(self, roi: list):
-        self._ROI_bounds = roi
-        self.apply_ROI()
-        return
-
-    @property
-    def startXY(self):
-        return self._startXY
-
-    @startXY.setter
-    def startXY(self, XY):
-        self._startXY = [XY[0], XY[1]]
-        self.r0_updated_signal.emit(np.asarray(self._startXY))
-        return
-
-    def ensure_full_view(self):
-        try:
-            self.cap.cam.EndAcquisition()
-            self.cap.set_pyspin_value('OffsetX', 0)
-            self.cap.set_pyspin_value('OffsetY', 0)
-            self.cap.set_pyspin_value('Width', 100000)
-            self.cap.set_pyspin_value('Height', 100000)
-            self.startXY = [self.cap.get_pyspin_value('OffsetX'), self.cap.get_pyspin_value('OffsetY')]
-            self.cap.cam.BeginAcquisition()
-            self.ROI_applied.emit(False)
-        except:
-            self.cap.set_pyspin_value('OffsetX', 0)
-            self.cap.set_pyspin_value('OffsetY', 0)
-            self.cap.set_pyspin_value('Width', 100000)
-            self.cap.set_pyspin_value('Height', 100000)
-            self.startXY = [self.cap.get_pyspin_value('OffsetX'), self.cap.get_pyspin_value('OffsetY')]
-            self.ROI_applied.emit(False)
         return
 
 
@@ -1312,7 +835,7 @@ class Boson_QObject(Boson, BaseCamera):
         self.timeout_time = int(self.timeout_time)
         self._exposure_time = self.timeout_time  # uniqute to Boson that does not have a settable exposure time.
         # TODO: Make sure that timer interval is updated with correct signal.
-        # Unused for Blackfly_S, but handle wrapping time stamps when necessary.
+        # Unused for BlackflyS, but handle wrapping time stamps when necessary.
         self._time_offset = time.monotonic()*1000 # in ms.
         self._time = self._time_offset
         return
@@ -1366,7 +889,7 @@ class Boson_QObject(Boson, BaseCamera):
     def apply_ROI(self):
         """
         Unfortunately, I cannot apply an ROI on the camera hardware to avoid waisting time reading unwanted pixels. So,
-        this function will be different than for Blackfly_S.
+        this function will be different than for BlackflyS.
 
         Just make sure that the startXY or image origin in pixel coordinates is updated and that other objects know what
         startXY is..

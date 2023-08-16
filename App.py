@@ -1,43 +1,24 @@
-# TODO: Fix the locking mechanism to allow unlocking by clicking the lock button again!!
-# TODO: When reporting locked/unlocked update the lock ROI symbols
-# TODO: 1 Finish overhauling code to allow for operation with IR Cameras.
-# TODO: 2 Try to shutter the TOPAS if the BOSON FPAs get too hot. Can I even control the TOPAS shutter?
-# TODO: 2 Make the GUI compatible with multiple screen formats.
-# TODO: 2 Log the information on Grafana.
-# TODO: 2 Add GUI ability to set the averager state of the BOSON camera, and power on defaults.
-# TODO: 3 It would be nice to allow the user to switch between IR and visibile system, which would require disconnecting
-#  devices and reinitializing the cam_list.
-# TODO: 1 I need to be able to run multiple instances of the program; so that I can run an IR and a vis instance in
-#  parallel.
-# TODO: I need to make sure that the older piezzo controllers still work with this code!
 from PyQt5.QtWidgets import QMainWindow
 from Packages.pointing_ui import Ui_MainWindow
 from pathlib import Path
-# Old imports:
 import sys
 import pyvisa as visa
 import time
 import numpy as np
 import os
 import pyqtgraph as pg
-from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QThread, QTimer, QMetaObject, Qt, Q_ARG
+from PyQt5 import QtGui
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThread, QTimer, QMetaObject, Qt, Q_ARG
 from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError
-# from Packages.camera import BlackflyS_EasyPySpin_QObject as BlackflyS
-from Packages.camera import Blackfly_S as BlackflyS
+from Packages.camera import BlackflyS
 from Packages.camera import Boson_QObject as Boson
 from Packages.motors import MDT693AMotor as MDT693A_Motor
 from Packages.OmegaDAQ import QTemperatureLogger
-from Packages.motors import MDT693BMotor as MDT693B_Motor
 import tkinter as tk
 from tkinter import filedialog
 from serial.tools import list_ports
 from Packages.UpdateManager import PIDUpdateManager as UpdateManager
-# from Packages.UpdateManager import PIDUpdateManager as UpdateManager
-from Packages.UpdateManager import InsufficientInformation, UpdateOutOfBounds
-import copy
 import pickle as pkl
-import gc
 import matplotlib.pyplot as plt
 from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 pg.setConfigOptions(imageAxisOrder='row-major')

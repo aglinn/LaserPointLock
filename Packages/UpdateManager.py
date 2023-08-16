@@ -1,9 +1,5 @@
-# TODO: Double check that V0 everywhere assumes [m1x,m1y,m1z,m2x,m2y,m2z]
 # TODO: Implement timing synchronization?
 # TODO: Implement triggering of cameras?
-# TODO: Remove time delayed udpate.
-import os
-
 import numpy as np
 import nfft
 import time
@@ -1111,8 +1107,6 @@ class UpdateManager(QObject):
     # Locking related methods
     @pyqtSlot()
     def time_delay_update(self):
-        # TODO: Don't time delay.
-        # print("Calling Update")
         if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
             self.block_timer = True
             # Effectively bypass the timer in a way that preserves code for time-delay (but thus also preserves bloat)
