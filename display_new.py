@@ -887,6 +887,10 @@ class Window(QMainWindow, Ui_MainWindow):
         print('New calibration matrix: ', calib_mat)
         calibration_data = [calib_mat, all_motors_matrix, control_motors, slow_motors, motor_names]
         calibration_data = np.asarray(calibration_data, dtype='object')
+        # Ensure that CalibrationMatrixStored folder exists.
+        current_path = os.getcwd()
+        new_directory_path = current_path + '/CalibrationMatrixStored'
+        Path(new_directory_path).mkdir(parents=True, exist_ok=True)
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             # Visible system.
             try:
@@ -2085,6 +2089,10 @@ class Window(QMainWindow, Ui_MainWindow):
             HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
             self.set_UpdateManager_home_signal.emit(HomePosition)
             self.set_home_marker()
+            # Ensure that HomePositionStored folder exists.
+            current_path = os.getcwd()
+            new_directory_path = current_path + '/HomePositionStored'
+            Path(new_directory_path).mkdir(parents=True, exist_ok=True)
             if int(self.cb_SystemSelection.currentIndex()) == 1:
                 np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
                 filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
@@ -2541,6 +2549,10 @@ class Window(QMainWindow, Ui_MainWindow):
             UI_Settings['le_P'] = self.le_P.text()
             UI_Settings['le_Ti'] = self.le_Ti.text()
             UI_Settings['le_Td'] = self.le_Td.text()
+            # Ensure that Stored States folder exists.
+            current_path = os.getcwd()
+            new_directory_path = current_path + '/Stored States'
+            Path(new_directory_path).mkdir(parents=True, exist_ok=True)
             filename = r"Stored States/" + 'Most_Recent_Visible_UI_Settings'
             with open(filename + '.pkl', 'wb') as f:
                 pkl.dump(UI_Settings, f)

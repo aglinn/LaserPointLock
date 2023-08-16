@@ -2801,16 +2801,9 @@ class UpdateManager(QObject):
         if self.cam1_frame_size is not None:
             self.cam1_video_file = cv2.VideoWriter(dir_path+'/cam1.avi', fourcc, self.cam1_fps, self.cam1_frame_size,
                                                    False)
-            print(self.cam1_video_file.isOpened())
         if self.cam2_frame_size is not None:
             self.cam2_video_file = cv2.VideoWriter(dir_path+'/cam2.avi', fourcc, self.cam2_fps, self.cam2_frame_size,
                                                    False)
-            """ret = self.cam2_video_file.open(dir_path+'/cam2.avi', fourcc, self.cam2_fps, self.cam2_frame_size,
-                                                   False)
-            print("open returned ", ret)"""
-            print(self.cam2_video_file.isOpened())
-            print(self.cam2_video_file.getBackendName())
-        print(self.cam1_fps, self.cam2_fps)
         return
 
     @pyqtSlot()
