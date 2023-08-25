@@ -8,31 +8,15 @@ import scipy.linalg
 from lmfit import Parameters, minimize
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, QTimer
 import platform
-if (platform.system() == "Windows"):
-    # Must be on windows to use MDT motor
-    from Packages.motors import MDT693BMotor as MDT693B_Motor
-    from Packages.motors import MDT693AMotor as MDT693A_Motor
 from datetime import datetime
 import cv2
 from shapely.geometry import Polygon
 from shapely.validation import explain_validity
-
-
-class UpdateOutOfBounds(Exception):
-    pass
-
-
-class UnableToUpdateInBounds(Exception):
-    pass
-
-
-class InsufficientInformation(Exception):
-
-    pass
-
-
-class CannotLock(Exception):
-    pass
+from packages.exceptions import UpdateOutOfBounds, UnableToUpdateInBounds, InsufficientInformation, CannotLock
+if platform.system() == "Windows":
+    # Must be on windows to use MDT motor
+    from packages.motors.Thorlabs.mdt693b import MDT693BMotor
+    from packages.motors.Thorlabs.mdt693a import MDT693AMotor
 
 
 class UpdateManager(QObject):
@@ -72,6 +56,9 @@ class UpdateManager(QObject):
     update_gui_locking_update_out_of_bounds_signal = pyqtSignal(dict)
     update_gui_ping = pyqtSignal(float)
     request_gui_plot_calibrate_fits = pyqtSignal(list, list, list)
+
+    #signal to mightex engine:
+    updated_xy = pyqtSignal(int)
 
     def __init__(self):
         # Init QObject
@@ -801,13 +788,13 @@ class UpdateManager(QObject):
                 # Instantiate a motor
                 if "MDT693B" in motor_to_connect:
                     print("Connecting as motor 1, "+str(motor_to_connect))
-                    self.motor1 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=1)
+                    self.motor1 = MDT693BMotor(str(motor_to_connect[2:15]), motor_number=1)
                 else:
                     if self.ResourceManager is None:
                         import visa
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=motor_to_connect[7:],
-                                                ch1='X', ch2='Y')
+                    self.motor1 = MDT693AMotor(self.ResourceManager, motor_number=1, com_port=motor_to_connect[7:],
+                                               ch1='X', ch2='Y')
                 self.motor1_info = motor_to_connect
                 # Move the motor to its thread
                 self.motor1.moveToThread(self.motor1_thread)
@@ -834,13 +821,13 @@ class UpdateManager(QObject):
                 # Instantiate a motor
                 if "MDT693B" in motor_to_connect:
                     print("Connecting as motor 2, "+str(motor_to_connect))
-                    self.motor2 = MDT693B_Motor(str(motor_to_connect[2:15]), motor_number=2)
+                    self.motor2 = MDT693BMotor(str(motor_to_connect[2:15]), motor_number=2)
                 else:
                     if self.ResourceManager is None:
                         import visa
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2, com_port=motor_to_connect[7:],
-                                                ch1='X', ch2='Y')
+                    self.motor2 = MDT693AMotor(self.ResourceManager, motor_number=2, com_port=motor_to_connect[7:],
+                                               ch1='X', ch2='Y')
                 self.motor2_info = motor_to_connect
                 # Move the motor to its thread
                 self.motor2.moveToThread(self.motor2_thread)
@@ -867,12 +854,12 @@ class UpdateManager(QObject):
             if self.motor1_to_connect is not None:
                 # Instantiate a motor
                 if "MDT693B" in self.motor1_to_connect:
-                    self.motor1 = MDT693B_Motor(str(self.motor1_to_connect[2:15]), motor_number=1)
+                    self.motor1 = MDT693BMotor(str(self.motor1_to_connect[2:15]), motor_number=1)
                 else:
                     if self.ResourceManager is None:
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor1 = MDT693A_Motor(self.ResourceManager, motor_number=1,
-                                                com_port=self.motor1_to_connect[7:], ch1='X', ch2='Y')
+                    self.motor1 = MDT693AMotor(self.ResourceManager, motor_number=1,
+                                               com_port=self.motor1_to_connect[7:], ch1='X', ch2='Y')
                 self.motor1_info = self.motor1_to_connect
                 # Move the motor to its thread
                 self.motor1.moveToThread(self.motor1_thread)
@@ -884,12 +871,12 @@ class UpdateManager(QObject):
             if self.motor2_to_connect is not None:
                 # Instantiate a motor
                 if "MDT693B" in self.motor2_to_connect:
-                    self.motor2 = MDT693B_Motor(str(self.motor2_to_connect[2:15]), motor_number=2)
+                    self.motor2 = MDT693BMotor(str(self.motor2_to_connect[2:15]), motor_number=2)
                 else:
                     if self.ResourceManager is None:
                         self.ResourceManager = visa.ResourceManager()
-                    self.motor2 = MDT693A_Motor(self.ResourceManager, motor_number=2,
-                                                com_port=self.motor2_to_connect[7:], ch1='X', ch2='Y')
+                    self.motor2 = MDT693AMotor(self.ResourceManager, motor_number=2,
+                                               com_port=self.motor2_to_connect[7:], ch1='X', ch2='Y')
                 self.motor2_info = self.motor2_to_connect
                 # Move the motor to its thread
                 self.motor2.moveToThread(self.motor2_thread)
@@ -2626,7 +2613,7 @@ class UpdateManager(QObject):
 
     def load_data(self, dx1, dx2, t1, t2):
         """
-        Set dx, t1, t2 from loaded data. This allows convenient analysis of pointing data outside of the app.
+        Set dx, t1, t2 from loaded data. This allows convenient analysis_tools of pointing data outside of the app.
         """
         self._cam1_dx = dx1
         self._cam2_dx = dx2
@@ -2701,6 +2688,10 @@ class UpdateManager(QObject):
             self._r0[0:2] = r0
         elif cam_num == 2:
             self._r0[2:] = r0
+        cam_ptr = QObject.sender()
+        id = cam_ptr.camID
+        if id is not None:
+            self.updated_xy.emit(id)
         return
 
     @pyqtSlot(int, float)

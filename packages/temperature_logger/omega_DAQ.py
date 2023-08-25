@@ -1,20 +1,3 @@
-"""
-File:                       ULTI02.py
-
-Library Call Demonstrated:  mcculw.ul.t_in_scan()
-
-Purpose:                    Scans temperature input channels.
-
-Demonstration:              Displays the temperature inputs on a
-                            range of channels.
-
-Special Requirements:       Unless the board at BoardNum(=0) does not use
-                            EXP boards for temperature measurements(the
-                            CIO-DAS-TC or USB-2001-TC for example), it must
-                            have an A/D converter with an attached EXP
-                            board.  Thermocouples must be wired to EXP
-                            channels selected.
-"""
 from __future__ import absolute_import, division, print_function
 from builtins import *  # @UnusedWildImport
 import time

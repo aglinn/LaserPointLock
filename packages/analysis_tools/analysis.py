@@ -9,7 +9,7 @@ from functools import partial
 import time
 from scipy.stats import skew
 from tqdm import tqdm
-from .Processing import ProcessingMultithread as Processing
+from .processing import ProcessingMultithread as Processing
 import pickle as pkl
 from pandas import read_csv
 from scipy.interpolate import interp1d
@@ -214,7 +214,7 @@ class DataAnalyzer:
 
     def load_data(self, com1, com2, t1, t2):
         """
-        Set dx, t1, t2 from loaded data. This allows convenient analysis of pointing data outside of the app.
+        Set dx, t1, t2 from loaded data. This allows convenient analysis_tools of pointing data outside of the app.
         """
         self._cam_1_loaded_com = com1
         self._cam_2_loaded_com = com2

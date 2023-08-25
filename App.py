@@ -1,5 +1,3 @@
-from PyQt5.QtWidgets import QMainWindow
-from Packages.pointing_ui import Ui_MainWindow
 from pathlib import Path
 import sys
 import pyvisa as visa
@@ -7,20 +5,21 @@ import time
 import numpy as np
 import os
 import pyqtgraph as pg
+from PyQt5.QtWidgets import QMainWindow
 from PyQt5 import QtGui
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThread, QTimer, QMetaObject, Qt, Q_ARG
-from Packages.camera import MightexCamera, MightexEngine, DeviceNotFoundError
-from Packages.camera import BlackflyS
-from Packages.camera import Boson_QObject as Boson
-from Packages.motors import MDT693AMotor as MDT693A_Motor
-from Packages.OmegaDAQ import QTemperatureLogger
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThread, QTimer, QMetaObject, Qt, Q_ARG, QObject
+from packages.GUI import Ui_MainWindow
+from packages.cameras import MightexEngine, MightexCamera, Boson, BlackflyS
+from packages.exceptions import DeviceNotFoundError
+from packages.motors import MDT693AMotor
+from packages.temperature_logger import QTemperatureLogger
+from packages import PIDUpdateManager as UpdateManager
+from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 import tkinter as tk
 from tkinter import filedialog
 from serial.tools import list_ports
-from Packages.UpdateManager import PIDUpdateManager as UpdateManager
 import pickle as pkl
 import matplotlib.pyplot as plt
-from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 pg.setConfigOptions(imageAxisOrder='row-major')
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
@@ -133,6 +132,12 @@ class Window(QMainWindow, Ui_MainWindow):
         # Camera Parameters
         self.cam_init_dict = {}
         self.mightex_engine = None
+        self.mightex_engine_thread = None
+        self.request_shutdown_mightex_engine = False
+        self.destroy_mightex_engine_timer = QTimer(self)
+        self.destroy_mightex_engine_timer.setSingleShot(True)
+        self.destroy_mightex_engine_timer.setInterval(30000)
+        self.destroy_mightex_engine_timer.timeout.connect(self.destroy_mightex_engine)
         # Grab the app's threadpool object to manage threads
         # self.threadpool = QThreadPool.globalInstance() Not needed yet.
         # assign item models
@@ -950,9 +955,9 @@ class Window(QMainWindow, Ui_MainWindow):
         num_motors = 0
         for dev in self.ResourceManager.list_resources():
             try:
-                motor = MDT693A_Motor(self.ResourceManager, motor_number=1, com_port=dev,
-                                      ch1='X',
-                                      ch2='Y')
+                motor = MDT693AMotor(self.ResourceManager, motor_number=1, com_port=dev,
+                                     ch1='X',
+                                     ch2='Y')
                 num_motors += 1
                 self.motor_model.appendRow(QtGui.QStandardItem(str("MDT693A" + dev)))
                 self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str("MDT693A" + dev +' Ch X/1')))
@@ -1151,22 +1156,22 @@ class Window(QMainWindow, Ui_MainWindow):
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             num_cameras = 0
             # Find the Mightex cameras
-            """
-            # TODO: Update code to work with Mightex Cameras again
-            try:
-                mightex_engine = MightexEngine()
-                if len(mightex_engine.serial_no) == 0:
-                    del mightex_engine
-                else:
-                    for i, serial_no in enumerate(mightex_engine.serial_no):
-                        cam_key = 'Mightex: ' + str(serial_no)
-                        self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
-                        self.cam_init_dict[cam_key] = serial_no
-                        num_cameras += 1
-                    del mightex_engine
-            except UnicodeError:
-                # TODO: Mightex Engine is having problems decoding returned S/N. Debug.
-                pass"""
+            if self.mightex_engine is None:
+                self.mightex_engine = MightexEngine()
+            if self.mightex_engine.serial_no:
+                # There are Mightex cameras on the system
+                for serial_no in self.mightex_engine.serial_no:
+                    cam_key = 'Mightex: ' + str(serial_no)
+                    self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
+                    self.cam_init_dict[cam_key] = serial_no
+                    num_cameras += 1
+            self.mightex_engine.un_init_device()
+            del self.mightex_engine
+            self.mightex_engine = None
+            if self.mightex_engine_thread is not None:
+                self.mightex_engine_thread.quit()
+                del self.mightex_engine_thread
+                self.mightex_engine_thread = None
             # Find blackfly s cameras
             try:
                 # For now manually add the serial number and do not confirm that the camera is openable.
@@ -1197,7 +1202,7 @@ class Window(QMainWindow, Ui_MainWindow):
             if num_cameras == 0:
                 raise DeviceNotFoundError("No visible cameras found.")
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
-            # Find the Boson Cameras
+            # Find the Boson cameras
             num_cameras = 0
             # TODO: Test
             # Boson VID and PID:
@@ -1481,6 +1486,27 @@ class Window(QMainWindow, Ui_MainWindow):
                                                                           Q_ARG(int, frame_height)))
         return
 
+    def connect_mightex_signals(self):
+        """
+        Connect signals to associated with Mightex Engine that are not to Mightex Camera.
+        """
+        self.mightex_engine.signals.img_captured.connect(self.UpdateManager.process_img)
+        self.mightex_engine.signals.engine_shutdown.connect(self.delete_mightex_engine)
+        self.UpdateManager.updated_xy.connect(self.mightex_engine.xy_updated)
+        return
+
+    def delete_mightex_engine(self):
+        """
+        Delete the mightex engine and its thread.
+        """
+        del self.mightex_engine
+        self.mightex_engine = None
+        self.mightex_engine_thread.quit()
+        self.mightex_engine_thread.wait()
+        del self.mightex_engine_thread
+        self.mightex_engine_thread = None
+        return
+
     @pyqtSlot(int)
     def reconnect_cameras(self, cam_number: int):
         """
@@ -1500,9 +1526,20 @@ class Window(QMainWindow, Ui_MainWindow):
                     if self.cam1.serial_no not in str(self.cam_init_dict[key]):
                         print("Somehow the camera initialized does not have the anticipated serial number.")
                 elif "Mightex" in key:
+                    if self.mightex_engine_thread is None:
+                        self.mightex_engine_thread = QThread()
                     if self.mightex_engine is None:
                         self.mightex_engine = MightexEngine()
-                    self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                        self.mightex_engine.setup_mightex_engine_for_capture()
+                        self.connect_mightex_signals()
+                    if self.mightex_engine.thread() == QObject.thread():
+                        print("Mightex Engine moved to appropriate thread")
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                    if not self.mightex_engine_thread.isRunning():
+                        self.mightex_engine_thread.start(priority=4)
+                    self.cam1 = MightexCamera(self.mightex_engine.send_frame, self.mightex_engine.get_camID,
+                                              self.mightex_engine.signals, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.update_UpdateManager_num_cameras_connected_signal.emit(1)
@@ -1524,9 +1561,20 @@ class Window(QMainWindow, Ui_MainWindow):
                     if self.cam2.serial_no not in str(self.cam_init_dict[key]):
                         print("Somehow the camera initialized does not have the anticipated serial number.")
                 elif "Mightex" in key:
+                    if self.mightex_engine_thread is None:
+                        self.mightex_engine_thread = QThread()
                     if self.mightex_engine is None:
                         self.mightex_engine = MightexEngine()
-                    self.cam2 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                        self.mightex_engine.setup_mightex_engine_for_capture()
+                        self.connect_mightex_signals()
+                    if self.mightex_engine.thread() == QObject.thread():
+                        print("Mightex Engine moved to appropriate thread")
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                    if not self.mightex_engine_thread.isRunning():
+                        self.mightex_engine_thread.start(priority=4)
+                    self.cam2 = MightexCamera(self.mightex_engine.send_frame, self.mightex_engine.get_camID,
+                                              self.mightex_engine.signals, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.update_UpdateManager_num_cameras_connected_signal.emit(1)
@@ -1590,6 +1638,16 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.resetHist(self.gv_camera2, max=65535)
         else:
             print("Choose a Point Lock system first!")
+        if self.request_shutdown_mightex_engine:
+            # Do this with a timer to make sure that cameras are situated, in case one is added but has
+            # not had time to reactivate before engine shutdown is requested.
+            self.request_shutdown_mightex_engine = False
+            self.destroy_mightex_engine_timer.start()
+        return
+
+    @pyqtSlot()
+    def destroy_mightex_engine(self):
+        self.mightex_engine.signals.request_engine_shutdown.emit()
         return
 
     @pyqtSlot(float)
@@ -1752,9 +1810,20 @@ class Window(QMainWindow, Ui_MainWindow):
                     if self.cam1.serial_no not in str(self.cam_init_dict[key]):
                         print("Somehow the camera initialized does not have the anticipated serial number.")
                 elif "Mightex" in key:
+                    if self.mightex_engine_thread is None:
+                        self.mightex_engine_thread = QThread()
                     if self.mightex_engine is None:
                         self.mightex_engine = MightexEngine()
-                    self.cam1 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                        self.mightex_engine.setup_mightex_engine_for_capture()
+                        self.connect_mightex_signals()
+                    if self.mightex_engine.thread() == QObject.thread():
+                        print("Mightex Engine moved to appropriate thread")
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                    if not self.mightex_engine_thread.isRunning():
+                        self.mightex_engine_thread.start(priority=4)
+                    self.cam1 = MightexCamera(self.mightex_engine.send_frame, self.mightex_engine.get_camID,
+                                              self.mightex_engine.signals, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.update_UpdateManager_num_cameras_connected_signal.emit(1)
@@ -1768,7 +1837,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cam1_thread.start(priority=4)
                 # Gui will autoupdate the cameras new settings by virtue of setters emitting signals back to GUI.
                 self.set_cam1_gain_signal.emit(cam1_gain)
-                # Setting exposure begins frame grabbing.
+                # Setting exposure begins frame grabbing
                 self.set_cam1_exposure_signal.emit(cam1_exp_time)
                 # Setup camera view.
                 self.cam1_reset = True
@@ -1780,6 +1849,9 @@ class Window(QMainWindow, Ui_MainWindow):
                 try:
                     if self.cam1.serial_no not in str(self.cam_init_dict[key]):
                         # User wants to change the camera on cam1_thread. So, do that.
+                        if 'Mightex' not in str(self.cam_init_dict[key]) and self.cam1.camID is not None:
+                            # Do not keep mightex engine running unless mightex cameras are used.
+                            self.request_shutdown_mightex_engine = True
                         self.close_cam1_signal.emit(False)  # False flag does not close the thread.
                         return
                     self.set_cam1_exposure_signal.emit(cam1_exp_time)
@@ -1879,9 +1951,20 @@ class Window(QMainWindow, Ui_MainWindow):
                     if self.cam2.serial_no not in str(self.cam_init_dict[key]):
                         print("Somehow the camera initialized does not have the anticipated serial number.")
                 elif "Mightex" in key:
+                    if self.mightex_engine_thread is None:
+                        self.mightex_engine_thread = QThread()
                     if self.mightex_engine is None:
                         self.mightex_engine = MightexEngine()
-                    self.cam2 = MightexCamera(self.mightex_engine, self.cam_init_dict[key])
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                        self.mightex_engine.setup_mightex_engine_for_capture()
+                        self.connect_mightex_signals()
+                    if self.mightex_engine.thread() == QObject.thread():
+                        print("Mightex Engine moved to appropriate thread")
+                        self.mightex_engine.moveToThread(self.mightex_engine_thread)
+                    if not self.mightex_engine_thread.isRunning():
+                        self.mightex_engine_thread.start(priority=4)
+                    self.cam2 = MightexCamera(self.mightex_engine.send_frame, self.mightex_engine.get_camID,
+                                              self.mightex_engine.signals, self.cam_init_dict[key])
                 else:
                     raise NotImplemented('Choose a supported camera type.')
                 self.update_UpdateManager_num_cameras_connected_signal.emit(1)
@@ -1906,6 +1989,9 @@ class Window(QMainWindow, Ui_MainWindow):
                 try:
                     if self.cam2.serial_no not in str(self.cam_init_dict[key]):
                         # User wants to change the camera on cam2_thread. So, do that.
+                        if 'Mightex' not in str(self.cam_init_dict[key]) and self.cam1.camID is not None:
+                            # Do not keep mightex engine running unless mightex cameras are used.
+                            self.request_shutdown_mightex_engine = True
                         self.close_cam2_signal.emit(False) # False flag does not close the thread.
                         return
                     self.set_cam2_exposure_signal.emit(cam2_exp_time)
