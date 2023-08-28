@@ -102,6 +102,9 @@ class Window(QMainWindow, Ui_MainWindow):
         ######################################
         # Initialize all instance attirbutes #
         ######################################
+        # This timer connects to Update Manager, so make the timer first.
+        self.request_fps_timer = QTimer(self)
+        self.request_fps_timer.setSingleShot(False)
         # Start update manager's thread:
         self.UpdateManager_thread = QThread()
         self.UpdateManager_thread.started.connect(lambda: print("Update Manager Thread Started."))
@@ -343,6 +346,25 @@ class Window(QMainWindow, Ui_MainWindow):
         self.le_num_points.textEdited.connect(self.set_num_points_to_plot)
         self.pb_update_control_motors.clicked.connect(self.update_updatemanager_control_motors)
         self.btn_begin_acquisition.clicked.connect(self.begin_acquisition)
+        self.le_cam_fps_t_avg.editingFinished.connect(self.update_request_fps_timer)
+        return
+
+    @pyqtSlot()
+    def update_request_fps_timer(self):
+        """
+        Update the QTimer interval with the value in the LineEdit, and make sure timer is running.
+        """
+        interval = self.le_cam_fps_t_avg.text()
+        try:
+            interval = float(interval)
+            interval *= 1000  # convert to ms
+            if self.request_fps_timer.isActive():
+                self.request_fps_timer.stop()
+            self.request_fps_timer.setInterval(interval)
+            self.request_fps_timer.start()
+        except ValueError:
+            print("WARNING: Must type a number in units of (s) into label edit for avg. fps timer. "
+                  "Your entry could not be converted to flaot, so timer interval not updated. Try again.")
         return
 
     def begin_acquisition(self):
@@ -558,6 +580,8 @@ class Window(QMainWindow, Ui_MainWindow):
         Connect all update manager signals to appropriate slots.
         """
         # TO update manager
+        self.request_fps_timer.timeout.connect(self.UpdateManager.report_updates_per_second)
+        self.request_fps_timer.timeout.connect(self.UpdateManager.report_img_processed_per_s)
         self.motors_to_75V_signal.connect(self.UpdateManager.motors_to_75V)
         self.set_UpdateManager_home_signal.connect(self.UpdateManager.set_set_pos)
         self.set_UpdateManager_calibration_matrix.connect(self.UpdateManager.set_calibration_matrix)
@@ -588,6 +612,43 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
         self.UpdateManager.update_gui_ping.connect(self.report_UpdateManager_ping)
         self.UpdateManager.request_gui_plot_calibrate_fits.connect(self.plot_calibration_fits)
+        self.UpdateManager.report_updates_per_second.connect(self.display_updates_per_second)
+        self.UpdateManager.report_img_processed_per_s.connect(self.display_frames_processed_per_second)
+        return
+
+    @pyqtSlot(float)
+    def display_updates_per_second(self, updates_per_second: float):
+        """
+        Display the average number of updates per second.
+        """
+        updates_per_second = str(np.round(updates_per_second, decimals=1))
+        self.le_piezo_updates_per_s.setText(updates_per_second)
+        return
+
+    @pyqtSlot(float, float)
+    def display_frames_processed_per_second(self, cam1_fps, cam2_fps):
+        """
+        Display the number of frames processed per second for each camera.
+        """
+        # frames processed per second is 0 unless frames have actually been processed since the last timer timeout.
+        if not cam1_fps == 0:
+            cam1_fps = str(np.round(cam1_fps, decimals=1))
+            self.le_cam1_fps_processed.setText(cam1_fps)
+        if not cam2_fps == 0:
+            cam2_fps = str(np.round(cam2_fps, decimals=1))
+            self.le_cam2_fps_processed.setText(cam2_fps)
+        return
+
+    @pyqtSlot(int, float)
+    def display_frames_read_per_second(self, cam_num, fps):
+        """
+        Display the number of frames read per second by each camera.
+        """
+        fps = str(np.round(fps, decimals=1))
+        if cam_num == 1:
+            self.le_cam1_fps_read.setText(fps)
+        elif cam_num == 2:
+            self.le_cam1_fps_read.setText(fps)
         return
 
     def get_motor_num_channel_num(self, cm_selection: str) -> list:
@@ -1400,6 +1461,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.timer_connected_to_cam1 = True
             if not self.request_images_timer.isActive():
                 self.request_images_timer.start()
+            if not self.request_fps_timer.isActive():
+                self.update_request_fps_timer()
             if not self.update_pointing_plots_timer.isActive():
                 self.update_pointing_plots_timer.start()
             # To camera From Update Manager
@@ -1411,12 +1474,14 @@ class Window(QMainWindow, Ui_MainWindow):
                                                                                    Qt.QueuedConnection, Q_ARG(int, 1),
                                                                                    Q_ARG(float, exp)))
             # To Camera From GUI:
+            self.request_fps_timer.timeout.connect(self.cam1.report_fps_read)
             self.set_cam1_exposure_signal.connect(self.cam1.set_exposure_time)
             self.set_cam1_gain_signal.connect(self.cam1.set_gain)
             self.close_cam1_signal.connect(self.cam1.stop_capturing)
             self.set_cam1_ROI_bounds_signal.connect(self.cam1.set_ROI_bounds)
             self.set_cam1_full_view_signal.connect(self.cam1.ensure_full_view)
             # From Camera:
+            self.cam1.report_fps_read_signal.connect(lambda fps: self.display_frames_read_per_second(1, fps))
             self.cam1.r0_updated_signal.connect(lambda r0: self.set_UpdateManager_r0_signal.emit(1, r0))
             self.cam1.r0_updated_signal.connect(lambda r0: self.set_cam_r0(1, r0))
             self.cam1.img_captured_signal.connect(lambda img, time_stamp:
@@ -1445,6 +1510,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.timer_connected_to_cam2 = True
             if not self.request_images_timer.isActive():
                 self.request_images_timer.start()
+            if not self.request_fps_timer.isActive():
+                self.update_request_fps_timer()
             if not self.update_pointing_plots_timer.isActive():
                 self.update_pointing_plots_timer.start()
             # To camera From Update Manager
@@ -1456,12 +1523,14 @@ class Window(QMainWindow, Ui_MainWindow):
                                                                                    Qt.QueuedConnection, Q_ARG(int, 2),
                                                                                    Q_ARG(float, exp)))
             # To Camera From GUI:
+            self.request_fps_timer.timeout.connect(self.cam1.report_fps_read)
             self.set_cam2_exposure_signal.connect(self.cam2.set_exposure_time)
             self.set_cam2_gain_signal.connect(self.cam2.set_gain)
             self.close_cam2_signal.connect(self.cam2.stop_capturing)
             self.set_cam2_ROI_bounds_signal.connect(self.cam2.set_ROI_bounds)
             self.set_cam2_full_view_signal.connect(self.cam2.ensure_full_view)
             # From Camera:
+            self.cam2.report_fps_read_signal.connect(lambda fps: self.display_frames_read_per_second(2, fps))
             self.cam2.r0_updated_signal.connect(lambda r0: self.set_UpdateManager_r0_signal.emit(2, r0))
             self.cam2.r0_updated_signal.connect(lambda r0: self.set_cam_r0(2, r0))
             self.cam2.img_captured_signal.connect(lambda img, time_stamp:

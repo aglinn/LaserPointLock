@@ -47,6 +47,8 @@ class UpdateManager(QObject):
 
     # Signals emitted by Update Manager to the GUI
     update_gui_img_signal = pyqtSignal(int, np.ndarray)
+    update_gui_processed_img_per_second = pyqtSignal(float, float)
+    update_gui_updates_per_second = pyqtSignal(float)
     # This reports all COM found regardless of motor status to GUI.
     update_gui_cam_com_signal = pyqtSignal(int, np.ndarray, float)
     # send this to GUI for GUI thread to save
@@ -219,6 +221,16 @@ class UpdateManager(QObject):
         self.cam2_frame_size = None
         self.cam1_fps = None
         self.cam2_fps = None
+        # variables to measure number of frames processed per second for each camera.
+        self.num_img_processed = [0, 0]
+        self.img_process_start_time = [None, None]
+        self.img_process_finish_time = [None, None]
+        self.img_process_per_seconds = [0, 0]
+        # variables to measure the updates/second
+        self.num_updates = 0
+        self.update_t_start = None
+        self.update_t_finish = None
+        self.updates_per_second = 0
         return
 
     @pyqtSlot(dict, dict)
@@ -1391,11 +1403,38 @@ class UpdateManager(QObject):
         return
 
     @pyqtSlot()
+    def report_updates_per_second(self):
+        """
+        Report the average number of updates per second to the GUI to display. The interval to average over
+        is controlled by the QTimer interval that requests this report.
+        """
+        if self.num_updates != 0:
+            avg_updates_per_second = self.updates_per_second/self.num_updates
+            self.update_gui_updates_per_second.emit(avg_updates_per_second)
+            # reset variables
+            self.num_updates = 0
+            self.updates_per_second = 0
+        return
+
+    def calculate_updates_per_second(self):
+        """
+        Keep track of time to report the number of updates applied per second.
+        """
+        t = time.monotonic()
+        self.update_t_finish = t
+        if self.update_t_start is not None:
+            self.num_updates += 1
+            self.updates_per_second += 1/(self.update_t_finish - self.update_t_start)
+        self.update_t_start = t
+        return
+
+    @pyqtSlot()
     def apply_update(self):
         """
         This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
+        self.calculate_updates_per_second()
         # The convention with dx is how much has the position on the camera changed from the set point.
         self.calc_update_dx()
         try:
@@ -1507,6 +1546,17 @@ class UpdateManager(QObject):
         locking as well.
         lock is True when requesting begin lock and untrue when requesting leave lock.
         """
+        # Reset:
+        # variables to measure number of frames processed per second for each camera.
+        self.num_img_processed = [0, 0]
+        self.img_process_start_time = [None, None]
+        self.img_process_finish_time = [None, None]
+        self.img_process_per_seconds = [0, 0]
+        # variables to measure the updates/second
+        self.num_updates = 0
+        self.update_t_start = None
+        self.update_t_finish = None
+        self.updates_per_second = 0
         if lock:
             # First check that we are ready to lock.
             if self.calibration_matrix is None:
@@ -1568,7 +1618,7 @@ class UpdateManager(QObject):
             self._locking = False
             self.update_gui_locked_state.emit(False)
             print("Should stop locking now!")
-        pass
+        return
 
     @pyqtSlot(bool, float)
     def update_lock_parameters(self, force_unlock: bool, max_time_allowed_unlocked: float):
@@ -2734,12 +2784,49 @@ class UpdateManager(QObject):
             return com_x, com_y
         return None, None
 
+    @pyqtSlot()
+    def report_img_processed_per_s(self):
+        """
+        Find the average frames processed per second on each camera and return to the GUI for display. The
+        average is over the time interval of the QTimer on the GUI thread that requests this information.
+        """
+        report = False
+        if self.num_img_processed[0] != 0:
+            cam1_imgs_per_second = self.img_process_per_seconds[0]/self.num_img_processed[0]
+            report = True
+        if self.num_img_processed[1] != 0:
+            cam2_imgs_per_second = self.img_process_per_seconds[1] / self.num_img_processed[1]
+            report = True
+        if report:
+            self.update_gui_processed_img_per_second.emit(cam1_imgs_per_second, cam2_imgs_per_second)
+            # reset the number of frames over which this has been averaged.
+            self.num_img_processed[0] = 0
+            self.num_img_processed[1] = 0
+            # reset the frames/s
+            self.img_process_per_seconds[0] = 0
+            self.img_process_per_seconds[1] = 0
+        return
+
+    def calculate_img_process_per_s(self, cam_number: int):
+        """
+        Keep track of time to be able to calculate how many images are processed per second for each camera.
+        """
+        t = time.monotonic()
+        self.img_process_finish_time[cam_number - 1] = t
+        if self.img_process_start_time[cam_number - 1] is not None:
+            self.img_process_per_seconds += 1 / (self.img_process_finish_time[cam_number - 1] +
+                                                 self.img_process_start_time[cam_number - 1])
+            self.num_img_processed[cam_number - 1] += 1
+        self.img_process_start_time[cam_number - 1] = t
+        return
+
     @pyqtSlot(int, np.ndarray, float)
     def process_img(self, cam_number: int, img: np.ndarray, timestamp: float):
         """
         Given an image, self.cam_x_img, calculate the center of mass in pixel coordinates
         For now, just find COM, but in the future, do any preprocessing that I want.
         """
+        self.calculate_img_process_per_s(cam_number)
         if cam_number == 1:
             if self.recording:
                 self.cam1_video_file.write(img)
@@ -2753,6 +2840,7 @@ class UpdateManager(QObject):
                 self.t1 = timestamp
                 self.cam_1_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(1, np.asarray([com_x, com_y]), timestamp)
+            # TODO: Probably could connect/disconnect camera signal direct to the GUI.
             if self.report_cam1_img_to_gui:
                 self.update_gui_img_signal.emit(1, np.asarray(img))
                 self.report_cam1_img_to_gui = False

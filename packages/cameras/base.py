@@ -25,6 +25,7 @@ class BaseCamera(QObject):
     r0_updated_signal = pyqtSignal(np.ndarray)
     request_update_timer_interval_signal = pyqtSignal(float, float)
     updated_image_size = pyqtSignal(int, int)
+    report_fps_read_signal = pyqtSignal(float)
 
     def __init__(self, dev_id: int):
         super().__init__()
@@ -49,6 +50,11 @@ class BaseCamera(QObject):
         self.is_boson = False
         self._exposure_time = self.timeout_time
         self.camID = None
+        # Variables for calculating fps
+        self.t_read_start = None
+        self.t_read_finish = None
+        self.fps = 0
+        self.num_frames_read = 0
         return
 
     @pyqtSlot()
@@ -61,6 +67,29 @@ class BaseCamera(QObject):
             # Timestamp in ns as int convert to ms as float int-->float automatic.
             time_stamp = time_stamp * 10 ** -6
             self.img_captured_signal.emit(frame, time_stamp)
+            self.calculate_fps(time_stamp)
+        return
+
+    def calculate_fps(self, time_stamp):
+        """
+        Keep track of time to calculate an fps.
+        """
+        t = time_stamp / 1000.0  # seconds
+        self.t_read_finish = t
+        if self.t_read_start is not None:
+            self.fps += 1/(self.t_read_finish-self.t_read_start)
+            self.num_frames_read += 1
+        self.t_read_start = t
+
+    @pyqtSlot()
+    def report_fps_read(self):
+        """
+        Update the GUI with the average fps for frames read so GUI can display. Average interval is set by
+        QTimer in the GUI thread.
+        """
+        if self.num_frames_read != 0:
+            fps_read = self.fps/self.num_frames_read
+            self.report_fps_read_signal.emit(fps_read)
         return
 
     @pyqtSlot(float)
