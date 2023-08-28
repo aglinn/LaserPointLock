@@ -2816,9 +2816,12 @@ class UpdateManager(QObject):
         t = time.monotonic()
         self.img_process_finish_time[cam_number - 1] = t
         if self.img_process_start_time[cam_number - 1] is not None:
-            self.img_process_per_seconds[cam_number - 1] += 1 / (self.img_process_finish_time[cam_number - 1] +
-                                                                 self.img_process_start_time[cam_number - 1])
-            self.num_img_processed[cam_number - 1] += 1
+            try:
+                self.img_process_per_seconds[cam_number - 1] += 1 / (self.img_process_finish_time[cam_number - 1] -
+                                                                     self.img_process_start_time[cam_number - 1])
+                self.num_img_processed[cam_number - 1] += 1
+            except ZeroDivisionError:
+                pass
         self.img_process_start_time[cam_number - 1] = t
         return
 
