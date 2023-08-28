@@ -612,8 +612,8 @@ class Window(QMainWindow, Ui_MainWindow):
         self.UpdateManager.update_gui_locking_update_out_of_bounds_signal.connect(self.log_unlocks)
         self.UpdateManager.update_gui_ping.connect(self.report_UpdateManager_ping)
         self.UpdateManager.request_gui_plot_calibrate_fits.connect(self.plot_calibration_fits)
-        self.UpdateManager.report_updates_per_second.connect(self.display_updates_per_second)
-        self.UpdateManager.report_img_processed_per_s.connect(self.display_frames_processed_per_second)
+        self.UpdateManager.update_gui_updates_per_second.connect(self.display_updates_per_second)
+        self.UpdateManager.update_gui_processed_img_per_second.connect(self.display_frames_processed_per_second)
         return
 
     @pyqtSlot(float)
@@ -648,7 +648,7 @@ class Window(QMainWindow, Ui_MainWindow):
         if cam_num == 1:
             self.le_cam1_fps_read.setText(fps)
         elif cam_num == 2:
-            self.le_cam1_fps_read.setText(fps)
+            self.le_cam2_fps_read.setText(fps)
         return
 
     def get_motor_num_channel_num(self, cm_selection: str) -> list:
@@ -1523,7 +1523,7 @@ class Window(QMainWindow, Ui_MainWindow):
                                                                                    Qt.QueuedConnection, Q_ARG(int, 2),
                                                                                    Q_ARG(float, exp)))
             # To Camera From GUI:
-            self.request_fps_timer.timeout.connect(self.cam1.report_fps_read)
+            self.request_fps_timer.timeout.connect(self.cam2.report_fps_read)
             self.set_cam2_exposure_signal.connect(self.cam2.set_exposure_time)
             self.set_cam2_gain_signal.connect(self.cam2.set_gain)
             self.close_cam2_signal.connect(self.cam2.stop_capturing)

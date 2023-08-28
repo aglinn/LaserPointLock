@@ -2790,6 +2790,8 @@ class UpdateManager(QObject):
         Find the average frames processed per second on each camera and return to the GUI for display. The
         average is over the time interval of the QTimer on the GUI thread that requests this information.
         """
+        cam1_imgs_per_second = 0
+        cam2_imgs_per_second = 0
         report = False
         if self.num_img_processed[0] != 0:
             cam1_imgs_per_second = self.img_process_per_seconds[0]/self.num_img_processed[0]
@@ -2814,8 +2816,8 @@ class UpdateManager(QObject):
         t = time.monotonic()
         self.img_process_finish_time[cam_number - 1] = t
         if self.img_process_start_time[cam_number - 1] is not None:
-            self.img_process_per_seconds += 1 / (self.img_process_finish_time[cam_number - 1] +
-                                                 self.img_process_start_time[cam_number - 1])
+            self.img_process_per_seconds[cam_number - 1] += 1 / (self.img_process_finish_time[cam_number - 1] +
+                                                                 self.img_process_start_time[cam_number - 1])
             self.num_img_processed[cam_number - 1] += 1
         self.img_process_start_time[cam_number - 1] = t
         return
