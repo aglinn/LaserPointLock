@@ -1817,7 +1817,7 @@ class Window(QMainWindow, Ui_MainWindow):
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                         self.mightex_engine.setup_mightex_engine_for_capture()
                         self.connect_mightex_signals()
-                    if self.mightex_engine.thread() == QObject.thread():
+                    if self.mightex_engine.thread() == QThread.currentThread():
                         print("Mightex Engine moved to appropriate thread")
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                     if not self.mightex_engine_thread.isRunning():

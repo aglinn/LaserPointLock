@@ -30,7 +30,7 @@
      <enum>QTabWidget::Rounded</enum>
     </property>
     <property name="currentIndex">
-     <number>2</number>
+     <number>1</number>
     </property>
     <property name="elideMode">
      <enum>Qt::ElideNone</enum>
@@ -434,7 +434,7 @@
      <widget class="QPushButton" name="btn_clear">
       <property name="geometry">
        <rect>
-        <x>810</x>
+        <x>760</x>
         <y>20</y>
         <width>93</width>
         <height>28</height>
@@ -447,7 +447,7 @@
      <widget class="QWidget" name="formLayoutWidget_3">
       <property name="geometry">
        <rect>
-        <x>780</x>
+        <x>760</x>
         <y>60</y>
         <width>141</width>
         <height>31</height>
@@ -476,7 +476,7 @@
      <widget class="QWidget" name="formLayoutWidget_5">
       <property name="geometry">
        <rect>
-        <x>770</x>
+        <x>760</x>
         <y>120</y>
         <width>160</width>
         <height>125</height>
@@ -544,8 +544,8 @@
      <widget class="QWidget" name="verticalLayoutWidget">
       <property name="geometry">
        <rect>
-        <x>770</x>
-        <y>280</y>
+        <x>760</x>
+        <y>250</y>
         <width>169</width>
         <height>158</height>
        </rect>
@@ -624,6 +624,117 @@
        <string>TextLabel</string>
       </property>
      </widget>
+     <widget class="QWidget" name="formLayoutWidget_7">
+      <property name="geometry">
+       <rect>
+        <x>760</x>
+        <y>460</y>
+        <width>191</width>
+        <height>131</height>
+       </rect>
+      </property>
+      <layout class="QFormLayout" name="formLayout_7">
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_fps_t_avg">
+         <property name="text">
+          <string>Cam avg. fps for time (s)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QLineEdit" name="le_cam_fps_t_avg">
+         <property name="text">
+          <string>1</string>
+         </property>
+         <property name="readOnly">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label_cam1_fps_read">
+         <property name="text">
+          <string>Cam 1 fps (read)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLineEdit" name="le_cam1_fps_read">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_cam1_fps_processed">
+         <property name="text">
+          <string>Cam 1 fps (processed)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QLineEdit" name="le_cam1_fps_processed">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_cam2_fps_read">
+         <property name="text">
+          <string>Cam 2 fps (read)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QLineEdit" name="le_cam2_fps_read">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_cam2_fps_processed">
+         <property name="text">
+          <string>Cam 2 fps (processed)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QLineEdit" name="le_cam2_fps_processed">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="formLayoutWidget_9">
+      <property name="geometry">
+       <rect>
+        <x>730</x>
+        <y>420</y>
+        <width>245</width>
+        <height>41</height>
+       </rect>
+      </property>
+      <layout class="QFormLayout" name="formLayout_10">
+       <item row="0" column="0" colspan="2">
+        <widget class="QLabel" name="label_processed_def">
+         <property name="text">
+          <string>&quot;processed&quot; = fps update manager finds COM for</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0" colspan="2">
+        <widget class="QLabel" name="label_read_def">
+         <property name="text">
+          <string>&quot;read&quot; = fps camera object reads at</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </widget>
     <widget class="QWidget" name="tab">
      <attribute name="title">
@@ -682,9 +793,9 @@
       <property name="geometry">
        <rect>
         <x>740</x>
-        <y>140</y>
+        <y>150</y>
         <width>161</width>
-        <height>121</height>
+        <height>111</height>
        </rect>
       </property>
       <layout class="QFormLayout" name="formLayout_6">
@@ -709,13 +820,6 @@
          </property>
         </widget>
        </item>
-       <item row="1" column="1">
-        <widget class="QLineEdit" name="le_Ti">
-         <property name="text">
-          <string>1</string>
-         </property>
-        </widget>
-       </item>
        <item row="2" column="0">
         <widget class="QLabel" name="Ti_2">
          <property name="text">
@@ -734,6 +838,13 @@
         <widget class="QPushButton" name="btn_PID_update">
          <property name="text">
           <string>Update PID Parameters</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLineEdit" name="le_Ti">
+         <property name="text">
+          <string>1</string>
          </property>
         </widget>
        </item>
@@ -801,6 +912,35 @@
         <widget class="QPushButton" name="pb_update_control_motors">
          <property name="text">
           <string>update control motors</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="formLayoutWidget_8">
+      <property name="geometry">
+       <rect>
+        <x>740</x>
+        <y>110</y>
+        <width>161</width>
+        <height>22</height>
+       </rect>
+      </property>
+      <layout class="QFormLayout" name="formLayout_9">
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_piezo_updates_per_second">
+         <property name="text">
+          <string>Piezo updates/second</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QLineEdit" name="le_piezo_updates_per_s">
+         <property name="text">
+          <string/>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
          </property>
         </widget>
        </item>

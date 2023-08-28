@@ -68,7 +68,7 @@ class MightexEngine(QObject):
 
         libc = cdll.msvcrt
         kbhit = libc._kbhit
-        lib = cdll.LoadLibrary(r"x64/NewClassic_USBCamera_SDK.dll")
+        lib = cdll.LoadLibrary(r"libx64/NewClassic_USBCamera_SDK.dll")
     except FileNotFoundError:
         raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
 

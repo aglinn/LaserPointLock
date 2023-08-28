@@ -50,12 +50,12 @@ class INFO(Structure):
 class MightexEngineSignals(QObject):
     # in
     queue_grab = pyqtSignal()
-    start = pyqtSignal()
-    set_exposure = pyqtSignal(str, int)
+    start_grabbing = pyqtSignal()
+    set_exposure = pyqtSignal(str, float)
     set_gain = pyqtSignal(str, float)
     activate_camera = pyqtSignal(str, int)
     stop_grabbing = pyqtSignal()
-    apply_roi = pyqtSignal(list)
+    apply_roi = pyqtSignal(str, list)
     request_engine_shutdown = pyqtSignal()
 
     # out
@@ -95,7 +95,7 @@ class MightexEngine(QObject):
         self.signals = MightexEngineSignals()
         self.signals.setParent(self)
         # Initialize the API
-        ret = self.self.lib.NewClassicUSB_InitDevice()
+        ret = self.lib.NewClassicUSB_InitDevice()
         if ret <= 0:
             raise DeviceNotFoundError('No Mightex cameras were connected to the system')
         self.num_devices = ret
@@ -186,6 +186,7 @@ class MightexEngine(QObject):
         self.signals.stop_grabbing.connect(self.stop_grabbing)
         self.signals.apply_roi.connect(self.set_ROI)
         self.signals.request_engine_shutdown.connect(self.shutdown)
+        self.signals.start_grabbing.connect(self.start)
         return
 
     @pyqtSlot(int)
@@ -383,7 +384,7 @@ class MightexEngine(QObject):
         Monochrome Cameras just take the green gain's value.
         """
         gain_int = int(gain*64/8)
-        ret = self.NewClassicUSB_SetGains(self.cameraID[serial_no], gain_int, gain_int, gain_int)
+        ret = self.lib.NewClassicUSB_SetGains(self.cameraID[serial_no], gain_int, gain_int, gain_int)
         if not ret == 1:
             print("WARNING: Could not set gain on camera with serial number {}".format(serial_no))
             return
@@ -417,7 +418,7 @@ class MightexEngine(QObject):
         # time in ms time automatically wraps, so unwrap the time to be monotonic
         if camID_t[1] < self.t_frames[camID_t[0]-1] - self._time_wrapper_count[camID_t[0]-1] * (65535 + 1):
             self._time_wrapper_count[camID_t[0]-1] += 1  # Convert to a monotonic timestamp
-        t1 = self._time_wrapper_count * (65535 + 1) + camID_t[1]
+        t1 = self._time_wrapper_count[camID_t[0]-1] * (65535 + 1) + camID_t[1]
         dt = t1 - self._t_frames[camID_t[0]-1]
         fps = 1000/dt
         self.fps = (camID_t[0], fps)

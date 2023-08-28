@@ -48,7 +48,7 @@ class MightexCamera(BaseCamera):
         activate the camera and tell the engine to start frame grabbing if it has not already done so!
         """
         self.engine_signals.activate_camera.emit(self.serial_no, 1)
-        self.engine_signals.start()
+        self.engine_signals.start_grabbing.emit()
         return
 
     @pyqtSlot(int, float)
@@ -151,7 +151,7 @@ class MightexCamera(BaseCamera):
         if self.ROI_bounds is not None:
             # The camera engine will apply the roi, and as the startXY, size, and fps change, the engine will send
             # signals accordingly. That pass back through this camera object and on to whomever.
-            self.engine_signals.apply_roi.emit(self.ROI_bounds)
+            self.engine_signals.apply_roi.emit(self.serial_no, self.ROI_bounds)
         return
 
     @pyqtSlot()
