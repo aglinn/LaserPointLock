@@ -2738,8 +2738,11 @@ class UpdateManager(QObject):
             self._r0[0:2] = r0
         elif cam_num == 2:
             self._r0[2:] = r0
-        cam_ptr = QObject.sender()
-        id = cam_ptr.camID
+        # TODO: FIX
+        # cam_ptr = QObject.sender()
+        # print(cam_ptr)
+        # id = cam_ptr.camID
+        id = None
         if id is not None:
             self.updated_xy.emit(id)
         return
