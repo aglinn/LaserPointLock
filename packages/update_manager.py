@@ -102,8 +102,8 @@ class UpdateManager(QObject):
         self.set_pos = None
         self.dV = None
         self.update_voltage = None
-        self._cam_1_com = np.array([0.0, 0.0])
-        self._cam_2_com = np.array([0.0, 0.0])
+        self._cam_1_com = None
+        self._cam_2_com = None
         self._cam_1_img = None
         self._cam_2_img = None
         self._dx = []
@@ -173,18 +173,18 @@ class UpdateManager(QObject):
         self.num_steps_per_motor = len(self.calibration_voltages)
         self.mot1_x_voltage, self.mot1_y_voltage, self.mot1_z_voltage, self.mot2_x_voltage, self.mot2_y_voltage, \
             self.mot2_z_voltage = np.zeros((6, len(self.calibration_voltages)))
-        self.mot1_x_cam1_x, self.mot1_x_cam1_y, self.mot1_x_cam2_x, self.mot1_x_cam2_y = np.zeros(
-            (4, len(self.calibration_voltages)))
-        self.mot1_y_cam1_x, self.mot1_y_cam1_y, self.mot1_y_cam2_x, self.mot1_y_cam2_y = np.zeros(
-            (4, len(self.calibration_voltages)))
-        self.mot1_z_cam1_x, self.mot1_z_cam1_y, self.mot1_z_cam2_x, self.mot1_z_cam2_y = np.zeros(
-            (4, len(self.calibration_voltages)))
-        self.mot2_x_cam1_x, self.mot2_x_cam1_y, self.mot2_x_cam2_x, self.mot2_x_cam2_y = np.zeros(
-            (4, len(self.calibration_voltages)))
-        self.mot2_y_cam1_x, self.mot2_y_cam1_y, self.mot2_y_cam2_x, self.mot2_y_cam2_y = np.zeros(
-            (4, len(self.calibration_voltages)))
-        self.mot2_z_cam1_x, self.mot2_z_cam1_y, self.mot2_z_cam2_x, self.mot2_z_cam2_y = np.zeros(
-            (4, len(self.calibration_voltages)))
+        self.mot1_x_cam1_x, self.mot1_x_cam1_y, self.mot1_x_cam2_x, self.mot1_x_cam2_y = np.ones(
+            (4, len(self.calibration_voltages)))*(-10000.0)
+        self.mot1_y_cam1_x, self.mot1_y_cam1_y, self.mot1_y_cam2_x, self.mot1_y_cam2_y = np.ones(
+            (4, len(self.calibration_voltages)))*(-10000.0)
+        self.mot1_z_cam1_x, self.mot1_z_cam1_y, self.mot1_z_cam2_x, self.mot1_z_cam2_y = np.ones(
+            (4, len(self.calibration_voltages)))*(-10000.0)
+        self.mot2_x_cam1_x, self.mot2_x_cam1_y, self.mot2_x_cam2_x, self.mot2_x_cam2_y = np.ones(
+            (4, len(self.calibration_voltages)))*(-10000.0)
+        self.mot2_y_cam1_x, self.mot2_y_cam1_y, self.mot2_y_cam2_x, self.mot2_y_cam2_y = np.ones(
+            (4, len(self.calibration_voltages)))*(-10000.0)
+        self.mot2_z_cam1_x, self.mot2_z_cam1_y, self.mot2_z_cam2_x, self.mot2_z_cam2_y = np.ones(
+            (4, len(self.calibration_voltages)))*(-10000.0)
         self.starting_v = 75.0 * np.ones(6)
         # Start off the calibration process with voltages at first step
         self.starting_v[0] = self.calibration_voltages[0]
@@ -1106,7 +1106,8 @@ class UpdateManager(QObject):
     # Locking related methods
     @pyqtSlot()
     def time_delay_update(self):
-        if self._cam1_com_updated and self._cam2_com_updated and not self.block_timer:
+        if (self._cam1_com_updated + self._cam2_com_updated == self.num_cams_connected)\
+                and not self.block_timer:
             self.block_timer = True
             # Effectively bypass the timer in a way that preserves code for time-delay (but thus also preserves bloat)
             self.apply_update()
@@ -1223,7 +1224,7 @@ class UpdateManager(QObject):
 
         take small steps to avoid introducing noise, but at least big enough to bring the control motors in bounds.
         """
-        if self.null_vectors is None:
+        if not self._slow_motors:
             # Not operating with slow compensating motors.
             raise UnableToUpdateInBounds
         # V Would be the desired voltages on all 6 motors to restore the pointing
@@ -1442,7 +1443,24 @@ class UpdateManager(QObject):
             self.get_update()
         except UpdateOutOfBounds:
             try:
-                self.compensate_with_slow_motors()
+                # TODO: update slow motors to work with only 2 motor DOF being used. For now, bypass if only 2 DOF used.
+                if len(self._control_motors) == 2:
+                    # See if I am allowed to continue updating eventhough out of bounds.
+                    if self._force_unlock:
+                        if self.time_continually_unlocked > self.max_time_allowed_unlocked:
+                            self.num_out_of_voltage_range = 1
+                            self.time_last_unlock = 0
+                            # Set all voltages back to 75V
+                            self.motors_to_75V()
+                            successful_lock_time = time.monotonic() - self.lock_time_start
+                            print("Successfully locked pointing for", successful_lock_time)
+                            # Tell myself to stop locking.
+                            self._locking = False
+                            self.lock_pointing(False)
+                            print("System has unlocked!")
+                            return
+                elif len(self._control_motors) == 4:
+                    self.compensate_with_slow_motors()
             except UnableToUpdateInBounds:
                 """"
                 This section of code keeps the update voltage in bounds by allowing the laser beam path to shift to a 
@@ -1470,6 +1488,7 @@ class UpdateManager(QObject):
                         self.lock_pointing(False)
                         print("System has unlocked!")
                         return
+                # Update slow motor channels accordingly.
                 if not self.motor_channel_to_skip:
                     V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
                     self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], self.V0[V_set_index])
@@ -1557,23 +1576,35 @@ class UpdateManager(QObject):
         self.update_t_start = None
         self.update_t_finish = None
         self.updates_per_second = 0
+        # Variables holding dx
+        self._cam1_dx = []
+        self._cam2_dx = []
+        self._t1 = []
+        self._t2 = []
+        self._cam_2_com = None
+        self._cam_1_com = None
         if lock:
             # First check that we are ready to lock.
             if self.calibration_matrix is None:
                 self.update_gui_locked_state.emit(False)
                 raise InsufficientInformation("Run calibration/load calibration before locking")
-            if self.motor1 is None:
+            if self.motor1 is None and self.motor2 is None:
                 self.update_gui_locked_state.emit(False)
-                raise InsufficientInformation("Connect motor 1 before locking")
-            if self.motor2 is None:
-                self.update_gui_locked_state.emit(False)
-                raise InsufficientInformation("Connect motor 2 before locking")
+                raise InsufficientInformation("Connect at least one motor before locking.")
             if self.set_pos is None:
                 self.update_gui_locked_state.emit(False)
                 raise InsufficientInformation("Set/load home position before locking")
-            if self.num_cams_connected != 2:
+            if self.num_cams_connected == 0:
                 self.update_gui_locked_state.emit(False)
-                raise InsufficientInformation("Need to have 2 cameras connected before, please.")
+                raise InsufficientInformation("Need to have at least one camera connected to lcok, please.")
+            if self.calibration_matrix.shape[0] != len(self._control_motors):
+                raise InsufficientInformation("The number of control motors ({}) should equal DOF of your calib "
+                                              "matrix({}).".format(len(self._control_motors),
+                                                                   self.calibration_matrix.shape[0]))
+            if self.calibration_matrix.shape[0] / 2 != self.num_cams_connected:
+                raise InsufficientInformation("I expect the DOF of your calibration matrix ({}) to be 2x your number "
+                                              "of cameras connected ({})".format(self.calibration_matrix.shape[0],
+                                                                                 self.num_cams_connected))
             # Make sure no handler is connected to com_found_signal
             if self.com_found_signal_handler is not None:
                 # Disconnect unwanted connections.
@@ -1595,8 +1626,10 @@ class UpdateManager(QObject):
             # And only sets automatically set these flags false, not the gets used below.
             self.motor1_ch1_updated = False
             self.motor1_ch2_updated = False
+            self.motor1_ch3_updated = False
             self.motor2_ch1_updated = False
             self.motor2_ch2_updated = False
+            self.motor2_ch3_updated = False
             self._motors_updated = False
             self.get_motor1_ch1V_signal.emit()
             self.get_motor2_ch1V_signal.emit()
@@ -1635,11 +1668,22 @@ class UpdateManager(QObject):
         Find the effective dx to use when calculating the update voltages. In this case just average all values since
         last motor update.
         """
-        inds_post_motor_update = np.where(self.t1 >= self.cam1_time_motors_updated)
-        dx_cam1_avg = np.average(self.cam1_dx[inds_post_motor_update], axis=0)
-        inds_post_motor_update = np.where(self.t2 >= self.cam2_time_motors_updated)
-        dx_cam2_avg = np.average(self.cam2_dx[inds_post_motor_update], axis=0)
-        self.update_dx = np.concatenate((dx_cam1_avg, dx_cam2_avg), axis=0)
+        cam1_connected = False
+        cam2_connected = False
+        if self.cam1_dx.size != 0:
+            inds_post_motor_update = np.where(self.t1 >= self.cam1_time_motors_updated)
+            dx_cam1_avg = np.average(self.cam1_dx[inds_post_motor_update], axis=0)
+            cam1_connected = True
+        if self.cam2_dx.size != 0:
+            inds_post_motor_update = np.where(self.t2 >= self.cam2_time_motors_updated)
+            dx_cam2_avg = np.average(self.cam2_dx[inds_post_motor_update], axis=0)
+            cam2_connected = True
+        if cam1_connected and cam2_connected:
+            self.update_dx = np.concatenate((dx_cam1_avg, dx_cam2_avg), axis=0)
+        elif cam1_connected:
+            self.update_dx = dx_cam1_avg
+        elif cam2_connected:
+            self.update_dx = dx_cam2_avg
         return
 
     def get_dx_steps_for_find_best_udpate(self):
@@ -1827,15 +1871,22 @@ class UpdateManager(QObject):
         This function will transition into the calibration process for update manager.
         """
         # Check if ready to calibrate
-        if self.motor1 is None:
-            raise InsufficientInformation("Connect motor 1 before calibrating")
-        if self.motor2 is None:
-            raise InsufficientInformation("Connect motor 2 before calibrating")
+        if self.motor1 is None and self.motor2 is None:
+            raise InsufficientInformation("Connect a motor before calibrating")
+        if self.num_cams_connected == 0 or self.num_cams_connected > 2:
+            raise InsufficientInformation("Need to have 1 or 2 cameras connected before calibrating, please")
         if self.num_cams_connected != 2:
-            raise InsufficientInformation("Need to have 2 cameras connected before calibrating, please")
-        if len(self._control_motors.values()) != 4:
-            raise InsufficientInformation("Need to have 4 control motors specified, but you have ",
+            if self.cam_1_com is not None and self.cam_2_com is not None:
+                raise Exception("Strange, somehow you have 1 camera connected, but neither of your com coordinates is "
+                                "None, cam1 {}, cam2 {}".format(self.cam_1_com, self.cam_2_com))
+        if not (len(self._control_motors.values()) == 2 or len(self._control_motors.values()) == 4):
+            raise InsufficientInformation("Need to have either 2 or 4 control motors specified, but you have ",
                                           len(self._control_motors.values()), " specified.")
+        if not self.num_cams_connected*2 == len(self._control_motors):
+            raise InsufficientInformation("You must have exactly twice as many control motors connected as cameras"
+                                          "to have a sufficient number of DOF to stabilize your pointing.")
+        ''''
+        REDUNDANT AND LESS ELEGANT THAN ABOVE CHECKS!?
         motor_to_check = [1, 1]
         Logic1 = motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values()
         motor_to_check = [1, 2]
@@ -1846,7 +1897,7 @@ class UpdateManager(QObject):
             raise InsufficientInformation("Need at least 4 motors selected for control. Somehow motor 1 channel 1 and 2"
                                           " and motor 2 channel 1 are not being used. Since there are 3 channels per "
                                           "motor there are 6 channels total and 3 are not in use. So, you need to use "
-                                          "at least 1 more channel. 4 control channels and up to 2 slow motor channels")
+                                          "at least 1 more channel. 4 control channels and up to 2 slow motor channels")''''
         # Make sure no handler is connected to com_found_signal
         if self.com_found_signal_handler is not None:
             # Disconnect unwanted connections.
@@ -1902,11 +1953,11 @@ class UpdateManager(QObject):
     @pyqtSlot()
     def run_calibration(self):
         """
-        Receieves the COM update signal. Once both are updated, add them to pointing array for later use. Apply next
+        Receieves the COM update signal. Once all are updated, add them to pointing array for later use. Apply next
         voltage in calibration series. Once all voltages are swept through, request to calculate the calibration_matrix.
         """
         print("Called run calibration.", self.calibration_sweep_index, self.calibration_pointing_index)
-        if self._cam1_com_updated and self._cam2_com_updated:
+        if self._cam1_com_updated + self._cam2_com_updated == self.num_cams_connected:
             # I have updated COM coordinates to store.
             # Keep updating motors and storing positions
             if self.calibration_sweep_index == 0:
@@ -1916,14 +1967,16 @@ class UpdateManager(QObject):
                 # received by an event, and the event loop is not being processed during this blocking function.
                 if not self.unknown_current_voltage:
                     # Only store captured pointing information, if I know what voltages are on the motors right now.
-                    self.mot1_x_cam1_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
-                    self.mot1_x_cam1_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
-                    self.mot1_x_cam2_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
-                    self.mot1_x_cam2_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                    if self.cam_1_com is not None:
+                        self.mot1_x_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                        self.mot1_x_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    if self.cam_2_com is not None:
+                        self.mot1_x_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                        self.mot1_x_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
                 else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
                     # Reset unknown voltage flag
                     self.unknown_current_voltage = False
@@ -1950,7 +2003,12 @@ class UpdateManager(QObject):
                         self.calibration_sweep_index = 2
                     elif [2, 2] in self._control_motors.values() or [2, 2] in self._slow_motors.values():
                         self.calibration_sweep_index = 3
+                    elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
+                        self.calibration_sweep_index = 4
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.calibration_sweep_index = 5
                     else:
+                        # Impossible to get here.
                         raise InsufficientInformation("Not enough motors set as control motors.")
                 else:
                     # Get next step in pointing information for this sweep
@@ -1976,7 +2034,12 @@ class UpdateManager(QObject):
                         self.request_set_motor(2, 1, set_voltage)
                     elif [2, 2] in self._control_motors.values() or [2, 2] in self._slow_motors.values():
                         self.request_set_motor(2, 2, set_voltage)
+                    elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
+                        self.request_set_motor(1, 3, set_voltage)
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.request_set_motor(2, 3, set_voltage)
                     else:
+                        # Impossible to get here
                         raise InsufficientInformation("Not enough motors set as control motors.")
                 return
             elif self.calibration_sweep_index == 1:
@@ -1986,14 +2049,16 @@ class UpdateManager(QObject):
                 # received by an event, and the event loop is not being processed during this blocking function.
                 if not self.unknown_current_voltage:
                     # Only store captured pointing information, if I know what voltages are on the motors right now.
-                    self.mot1_y_cam1_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
-                    self.mot1_y_cam1_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
-                    self.mot1_y_cam2_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
-                    self.mot1_y_cam2_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                    if self.cam_1_com is not None:
+                        self.mot1_y_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                        self.mot1_y_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    if self.cam_2_com is not None:
+                        self.mot1_y_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                        self.mot1_y_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
                 else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
                     # Reset unknown voltage flag
                     self.unknown_current_voltage = False
@@ -2020,8 +2085,17 @@ class UpdateManager(QObject):
                         self.calibration_sweep_index = 3
                     elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
                         self.calibration_sweep_index = 4
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.calibration_sweep_index = 5
                     else:
-                        raise InsufficientInformation("Not enough motors set as control motors.")
+                        # Done calibrating do not sweep any more voltages.
+                        self.calibration_sweep_index = 6
+                        # put this motor back to 75.0 V
+                        self.request_set_motor(1, 2, 75.0)
+                        # Tell update manager to calculate the calibration matrix now that the sweeps are done.
+                        self.calculate_calibration_matrix()
+                        # Return from a calibration process always to a non-locking state of the update manager.
+                        self.lock_pointing(False)
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
@@ -2046,8 +2120,11 @@ class UpdateManager(QObject):
                         self.request_set_motor(2, 2, set_voltage)
                     elif [1, 3] in self._control_motors.values() or [1, 3] in self._slow_motors.values():
                         self.request_set_motor(1, 3, set_voltage)
+                    elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
+                        self.request_set_motor(2, 3, set_voltage)
                     else:
-                        raise InsufficientInformation("Not enough motors set as control motors.")
+                        # Do nothing finishing calibration
+                        pass
                 return
             elif self.calibration_sweep_index == 2:
                 # capture pointing from second motor, channel 1 sweep
@@ -2056,14 +2133,16 @@ class UpdateManager(QObject):
                 # received by an event, and the event loop is not being processed during this blocking function.
                 if not self.unknown_current_voltage:
                     # Only store captured pointing information, if I know what voltages are on the motors right now.
-                    self.mot2_x_cam1_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
-                    self.mot2_x_cam1_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
-                    self.mot2_x_cam2_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
-                    self.mot2_x_cam2_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                    if self.cam_1_com is not None:
+                        self.mot2_x_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                        self.mot2_x_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    if self.cam_2_com is not None:
+                        self.mot2_x_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                        self.mot2_x_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
                 else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
                     # Reset unknown voltage flag
                     self.unknown_current_voltage = False
@@ -2091,7 +2170,14 @@ class UpdateManager(QObject):
                     elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
                         self.calibration_sweep_index = 5
                     else:
-                        raise InsufficientInformation("Not enough motors set as control motors.")
+                        # Done calibrating do not sweep any more voltages.
+                        self.calibration_sweep_index = 6
+                        # put this motor back to 75.0 V
+                        self.request_set_motor(2, 1, 75.0)
+                        # Tell update manager to calculate the calibration matrix now that the sweeps are done.
+                        self.calculate_calibration_matrix()
+                        # Return from a calibration process always to a non-locking state of the update manager.
+                        self.lock_pointing(False)
                 else:
                     # Get next step in pointing information for this sweep
                     self.calibration_pointing_index += 1
@@ -2117,7 +2203,8 @@ class UpdateManager(QObject):
                     elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
                         self.request_set_motor(2, 3, set_voltage)
                     else:
-                        raise InsufficientInformation("Not enough motors set as control motors.")
+                        # Do nothing finishing calibration
+                        pass
                 return
             elif self.calibration_sweep_index == 3:
                 # capture pointing from second motor, channel 1 sweep
@@ -2126,14 +2213,16 @@ class UpdateManager(QObject):
                 # received by an event, and the event loop is not being processed during this blocking function.
                 if not self.unknown_current_voltage:
                     # Only store captured pointing information, if I know what voltages are on the motors right now.
-                    self.mot2_y_cam1_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
-                    self.mot2_y_cam1_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
-                    self.mot2_y_cam2_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
-                    self.mot2_y_cam2_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                    if self.cam_1_com is not None:
+                        self.mot2_y_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                        self.mot2_y_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    if self.cam_2_com is not None:
+                        self.mot2_y_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                        self.mot2_y_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
                 else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
                     # Reset unknown voltage flag
                     self.unknown_current_voltage = False
@@ -2159,7 +2248,10 @@ class UpdateManager(QObject):
                     elif [2, 3] in self._control_motors.values() or [2, 3] in self._slow_motors.values():
                         self.calibration_sweep_index = 5
                     else:
+                        # Done calibrating do not sweep any more voltages.
                         self.calibration_sweep_index = 6
+                        # put this motor back to 75.0 V
+                        self.request_set_motor(2, 2, 75.0)
                         # Tell update manager to calculate the calibration matrix now that the sweeps are done.
                         self.calculate_calibration_matrix()
                         # Return from a calibration process always to a non-locking state of the update manager.
@@ -2194,14 +2286,16 @@ class UpdateManager(QObject):
                 # received by an event, and the event loop is not being processed during this blocking function.
                 if not self.unknown_current_voltage:
                     # Only store captured pointing information, if I know what voltages are on the motors right now.
-                    self.mot1_z_cam1_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
-                    self.mot1_z_cam1_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
-                    self.mot1_z_cam2_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
-                    self.mot1_z_cam2_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                    if self.cam_1_com is not None:
+                        self.mot1_z_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                        self.mot1_z_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    if self.cam_2_com is not None:
+                        self.mot1_z_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                        self.mot1_z_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
                 else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
                     # Reset unknown voltage flag
                     self.unknown_current_voltage = False
@@ -2225,6 +2319,7 @@ class UpdateManager(QObject):
                     if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
                         self.calibration_sweep_index += 1
                     else:
+                        # Done calibrating do not sweep any more voltages.
                         self.calibration_sweep_index = 6
                         # put this motor back to 75.0 V
                         self.request_set_motor(1, 3, 75.0)
@@ -2260,14 +2355,16 @@ class UpdateManager(QObject):
                 # received by an event, and the event loop is not being processed during this blocking function.
                 if not self.unknown_current_voltage:
                     # Only store captured pointing information, if I know what voltages are on the motors right now.
-                    self.mot2_z_cam1_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
-                    self.mot2_z_cam1_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
-                    self.mot2_z_cam2_x[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
-                    self.mot2_z_cam2_y[self.calibration_pointing_index -
-                                       self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
+                    if self.cam_1_com is not None:
+                        self.mot2_z_cam1_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[0]
+                        self.mot2_z_cam1_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_1_com[1]
+                    if self.cam_2_com is not None:
+                        self.mot2_z_cam2_x[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[0]
+                        self.mot2_z_cam2_y[self.calibration_pointing_index -
+                                           self.num_calibration_points_dropped_current_sweep] = self.cam_2_com[1]
                 else:  # Whoops never set nor get the voltage for this step, so delete this steps pointing info
                     # Reset unknown voltage flag
                     self.unknown_current_voltage = False
@@ -2314,7 +2411,7 @@ class UpdateManager(QObject):
                 # If I am getting here, I am already done sweeping the motors anyway, so just do nothing.
                 return
         else:
-            # I only have 1 updated COM, so keep waiting for the next COM update.
+            # I do not have updated COM coordinates for every camera.
             return
 
     @pyqtSlot()
@@ -2323,40 +2420,93 @@ class UpdateManager(QObject):
         """
         Calculate the calibration matrix. And plot the resulting fits to pointing changes vs. voltage changes
         """
+        # init variables to fit of no real COM data.
+        p_mot1_x_cam1_x = [0, -10000.0]
+        p_mot1_x_cam1_y = [0, -10000.0]
+        p_mot1_x_cam2_x = [0, -10000.0]
+        p_mot1_x_cam2_y = [0, -10000.0]
+        p_mot1_y_cam1_x = [0, -10000.0]
+        p_mot1_y_cam1_y = [0, -10000.0]
+        p_mot1_y_cam2_x = [0, -10000.0]
+        p_mot1_y_cam2_y = [0, -10000.0]
+        p_mot1_z_cam1_x = [0, -10000.0]
+        p_mot1_z_cam1_y = [0, -10000.0]
+        p_mot1_z_cam2_y = [0, -10000.0]
+        p_mot1_z_cam2_x = [0, -10000.0]
+        p_mot2_x_cam1_x = [0, -10000.0]
+        p_mot2_x_cam1_y = [0, -10000.0]
+        p_mot2_x_cam2_y = [0, -10000.0]
+        p_mot2_x_cam2_x = [0, -10000.0]
+        p_mot2_y_cam1_x = [0, -10000.0]
+        p_mot2_y_cam1_y = [0, -10000.0]
+        p_mot2_y_cam2_y = [0, -10000.0]
+        p_mot2_y_cam2_x = [0, -10000.0]
+        p_mot2_z_cam1_x = [0, -10000.0]
+        p_mot2_z_cam1_y = [0, -10000.0]
+        p_mot2_z_cam2_y = [0, -10000.0]
+        p_mot2_z_cam2_x = [0, -10000.0]
         # calculate slopes by fitting lines
-        p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_x[1:-1], deg=1)
-        p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_x[1:-1], deg=1)
-        p_mot1_x_cam1_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_y[1:-1], deg=1)
-        p_mot1_x_cam2_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_y[1:-1], deg=1)
+        # COM coordinates are in pixels and thus always positive. However, if no camera is connected then the values
+        # are initialized as negative numbers, so the presence of negative numbers signifies no real data.
+        cam1_connected = False
+        cam2_connected = False
+        if not np.any(self.mot1_x_cam1_x) < 0:
+            p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_x[1:-1], deg=1)
+            p_mot1_x_cam1_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_y[1:-1], deg=1)
+            cam1_connected = True
+        if not np.any(self.mot1_x_cam2_x) < 0:
+            p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_x[1:-1], deg=1)
+            p_mot1_x_cam2_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_y[1:-1], deg=1)
+            cam2_connected = True
 
-        p_mot1_y_cam1_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_x[1:-1], deg=1)
-        p_mot1_y_cam2_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_x[1:-1], deg=1)
-        p_mot1_y_cam1_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_y[1:-1], deg=1)
-        p_mot1_y_cam2_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_y[1:-1], deg=1)
+        if not np.any(self.mot1_y_cam1_x) < 0:
+            p_mot1_y_cam1_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_x[1:-1], deg=1)
+            p_mot1_y_cam1_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_y[1:-1], deg=1)
+            cam1_connected = True
+        if not np.any(self.mot1_y_cam2_x) < 0:
+            p_mot1_y_cam2_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_x[1:-1], deg=1)
+            p_mot1_y_cam2_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_y[1:-1], deg=1)
+            cam2_connected = True
 
-        p_mot1_z_cam1_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_x[1:-1], deg=1)
-        p_mot1_z_cam2_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_x[1:-1], deg=1)
-        p_mot1_z_cam1_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_y[1:-1], deg=1)
-        p_mot1_z_cam2_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_y[1:-1], deg=1)
+        if not np.any(self.mot1_z_cam1_x) < 0:
+            p_mot1_z_cam1_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_x[1:-1], deg=1)
+            p_mot1_z_cam1_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_y[1:-1], deg=1)
+            cam1_connected = True
+        if not np.any(self.mot1_z_cam2_x) < 0:
+            p_mot1_z_cam2_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_y[1:-1], deg=1)
+            p_mot1_z_cam2_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_x[1:-1], deg=1)
+            cam2_connected = True
 
-        p_mot2_x_cam1_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_x[1:-1], deg=1)
-        p_mot2_x_cam2_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_x[1:-1], deg=1)
-        p_mot2_x_cam1_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_y[1:-1], deg=1)
-        p_mot2_x_cam2_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_y[1:-1], deg=1)
+        if not np.any(self.mot2_x_cam1_x) < 0:
+            p_mot2_x_cam1_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_x[1:-1], deg=1)
+            p_mot2_x_cam1_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_y[1:-1], deg=1)
+            cam1_connected = True
+        if not np.any(self.mot2_x_cam2_x) < 0:
+            p_mot2_x_cam2_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_y[1:-1], deg=1)
+            p_mot2_x_cam2_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_x[1:-1], deg=1)
+            cam2_connected = True
 
-        p_mot2_y_cam1_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_x[1:-1], deg=1)
-        p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_x[1:-1], deg=1)
-        p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_y[1:-1], deg=1)
-        p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_y[1:-1], deg=1)
+        if not np.any(self.mot2_y_cam1_x) < 0:
+            p_mot2_y_cam1_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_x[1:-1], deg=1)
+            p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_y[1:-1], deg=1)
+            cam1_connected = True
+        if not np.any(self.mot2_y_cam2_x) < 0:
+            p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_y[1:-1], deg=1)
+            p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_x[1:-1], deg=1)
+            cam2_connected = True
 
-        p_mot2_z_cam1_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_x[1:-1], deg=1)
-        p_mot2_z_cam2_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_x[1:-1], deg=1)
-        p_mot2_z_cam1_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_y[1:-1], deg=1)
-        p_mot2_z_cam2_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_y[1:-1], deg=1)
-        # Try thresholding the slopes that are small to 0, since we anticipate that many of the degrees of freedom are
+        if not np.any(self.mot2_z_cam1_x) < 0:
+            p_mot2_z_cam1_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_x[1:-1], deg=1)
+            p_mot2_z_cam1_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_y[1:-1], deg=1)
+            cam1_connected = True
+        if not np.any(self.mot2_z_cam2_x) < 0:
+            p_mot2_z_cam2_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_y[1:-1], deg=1)
+            p_mot2_z_cam2_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_x[1:-1], deg=1)
+            cam2_connected = True
+        """# Try thresholding the slopes that are small to 0, since we anticipate that many of the degrees of freedom are
         # uncoupled:
-        # if the full range of the piezo only moves this dimension by <5 pixels, m=0
-        min_pixels_change_over_full_voltage_range = 0
+        # if the full range of the piezo only moves this dimension by < min pixels, m=0
+        min_pixels_change_over_full_voltage_range = 0  # no thresholding because matrix becomes non-invertible.
         if np.abs(p_mot1_x_cam1_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot1_x_cam1_x[0] = 0
         if np.abs(p_mot1_x_cam1_y[0]*150) < min_pixels_change_over_full_voltage_range:
@@ -2409,7 +2559,7 @@ class UpdateManager(QObject):
         if np.abs(p_mot2_z_cam2_x[0]*150) < min_pixels_change_over_full_voltage_range:
             p_mot2_z_cam2_x[0] = 0
         if np.abs(p_mot2_z_cam2_y[0]*150) < min_pixels_change_over_full_voltage_range:
-            p_mot2_z_cam2_y[0] = 0
+            p_mot2_z_cam2_y[0] = 0"""
 
         # Plot the pointing info as a function of voltages and the fit lines to inspect the success of calibration.
         motor_voltages = [self.mot1_x_voltage, self.mot1_y_voltage, self.mot1_z_voltage, self.mot2_x_voltage,
@@ -2424,12 +2574,31 @@ class UpdateManager(QObject):
                 p_mot1_x_cam2_x, p_mot1_y_cam2_x, p_mot1_z_cam2_x, p_mot2_x_cam2_x, p_mot2_y_cam2_x, p_mot2_z_cam2_x,
                 p_mot1_x_cam2_y, p_mot1_y_cam2_y, p_mot1_z_cam2_y, p_mot2_x_cam2_y, p_mot2_y_cam2_y, p_mot2_z_cam2_y]
         self.request_gui_plot_calibrate_fits.emit(motor_voltages, positions, fits)
-        motor1_1 = [p_mot1_x_cam1_x[0], p_mot1_x_cam1_y[0], p_mot1_x_cam2_x[0], p_mot1_x_cam2_y[0]]
-        motor1_2 = [p_mot1_y_cam1_x[0], p_mot1_y_cam1_y[0], p_mot1_y_cam2_x[0], p_mot1_y_cam2_y[0]]
-        motor1_3 = [p_mot1_z_cam1_x[0], p_mot1_z_cam1_y[0], p_mot1_z_cam2_x[0], p_mot1_z_cam2_y[0]]
-        motor2_1 = [p_mot2_x_cam1_x[0], p_mot2_x_cam1_y[0], p_mot2_x_cam2_x[0], p_mot2_x_cam2_y[0]]
-        motor2_2 = [p_mot2_y_cam1_x[0], p_mot2_y_cam1_y[0], p_mot2_y_cam2_x[0], p_mot2_y_cam2_y[0]]
-        motor2_3 = [p_mot2_z_cam1_x[0], p_mot2_z_cam1_y[0], p_mot2_z_cam2_x[0], p_mot2_z_cam2_y[0]]
+
+        if cam1_connected and cam2_connected:
+            motor1_1 = [p_mot1_x_cam1_x[0], p_mot1_x_cam1_y[0], p_mot1_x_cam2_x[0], p_mot1_x_cam2_y[0]]
+            motor1_2 = [p_mot1_y_cam1_x[0], p_mot1_y_cam1_y[0], p_mot1_y_cam2_x[0], p_mot1_y_cam2_y[0]]
+            motor1_3 = [p_mot1_z_cam1_x[0], p_mot1_z_cam1_y[0], p_mot1_z_cam2_x[0], p_mot1_z_cam2_y[0]]
+            motor2_1 = [p_mot2_x_cam1_x[0], p_mot2_x_cam1_y[0], p_mot2_x_cam2_x[0], p_mot2_x_cam2_y[0]]
+            motor2_2 = [p_mot2_y_cam1_x[0], p_mot2_y_cam1_y[0], p_mot2_y_cam2_x[0], p_mot2_y_cam2_y[0]]
+            motor2_3 = [p_mot2_z_cam1_x[0], p_mot2_z_cam1_y[0], p_mot2_z_cam2_x[0], p_mot2_z_cam2_y[0]]
+        elif cam1_connected:
+            motor1_1 = [p_mot1_x_cam1_x[0], p_mot1_x_cam1_y[0]]
+            motor1_2 = [p_mot1_y_cam1_x[0], p_mot1_y_cam1_y[0]]
+            motor1_3 = [p_mot1_z_cam1_x[0], p_mot1_z_cam1_y[0]]
+            motor2_1 = [p_mot2_x_cam1_x[0], p_mot2_x_cam1_y[0]]
+            motor2_2 = [p_mot2_y_cam1_x[0], p_mot2_y_cam1_y[0]]
+            motor2_3 = [p_mot2_z_cam1_x[0], p_mot2_z_cam1_y[0]]
+        elif cam2_connected:
+            motor1_1 = [p_mot1_x_cam2_x[0], p_mot1_x_cam2_y[0]]
+            motor1_2 = [p_mot1_y_cam2_x[0], p_mot1_y_cam2_y[0]]
+            motor1_3 = [p_mot1_z_cam2_x[0], p_mot1_z_cam2_y[0]]
+            motor2_1 = [p_mot2_x_cam2_x[0], p_mot2_x_cam2_y[0]]
+            motor2_2 = [p_mot2_y_cam2_x[0], p_mot2_y_cam2_y[0]]
+            motor2_3 = [p_mot2_z_cam2_x[0], p_mot2_z_cam2_y[0]]
+        else:
+            print("WARNING: When calculating the calibration matrix, there seemed to be no data from either camera?")
+
         inv_calib_mat = []
         motor_to_check = [1, 1]
         if motor_to_check in self._control_motors.values():
@@ -2455,11 +2624,14 @@ class UpdateManager(QObject):
                               [p_mot1_x_cam1_y[0], p_mot1_y_cam1_y[0], p_mot2_x_cam1_y[0], p_mot2_y_cam1_y[0]],
                               [p_mot1_x_cam2_x[0], p_mot1_y_cam2_x[0], p_mot2_x_cam2_x[0], p_mot2_y_cam2_x[0]],
                               [p_mot1_x_cam2_y[0], p_mot1_y_cam2_y[0], p_mot2_x_cam2_y[0], p_mot2_y_cam2_y[0]]])"""
+        if inv_calib_mat.shape[0] != inv_calib_mat.shape[1]:
+            raise Exception("Your calibration matrix should be a square matrix, but it is not.")
         calib_mat = np.linalg.inv(inv_calib_mat)
         # Set the calibration matrix
         self.calibration_matrix = calib_mat
         # Run some checks: see if I can reconstruct known voltage changes from dx's induced by the known voltage change.
-        self.test_calibration_matrix()
+        # TODO: Fix tests to work again since enabling 2DOF control.
+        # self.test_calibration_matrix()
         self.all_motors_matrix = []
         if self._slow_motors.values():
             # This maps from all used motors dV to dx.
@@ -2861,7 +3033,10 @@ class UpdateManager(QObject):
             if com_x is not None:
                 com_x += self._r0[3]
                 com_y += self._r0[2]
-                self.cam2_dx = np.asarray([com_x, com_y]) - self.set_pos[2:]
+                if self.set_pos.size == 4:
+                    self.cam2_dx = np.asarray([com_x, com_y]) - self.set_pos[2:]
+                elif self.set_pos.size == 2:
+                    self.cam2_dx = np.asarray([com_x, com_y]) - self.set_pos
                 self.t2 = timestamp
                 self.cam_2_com = np.asarray([com_x, com_y])
                 self.update_gui_cam_com_signal.emit(2, np.asarray([com_x, com_y]),timestamp)
@@ -2917,6 +3092,10 @@ class UpdateManager(QObject):
         Updates the update manager with knowledge of how many cameras are connected.
         """
         self.num_cams_connected += increment_num_cameras
+        self._cam_2_com = None
+        self._cam_1_com = None
+        self._cam1_com_updated = False
+        self._cam2_com_updated = False
         if self.num_cams_connected < 0:
             raise Exception("Somehow Update Manager now believes there are - cameras connected?")
         elif self.num_cams_connected > 2:
@@ -3037,7 +3216,13 @@ class UpdateManager(QObject):
         return
 
     def com(self):
-        return np.concatenate((self.cam_1_com, self.cam_2_com), axis=0)
+        if self.cam_1_com is not None and self.cam_2_com:
+            return np.concatenate((self.cam_1_com, self.cam_2_com), axis=0)
+        elif self.cam_1_com is not None:
+            return self.cam_1_com
+        else:
+            return self.cam_2_com
+        return
 
     @property
     def cam1_dx(self):

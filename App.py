@@ -10,7 +10,7 @@ from PyQt5 import QtGui
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThread, QTimer, QMetaObject, Qt, Q_ARG, QObject
 from packages.GUI import Ui_MainWindow
 from packages.cameras import MightexEngine, MightexCamera, Boson, BlackflyS
-from packages.exceptions import DeviceNotFoundError
+from packages.exceptions import DeviceNotFoundError, InsufficientInformation
 from packages.motors import MDT693AMotor
 from packages.temperature_logger import QTemperatureLogger
 from packages import PIDUpdateManager as UpdateManager
@@ -179,12 +179,12 @@ class Window(QMainWindow, Ui_MainWindow):
         # Initialize global variables for tracking pointing
         self.cam1_r0 = np.array([0, 0])
         self.cam2_r0 = np.array([0, 0])
-        self.cam1_x = np.zeros(1)
-        self.cam1_y = np.zeros(1)
-        self.cam1_t = np.zeros(1)
-        self.cam2_x = np.zeros(1)
-        self.cam2_y = np.zeros(1)
-        self.cam2_t = np.zeros(1)
+        self.cam1_x = np.array([])
+        self.cam1_y = np.array([])
+        self.cam1_t = np.array([])
+        self.cam2_x = np.array([])
+        self.cam2_y = np.array([])
+        self.cam2_t = np.array([])
         self.cam1_x_PlotItem = self.gv_cam_xy.addPlot(row=0, col=0, labels={'left': 'Cam 1 X', 'bottom': 'time (ms)'})
         self.cam1_y_PlotItem = self.gv_cam_xy.addPlot(row=1, col=0, labels={'left': 'Cam 1 Y', 'bottom': 'time (ms)'})
         self.cam2_x_PlotItem = self.gv_cam_xy.addPlot(row=2, col=0, labels={'left': 'Cam 2 X', 'bottom': 'time (ms)'})
@@ -677,15 +677,28 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Set update manager control and slow motors with GUI inputs
         """
-
-        cm_1 = self.get_motor_num_channel_num(str(self.cb_control_motor_1.currentText()))
-        cm_2 = self.get_motor_num_channel_num(str(self.cb_control_motor_2.currentText()))
-        cm_3 = self.get_motor_num_channel_num(str(self.cb_control_motor_3.currentText()))
-        cm_4 = self.get_motor_num_channel_num(str(self.cb_control_motor_4.currentText()))
-        control_motors = {0: cm_1, 1: cm_2, 2: cm_3, 3: cm_4}
+        control_motor = []
+        cm1_selection = str(self.cb_control_motor_1.currentText())
+        if 'None' not in cm1_selection:
+            control_motor.append(self.get_motor_num_channel_num(cm1_selection))
+        cm2_selection = str(self.cb_control_motor_2.currentText())
+        if 'None' not in cm2_selection:
+            control_motor.append(self.get_motor_num_channel_num(cm2_selection))
+        cm3_selection = str(self.cb_control_motor_3.currentText())
+        if 'None' not in cm3_selection:
+            control_motor.append(self.get_motor_num_channel_num(cm3_selection))
+        cm4_selection = str(self.cb_control_motor_4.currentText())
+        if 'None' not in cm4_selection:
+            control_motor.append(self.get_motor_num_channel_num(cm4_selection))
+        if not len(control_motor) >= 2:
+            raise NotImplementedError("You must choose at least two control degrees of freedom.")
+        control_motors = {}
+        for i, cm in enumerate(control_motor):
+            control_motors[i] = cm
         slow_motor_selection_1 = str(self.cb_slow_motor_1.currentText())
         slow_motor_selection_2 = str(self.cb_slow_motor_2.currentText())
         if 'None' not in slow_motor_selection_1 and 'None' not in slow_motor_selection_2:
+            # Code only works with 2 DOF for slow motor. Have not generalized to any number of DOF.
             sm_1 = self.get_motor_num_channel_num(slow_motor_selection_1)
             sm_2 = self.get_motor_num_channel_num(slow_motor_selection_2)
             slow_motors = {0: sm_1, 1: sm_2}
@@ -1049,6 +1062,9 @@ class Window(QMainWindow, Ui_MainWindow):
         Find available motors and populate the GUI list with them.
         """
         num_motors = 0
+        # Add None selection for motor and motor channels.
+        self.motor_model.appendRow(QtGui.QStandardItem(str(None)))
+        self.motor_model_channel_num.appendRow(QtGui.QStandardItem(str(None)))
         # Find all MDT693B motors
         # Using the Thorlabs SDK is known to throw an error when too many devices are connected to the computer.
         num_motors += self.find_MDT693B()
@@ -1315,13 +1331,26 @@ class Window(QMainWindow, Ui_MainWindow):
             try:
                 HomePosition = np.loadtxt('Most_Recent_Home.txt', dtype=float)
                 self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
-                self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+                if len(HomePosition) == 4:
+                    self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+                elif len(HomePosition) == 2:
+                    if self.cam1 is not None and self.cam2 is None:
+                        self.set_cam1_x, self.set_cam1_y = HomePosition
+                        self.set_cam2_x = None
+                        self.set_cam2_y = None
+                    elif self.cam2 is not None and self.cam1 is None:
+                        self.set_cam2_x, self.set_cam2_y = HomePosition
+                        self.set_cam1_x = None
+                        self.set_cam1_y = None
+                    else:
+                        raise InsufficientInformation("The home position loaded has 2 coordinates but you do not "
+                                                      "only 1 camera connected to associate those coordinates with.")
                 self.set_home_marker()
             except OSError:
-                self.set_cam1_x = 'dummy'
-                self.set_cam1_y = 'dummy'
-                self.set_cam2_x = 'dummy'
-                self.set_cam2_y = 'dummy'
+                self.set_cam1_x = None
+                self.set_cam1_y = None
+                self.set_cam2_x = None
+                self.set_cam2_y = None
                 print("Hmm there seems to be no saved Home Position, define one before locking.")
 
         elif int(self.cb_SystemSelection.currentIndex()) == 2:
@@ -1329,13 +1358,26 @@ class Window(QMainWindow, Ui_MainWindow):
             try:
                 HomePosition = np.loadtxt('Most_Recent_Home_IR.txt', dtype=float)
                 self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
-                self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+                if len(HomePosition) == 4:
+                    self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+                elif len(HomePosition) == 2:
+                    if self.cam1 is not None and self.cam2 is None:
+                        self.set_cam1_x, self.set_cam1_y = HomePosition
+                        self.set_cam2_x = None
+                        self.set_cam2_y = None
+                    elif self.cam2 is not None and self.cam1 is None:
+                        self.set_cam2_x, self.set_cam2_y = HomePosition
+                        self.set_cam1_x = None
+                        self.set_cam1_y = None
+                    else:
+                        raise InsufficientInformation("The home position loaded has 2 coordinates but you do not "
+                                                      "only 1 camera connected to associate those coordinates with.")
                 self.set_home_marker()
             except OSError:
-                self.set_cam1_x = 'dummy'
-                self.set_cam1_y = 'dummy'
-                self.set_cam2_x = 'dummy'
-                self.set_cam2_y = 'dummy'
+                self.set_cam1_x = None
+                self.set_cam1_y = None
+                self.set_cam2_x = None
+                self.set_cam2_y = None
                 print("Hmm there seems to be no saved Home Position, define one before locking.")
         else:
             print("Choose a system!")
@@ -1493,6 +1535,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1.gain_updated_signal.connect(lambda gain: self.update_cam_gain(1, gain))
             self.cam1.destroyed.connect(lambda args: self.reconnect_cameras(1))
             self.cam1.destroyed.connect(lambda args: self.update_UpdateManager_num_cameras_connected_signal.emit(-1))
+            self.cam1.destroyed.connect(lambda: self.clear_camera_pointing_data(1))
             self.cam1.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=1))
             self.cam1.request_update_timer_interval_signal.connect(
                 lambda interval, fps: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
@@ -1542,6 +1585,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam2.gain_updated_signal.connect(lambda gain: self.update_cam_gain(2, gain))
             self.cam2.destroyed.connect(lambda args: self.reconnect_cameras(2))
             self.cam2.destroyed.connect(lambda args: self.update_UpdateManager_num_cameras_connected_signal.emit(-1))
+            self.cam2.destroyed.connect(lambda: self.clear_camera_pointing_data(2))
             self.cam2.ROI_applied.connect(lambda flag: self.update_cam_ROI_set(flag, cam_num=2))
             self.cam2.request_update_timer_interval_signal.connect(
                 lambda interval, fps: QMetaObject.invokeMethod(self.UpdateManager, 'update_cam_timer_interval',
@@ -1553,6 +1597,21 @@ class Window(QMainWindow, Ui_MainWindow):
                                                                           Qt.QueuedConnection, Q_ARG(int, 2),
                                                                           Q_ARG(int, frame_width),
                                                                           Q_ARG(int, frame_height)))
+        return
+
+    @pyqtSlot(int)
+    def clear_camera_pointing_data(self, cam_num):
+        """
+        Clear the pointing data associated with one of the cameras, because that camera was disconnected.
+        """
+        if cam_num == 1:
+            self.cam1_x = np.array([])
+            self.cam1_y = np.array([])
+            self.cam1_t = np.array([])
+        elif cam_num == 2:
+            self.cam2_x = np.array([])
+            self.cam2_y = np.array([])
+            self.cam2_t = np.array([])
         return
 
     def connect_mightex_signals(self):
@@ -2140,17 +2199,14 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Tell the update manager to connect the motors.
         """
-        if self.cb_motors_1.currentData(0) != self.cb_motors_2.currentData(0):
-            if "MDT693B" in self.cb_motors_1.currentData(0):
-                self.connect_motor_signal.emit(1, self.cb_motors_1.currentData(0))
-            elif 'MDT693A' in self.cb_motors_1.currentData(0):
-                self.connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
-            if "MDT693B" in self.cb_motors_2.currentData(0):
-                self.connect_motor_signal.emit(2, self.cb_motors_2.currentData(0))
-            elif 'MDT693A' in self.cb_motors_2.currentData(0):
-                self.connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
-        else:
-            print("Connect 2 distinct motors!")
+        if "MDT693B" in self.cb_motors_1.currentData(0):
+            self.connect_motor_signal.emit(1, self.cb_motors_1.currentData(0))
+        elif 'MDT693A' in self.cb_motors_1.currentData(0):
+            self.connect_motor_signal.emit(1, str(self.cb_motors_1.currentData(0)))
+        if "MDT693B" in self.cb_motors_2.currentData(0):
+            self.connect_motor_signal.emit(2, self.cb_motors_2.currentData(0))
+        elif 'MDT693A' in self.cb_motors_2.currentData(0):
+            self.connect_motor_signal.emit(2, str(self.cb_motors_2.currentData(0)))
         return
 
     @pyqtSlot()
@@ -2160,8 +2216,10 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         self.cam1_x = np.array([])
         self.cam1_y = np.array([])
+        self.cam1_t = np.array([])
         self.cam2_x = np.array([])
         self.cam2_y = np.array([])
+        self.cam2_t = np.array([])
         return
 
     @pyqtSlot()
@@ -2213,16 +2271,32 @@ class Window(QMainWindow, Ui_MainWindow):
         Capture current pointing position and define it as home position. Save it accordingly.
         """
         if self.cam1_thread is not None and self.cam2_thread is not None:
-            self.set_cam1_x = self.cam1_x[-1]
-            self.set_cam1_y = self.cam1_y[-1]
-            self.set_cam2_x = self.cam2_x[-1]
-            self.set_cam2_y = self.cam2_y[-1]
+            if self.cam1_x.size != 0:
+                self.set_cam1_x = self.cam1_x[-1]
+                self.set_cam1_y = self.cam1_y[-1]
+            else:
+                self.set_cam1_x = None
+                self.set_cam1_y = None
+            if self.cam2_x.size != 0:
+                self.set_cam2_x = self.cam2_x[-1]
+                self.set_cam2_y = self.cam2_y[-1]
+            else:
+                self.set_cam2_x = None
+                self.set_cam2_y = None
             print('Set cam 1 x', self.set_cam1_x)
             print('Set cam 1 y', self.set_cam1_y)
             print('Set cam 2 x', self.set_cam2_x)
             print('Set cam 2 y', self.set_cam2_y)
-            HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
-            self.set_UpdateManager_home_signal.emit(HomePosition)
+            if self.set_cam1_x is not None and self.set_cam2_x is not None:
+                HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
+            elif self.set_cam1_x is not None:
+                HomePosition = np.array([self.set_cam1_x, self.set_cam1_y])
+            elif self.set_cam2_x is not None:
+                HomePosition = np.array([self.set_cam2_x, self.set_cam2_y])
+            else:
+                raise InsufficientInformation("Do you have any cameras connected? It seems no pointing data is "
+                                              "collected.")
+            self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
             self.set_home_marker()
             # Ensure that HomePositionStored folder exists.
             current_path = os.getcwd()
@@ -2236,13 +2310,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
                 filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
                 np.savetxt(filename, HomePosition, fmt='%f')
-            try:
-                self.ROICam1_Unlock.setVisible(False)
-                self.ROICam2_Unlock.setVisible(False)
-                self.ROICam1_Lock.setVisible(False)
-                self.ROICam2_Lock.setVisible(False)
-            except:
-                pass
         return
 
     @pyqtSlot()
@@ -2261,16 +2328,22 @@ class Window(QMainWindow, Ui_MainWindow):
             HomePosition = np.loadtxt(file_path, dtype=float)
             np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
         self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
-        self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+        if len(HomePosition) == 4:
+            self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y = HomePosition
+        elif len(HomePosition) == 2:
+            if self.cam1 is not None and self.cam2 is None:
+                self.set_cam1_x, self.set_cam1_y = HomePosition
+                self.set_cam2_x = None
+                self.set_cam2_y = None
+            elif self.cam2 is not None and self.cam1 is None:
+                self.set_cam2_x, self.set_cam2_y = HomePosition
+                self.set_cam1_x = None
+                self.set_cam1_y = None
+            else:
+                raise InsufficientInformation("The home position loaded has 2 coordinates but you do not "
+                                              "only 1 camera connected to associate those coordinates with.")
         self.set_home_marker()
         print("Set Positions:", HomePosition)
-        try:
-            self.ROICam1_Unlock.setVisible(False)
-            self.ROICam2_Unlock.setVisible(False)
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-        except:
-            pass
         return
 
     def set_home_marker(self):
@@ -2283,68 +2356,81 @@ class Window(QMainWindow, Ui_MainWindow):
             # Remove the old one and delete the old one.
             self.gv_camera1.removeItem(self.ROICam1_Unlock)
             del self.ROICam1_Unlock
-        # Make the updated ROI's for unlock display
-        self.ROICam1_Unlock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
-                                      movable=False, rotatable=False, resizable=False, pen=pen)
+        if self.set_cam1_y is not None:
+            # Make the updated ROI's for unlock display
+            self.ROICam1_Unlock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
+                                          movable=False, rotatable=False, resizable=False, pen=pen)
+            # Add the updated ROIS to the camera view items.
+            self.gv_camera1.addItem(self.ROICam1_Unlock)
 
         if self.ROICam2_Unlock is not None:
             # Remove the old one and delete the old one.
             self.gv_camera2.getView().removeItem(self.ROICam2_Unlock)
             del self.ROICam2_Unlock
-        # Make the updated ROI's for unlock display
-        self.ROICam2_Unlock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
-                                      movable=False, rotatable=False, resizable=False, pen=pen)
-        # Add the updated ROIS to the camera view items.
-        self.gv_camera1.addItem(self.ROICam1_Unlock)
-        self.gv_camera2.getView().addItem(self.ROICam2_Unlock)
+        if self.set_cam2_x is not None:
+            # Make the updated ROI's for unlock display
+            self.ROICam2_Unlock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
+                                          movable=False, rotatable=False, resizable=False, pen=pen)
+            # Add the updated ROIS to the camera view items.
+            self.gv_camera2.getView().addItem(self.ROICam2_Unlock)
         pen = pg.mkPen(color=(0, 255, 0), width=2)
         if self.ROICam1_Lock is not None:
             # Remove the old one and delete the old one.
             self.gv_camera1.removeItem(self.ROICam1_Lock)
             del self.ROICam1_Lock
-        # Make updated Lock ROI.
-        self.ROICam1_Lock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
-                                    movable=False, rotatable=False, resizable=False, pen=pen)
+        if self.set_cam1_x is not None:
+            # Make updated Lock ROI.
+            self.ROICam1_Lock = pg.CircleROI(pos=(self.set_cam1_y - 20, self.set_cam1_x - 20), radius=20,
+                                        movable=False, rotatable=False, resizable=False, pen=pen)
+            # Add the updated Lock icons to the camera views
+            self.gv_camera1.addItem(self.ROICam1_Lock)
         if self.ROICam2_Lock is not None:
             # Remove the old one and delete the old one.
             self.gv_camera2.getView().removeItem(self.ROICam2_Lock)
             del self.ROICam2_Lock
-        # Make updated Lock ROI.
-        self.ROICam2_Lock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
-                                    movable=False, rotatable=False, resizable=False, pen=pen)
-        # Add the updated Lock icons to the camera views
-        self.gv_camera1.addItem(self.ROICam1_Lock)
-        self.gv_camera2.getView().addItem(self.ROICam2_Lock)
+        if self.set_cam2_x is not None:
+            # Make updated Lock ROI.
+            self.ROICam2_Lock = pg.CircleROI(pos=(self.set_cam2_y - 20, self.set_cam2_x - 20), radius=20,
+                                        movable=False, rotatable=False, resizable=False, pen=pen)
+            # Add the updated Lock icons to the camera views
+            self.gv_camera2.getView().addItem(self.ROICam2_Lock)
 
         # Update the COM line plots to show the target position as an infinite line item.
-        if self.cam1_x_set_line is None:
-            self.cam1_x_set_line = self.cam1_x_PlotItem.addLine(y=self.set_cam1_x)
-        else:
-            self.cam1_x_set_line.setValue(self.set_cam1_x)
-        if self.cam1_y_set_line is None:
-            self.cam1_y_set_line = self.cam1_y_PlotItem.addLine(y=self.set_cam1_y)
-        else:
-            self.cam1_y_set_line.setValue(self.set_cam1_y)
-        if self.cam2_x_set_line is None:
-            self.cam2_x_set_line = self.cam2_x_PlotItem.addLine(y=self.set_cam2_x)
-        else:
-            self.cam2_x_set_line.setValue(self.set_cam2_x)
-        if self.cam2_y_set_line is None:
-            self.cam2_y_set_line = self.cam2_y_PlotItem.addLine(y=self.set_cam2_y)
-        else:
-            self.cam2_y_set_line.setValue(self.set_cam2_y)
+        if self.set_cam1_x is not None:
+            # If cam 1 exists there is an x and a y likewise for cam 2.
+            if self.cam1_x_set_line is None:
+                self.cam1_x_set_line = self.cam1_x_PlotItem.addLine(y=self.set_cam1_x)
+            else:
+                self.cam1_x_set_line.setValue(self.set_cam1_x)
+            if self.cam1_y_set_line is None:
+                self.cam1_y_set_line = self.cam1_y_PlotItem.addLine(y=self.set_cam1_y)
+            else:
+                self.cam1_y_set_line.setValue(self.set_cam1_y)
+        if self.set_cam2_x is not None:
+            if self.cam2_x_set_line is None:
+                self.cam2_x_set_line = self.cam2_x_PlotItem.addLine(y=self.set_cam2_x)
+            else:
+                self.cam2_x_set_line.setValue(self.set_cam2_x)
+            if self.cam2_y_set_line is None:
+                self.cam2_y_set_line = self.cam2_y_PlotItem.addLine(y=self.set_cam2_y)
+            else:
+                self.cam2_y_set_line.setValue(self.set_cam2_y)
 
         # Set the visibility of the lock icon correctly
         if not self.btn_lock.isChecked():  # Then, the program is not locking.
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-            self.ROICam1_Unlock.setVisible(True)
-            self.ROICam2_Unlock.setVisible(True)
+            if self.set_cam1_x is not None:
+                self.ROICam1_Lock.setVisible(False)
+                self.ROICam1_Unlock.setVisible(True)
+            if self.set_cam2_x is not None:
+                self.ROICam2_Lock.setVisible(False)
+                self.ROICam2_Unlock.setVisible(True)
         elif self.btn_lock.isChecked():  # Then, the program is locking.
-            self.ROICam1_Unlock.setVisible(False)
-            self.ROICam2_Unlock.setVisible(False)
-            self.ROICam1_Lock.setVisible(True)
-            self.ROICam2_Lock.setVisible(True)
+            if self.set_cam1_x is not None:
+                self.ROICam1_Unlock.setVisible(False)
+                self.ROICam1_Lock.setVisible(True)
+            if self.set_cam2_x is not None:
+                self.ROICam2_Lock.setVisible(True)
+                self.ROICam2_Unlock.setVisible(False)
         return
 
     def service_BOSON(self, cam_index):
