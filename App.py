@@ -655,7 +655,7 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Convert a given string indicating a motor/channel selection into a list of [motor_num, channel_num]
         """
-
+        cm = None
         if str(self.cb_motors_1.currentText()) in cm_selection:
             if '1' in cm_selection[-1]:
                 cm = [1, 1]
@@ -961,6 +961,8 @@ class Window(QMainWindow, Ui_MainWindow):
                 print('Relative change of calib matrix: ', RelativeChange)
             except FileNotFoundError:
                 pass
+            except ValueError:
+                pass
             with open("Most_Recent_Calibration.pkl", 'wb') as f:
                 pkl.dump(calibration_data, f)
             filename = "CalibrationMatrixStored/" + str(np.datetime64('today', 'D')) + "_Calib_data.pkl"
@@ -983,10 +985,16 @@ class Window(QMainWindow, Ui_MainWindow):
                 pkl.dump(calibration_data, f)
 
         # Update Lock circles accordingly.
-        self.ROICam1_Lock.setVisible(False)
-        self.ROICam2_Lock.setVisible(False)
-        self.ROICam1_Unlock.setVisible(True)
-        self.ROICam2_Unlock.setVisible(True)
+        try:
+            self.ROICam1_Lock.setVisible(False)
+            self.ROICam1_Unlock.setVisible(True)
+        except AttributeError:
+            pass
+        try:
+            self.ROICam2_Lock.setVisible(False)
+            self.ROICam2_Unlock.setVisible(True)
+        except AttributeError:
+            pass
         return
 
     def Update_GUI_PID(self):
@@ -1487,9 +1495,12 @@ class Window(QMainWindow, Ui_MainWindow):
         calibration matrix.
         """
         self.find_cameras()
-        self.load_recent_home()
         self.load_recent_calibration_matrix()
         self.update_gui_after_system_chosen()
+        try:
+            self.load_recent_home()
+        except InsufficientInformation:
+            pass
         return
 
     def connect_camera_signals(self, cam_number: int):
@@ -1661,7 +1672,7 @@ class Window(QMainWindow, Ui_MainWindow):
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                         self.mightex_engine.setup_mightex_engine_for_capture()
                         self.connect_mightex_signals()
-                    if self.mightex_engine.thread() == QObject.thread():
+                    if self.mightex_engine.thread() == QThread.currentThread:
                         print("Mightex Engine moved to appropriate thread")
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                     if not self.mightex_engine_thread.isRunning():
@@ -1696,7 +1707,7 @@ class Window(QMainWindow, Ui_MainWindow):
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                         self.mightex_engine.setup_mightex_engine_for_capture()
                         self.connect_mightex_signals()
-                    if self.mightex_engine.thread() == QObject.thread():
+                    if self.mightex_engine.thread() == QThread.currentThread:
                         print("Mightex Engine moved to appropriate thread")
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                     if not self.mightex_engine_thread.isRunning():
@@ -1819,10 +1830,13 @@ class Window(QMainWindow, Ui_MainWindow):
                 # Update max value of camera image:
                 self.le_cam1_max.setText(str(np.max(img)))
                 # Update COM crosshairs on the image:
-                self.cam1_x_line.setPos(self.cam1_x[-1])
-                self.cam1_y_line.setPos(self.cam1_y[-1])
-                self.cam1_x_line.setVisible(True)
-                self.cam1_y_line.setVisible(True)
+                try:
+                    self.cam1_x_line.setPos(self.cam1_x[-1])
+                    self.cam1_y_line.setPos(self.cam1_y[-1])
+                    self.cam1_x_line.setVisible(True)
+                    self.cam1_y_line.setVisible(True)
+                except IndexError:
+                    pass
             elif cam_num == 2:
                 if self.cam2_reset:
                     self.gv_camera2.setImage(img, autoRange=True, autoLevels=False, autoHistogramRange=False,
@@ -1834,10 +1848,14 @@ class Window(QMainWindow, Ui_MainWindow):
                 # Update max value of camera image:
                 self.le_cam2_max.setText(str(np.max(img)))
                 # Update COM crosshairs on the image:
-                self.cam2_x_line.setPos(self.cam2_x[-1])
-                self.cam2_y_line.setPos(self.cam2_y[-1])
-                self.cam2_x_line.setVisible(True)
-                self.cam2_y_line.setVisible(True)
+                try:
+                    self.cam2_x_line.setPos(self.cam2_x[-1])
+                    self.cam2_y_line.setPos(self.cam2_y[-1])
+                    self.cam2_x_line.setVisible(True)
+                    self.cam2_y_line.setVisible(True)
+                except IndexError:
+                    print("index error setting cam 2 cross hairs.")
+                    pass
         return
 
     @pyqtSlot(int, np.ndarray, float)
@@ -1893,20 +1911,29 @@ class Window(QMainWindow, Ui_MainWindow):
             self.update_gui_std(1)
             self.update_gui_std(2)
             if not self.suppress_pointing_display:
-                self.cam1_x_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_x)
-                self.cam1_y_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_y)
-                self.cam2_x_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_x)
-                self.cam2_y_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_y)
+                try:
+                    self.cam1_x_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_x)
+                    self.cam1_y_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_y)
+                    self.cam2_x_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_x)
+                    self.cam2_y_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_y)
+                except ValueError:
+                    print("Value error updating cam position plots.")
         elif self.cam1 is not None:
             self.update_gui_std(1)
             if not self.suppress_pointing_display:
-                self.cam1_x_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_x)
-                self.cam1_y_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_y)
+                try:
+                    self.cam1_x_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_x)
+                    self.cam1_y_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam1_y)
+                except ValueError:
+                    print("Value error updating cam position plots.")
         elif self.cam2 is not None:
             self.update_gui_std(2)
             if not self.suppress_pointing_display:
-                self.cam2_x_plot.setData(self.cam1_t-self.cam1_t.min(),self.cam2_x)
-                self.cam2_y_plot.setData(self.cam1_t-self.cam1_t.min(),self.cam2_y)
+                try:
+                    self.cam2_x_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam2_x)
+                    self.cam2_y_plot.setData(self.cam1_t-self.cam1_t.min(), self.cam2_y)
+                except ValueError:
+                    print("Value error updating cam position plots.")
         return
 
     def convert_img(self, img):
@@ -2086,7 +2113,7 @@ class Window(QMainWindow, Ui_MainWindow):
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                         self.mightex_engine.setup_mightex_engine_for_capture()
                         self.connect_mightex_signals()
-                    if self.mightex_engine.thread() == QObject.thread():
+                    if self.mightex_engine.thread() == QThread.currentThread():
                         print("Mightex Engine moved to appropriate thread")
                         self.mightex_engine.moveToThread(self.mightex_engine_thread)
                     if not self.mightex_engine_thread.isRunning():
@@ -2227,10 +2254,16 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Begin calibration. Update GUI and tell Update Manager to calibrate.
         """
-        self.ROICam1_Unlock.setVisible(False)
-        self.ROICam2_Unlock.setVisible(False)
-        self.ROICam1_Lock.setVisible(False)
-        self.ROICam2_Lock.setVisible(False)
+        try:
+            self.ROICam1_Unlock.setVisible(False)
+            self.ROICam1_Lock.setVisible(False)
+        except AttributeError:
+            pass
+        try:
+            self.ROICam2_Unlock.setVisible(False)
+            self.ROICam2_Lock.setVisible(False)
+        except AttributeError:
+            pass
         self.calibrate_signal.emit()
         return
 
@@ -2757,14 +2790,16 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             UI_Settings = {'cb_SystemSelection': self.cb_SystemSelection.currentIndex()}
-            UI_Settings['cb_cam1'] = self.cb_cam1.currentIndex()
-            UI_Settings['le_cam1_exp_time'] = self.le_cam1_exp_time.text()
-            UI_Settings['le_cam1_gain'] = self.le_cam1_gain.text()
-            UI_Settings['le_cam1_threshold'] = self.le_cam1_threshold.text()
-            UI_Settings['cb_cam2'] = self.cb_cam2.currentIndex()
-            UI_Settings['le_cam2_exp_time'] = self.le_cam2_exp_time.text()
-            UI_Settings['le_cam2_gain'] = self.le_cam2_gain.text()
-            UI_Settings['le_cam2_threshold'] = self.le_cam2_threshold.text()
+            if self.cam1 is not None:
+                UI_Settings['cb_cam1'] = self.cb_cam1.currentIndex()
+                UI_Settings['le_cam1_exp_time'] = self.le_cam1_exp_time.text()
+                UI_Settings['le_cam1_gain'] = self.le_cam1_gain.text()
+                UI_Settings['le_cam1_threshold'] = self.le_cam1_threshold.text()
+            if self.cam2 is not None:
+                UI_Settings['cb_cam2'] = self.cb_cam2.currentIndex()
+                UI_Settings['le_cam2_exp_time'] = self.le_cam2_exp_time.text()
+                UI_Settings['le_cam2_gain'] = self.le_cam2_gain.text()
+                UI_Settings['le_cam2_threshold'] = self.le_cam2_threshold.text()
             UI_Settings['cb_motors_1'] = self.cb_motors_1.currentIndex()
             UI_Settings['cb_motors_2'] = self.cb_motors_2.currentIndex()
             UI_Settings['le_P'] = self.le_P.text()
@@ -2806,17 +2841,25 @@ class Window(QMainWindow, Ui_MainWindow):
         if int(UI_Settings['cb_SystemSelection']) == 1:
             self.cb_SystemSelection.setCurrentIndex(UI_Settings['cb_SystemSelection'])
 
-            self.cb_cam1.setCurrentIndex(UI_Settings['cb_cam1'])
-            self.le_cam1_exp_time.setText(UI_Settings['le_cam1_exp_time'])
-            self.le_cam1_gain.setText(UI_Settings['le_cam1_gain'])
-            self.le_cam1_threshold.setText(UI_Settings['le_cam1_threshold'])
-            self.update_cam1_settings()
+            try:
+                self.cb_cam1.setCurrentIndex(UI_Settings['cb_cam1'])
+                self.le_cam1_exp_time.setText(UI_Settings['le_cam1_exp_time'])
+                self.le_cam1_gain.setText(UI_Settings['le_cam1_gain'])
+                self.le_cam1_threshold.setText(UI_Settings['le_cam1_threshold'])
+                self.update_cam1_settings()
+            except KeyError:
+                # presumably no cam1 was a part of the saved state.
+                pass
 
-            self.cb_cam2.setCurrentIndex(UI_Settings['cb_cam2'])
-            self.le_cam2_exp_time.setText(UI_Settings['le_cam2_exp_time'])
-            self.le_cam2_gain.setText(UI_Settings['le_cam2_gain'])
-            self.le_cam2_threshold.setText(UI_Settings['le_cam2_threshold'])
-            self.update_cam2_settings()
+            try:
+                self.cb_cam2.setCurrentIndex(UI_Settings['cb_cam2'])
+                self.le_cam2_exp_time.setText(UI_Settings['le_cam2_exp_time'])
+                self.le_cam2_gain.setText(UI_Settings['le_cam2_gain'])
+                self.le_cam2_threshold.setText(UI_Settings['le_cam2_threshold'])
+                self.update_cam2_settings()
+            except KeyError:
+                # ditto for cam 2.
+                pass
 
             self.cb_motors_1.setCurrentIndex(UI_Settings['cb_motors_1'])
             self.cb_motors_2.setCurrentIndex(UI_Settings['cb_motors_2'])
@@ -2826,6 +2869,8 @@ class Window(QMainWindow, Ui_MainWindow):
             self.le_Ti.setText(UI_Settings['le_Ti'])
             self.le_Td.setText(UI_Settings['le_Td'])
             self.update_PID()
+
+            self.load_recent_home
         elif int(UI_Settings['cb_SystemSelection']) == 2:
             pass
         self.btn_load_visible.setVisible(False)

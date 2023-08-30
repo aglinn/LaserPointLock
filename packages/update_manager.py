@@ -1532,12 +1532,12 @@ class UpdateManager(QObject):
             self.unlock_report["round " + str(self.unlock_counter) +
                             " of going out of piezzo range."]["Amount of time spent outside voltage "
                                                               "range"] = self.time_continually_unlocked
-            if np.linalg.norm(self.dx[-1]) > self.unlock_report["round " + str(self.unlock_counter) +
+            if np.linalg.norm(self.update_dx) > self.unlock_report["round " + str(self.unlock_counter) +
                                                                       " of going out of piezzo range."][
                 "Farthest dx during this round of unlock"]:
                 self.unlock_report["round " + str(self.unlock_counter) +
                                 " of going out of piezzo range."][
-                    "Farthest dx during this round of unlock"] = np.linalg.norm(self.dx[-1])
+                    "Farthest dx during this round of unlock"] = np.linalg.norm(self.update_dx)
         else:
             self.unlock_report = {}  # I will be passing each round rather than all unlock reports at once.
             self.first_unlock = False
@@ -1553,7 +1553,7 @@ class UpdateManager(QObject):
                                                                  "Amount of time spent outside voltage "
                                                                  "range": self.time_continually_unlocked,
                                                                  "Farthest dx during this round of unlock":
-                                                                     np.linalg.norm(self.dx[-1]),
+                                                                     np.linalg.norm(self.update_dx),
                                                                  "first unlocked at ": datetime.now()}
         self.update_gui_locking_update_out_of_bounds_signal.emit(self.unlock_report)
         return
@@ -1897,7 +1897,8 @@ class UpdateManager(QObject):
             raise InsufficientInformation("Need at least 4 motors selected for control. Somehow motor 1 channel 1 and 2"
                                           " and motor 2 channel 1 are not being used. Since there are 3 channels per "
                                           "motor there are 6 channels total and 3 are not in use. So, you need to use "
-                                          "at least 1 more channel. 4 control channels and up to 2 slow motor channels")''''
+                                          "at least 1 more channel. 4 control channels and up to 2 slow motor channels")
+        '''
         # Make sure no handler is connected to com_found_signal
         if self.com_found_signal_handler is not None:
             # Disconnect unwanted connections.
@@ -2450,56 +2451,56 @@ class UpdateManager(QObject):
         # are initialized as negative numbers, so the presence of negative numbers signifies no real data.
         cam1_connected = False
         cam2_connected = False
-        if not np.any(self.mot1_x_cam1_x) < 0:
+        if not np.any(self.mot1_x_cam1_x < 0):
             p_mot1_x_cam1_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_x[1:-1], deg=1)
             p_mot1_x_cam1_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam1_y[1:-1], deg=1)
             cam1_connected = True
-        if not np.any(self.mot1_x_cam2_x) < 0:
+        if not np.any(self.mot1_x_cam2_x < 0):
             p_mot1_x_cam2_x = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_x[1:-1], deg=1)
             p_mot1_x_cam2_y = np.polyfit(self.mot1_x_voltage[1:-1], self.mot1_x_cam2_y[1:-1], deg=1)
             cam2_connected = True
 
-        if not np.any(self.mot1_y_cam1_x) < 0:
+        if not np.any(self.mot1_y_cam1_x < 0):
             p_mot1_y_cam1_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_x[1:-1], deg=1)
             p_mot1_y_cam1_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam1_y[1:-1], deg=1)
             cam1_connected = True
-        if not np.any(self.mot1_y_cam2_x) < 0:
+        if not np.any(self.mot1_y_cam2_x < 0):
             p_mot1_y_cam2_x = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_x[1:-1], deg=1)
             p_mot1_y_cam2_y = np.polyfit(self.mot1_y_voltage[1:-1], self.mot1_y_cam2_y[1:-1], deg=1)
             cam2_connected = True
 
-        if not np.any(self.mot1_z_cam1_x) < 0:
+        if not np.any(self.mot1_z_cam1_x < 0):
             p_mot1_z_cam1_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_x[1:-1], deg=1)
             p_mot1_z_cam1_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam1_y[1:-1], deg=1)
             cam1_connected = True
-        if not np.any(self.mot1_z_cam2_x) < 0:
+        if not np.any(self.mot1_z_cam2_x < 0):
             p_mot1_z_cam2_y = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_y[1:-1], deg=1)
             p_mot1_z_cam2_x = np.polyfit(self.mot1_z_voltage[1:-1], self.mot1_z_cam2_x[1:-1], deg=1)
             cam2_connected = True
 
-        if not np.any(self.mot2_x_cam1_x) < 0:
+        if not np.any(self.mot2_x_cam1_x < 0):
             p_mot2_x_cam1_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_x[1:-1], deg=1)
             p_mot2_x_cam1_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam1_y[1:-1], deg=1)
             cam1_connected = True
-        if not np.any(self.mot2_x_cam2_x) < 0:
+        if not np.any(self.mot2_x_cam2_x < 0):
             p_mot2_x_cam2_y = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_y[1:-1], deg=1)
             p_mot2_x_cam2_x = np.polyfit(self.mot2_x_voltage[1:-1], self.mot2_x_cam2_x[1:-1], deg=1)
             cam2_connected = True
 
-        if not np.any(self.mot2_y_cam1_x) < 0:
+        if not np.any(self.mot2_y_cam1_x < 0):
             p_mot2_y_cam1_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_x[1:-1], deg=1)
             p_mot2_y_cam1_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam1_y[1:-1], deg=1)
             cam1_connected = True
-        if not np.any(self.mot2_y_cam2_x) < 0:
+        if not np.any(self.mot2_y_cam2_x < 0):
             p_mot2_y_cam2_y = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_y[1:-1], deg=1)
             p_mot2_y_cam2_x = np.polyfit(self.mot2_y_voltage[1:-1], self.mot2_y_cam2_x[1:-1], deg=1)
             cam2_connected = True
 
-        if not np.any(self.mot2_z_cam1_x) < 0:
+        if not np.any(self.mot2_z_cam1_x < 0):
             p_mot2_z_cam1_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_x[1:-1], deg=1)
             p_mot2_z_cam1_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam1_y[1:-1], deg=1)
             cam1_connected = True
-        if not np.any(self.mot2_z_cam2_x) < 0:
+        if not np.any(self.mot2_z_cam2_x < 0):
             p_mot2_z_cam2_y = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_y[1:-1], deg=1)
             p_mot2_z_cam2_x = np.polyfit(self.mot2_z_voltage[1:-1], self.mot2_z_cam2_x[1:-1], deg=1)
             cam2_connected = True
@@ -3308,7 +3309,9 @@ class UpdateManager(QObject):
         Therefore, this matrix can be used to update the motor voltages as New_V = Old_V - calib_mat*dx
         """
         self._calibration_matrix = matrix
-        self.get_dx_steps_for_find_best_udpate()
+        if matrix.shape[0] == 4:
+            # Otherwise assume that only 2DOF for control, so find_best_update makes no sense.
+            self.get_dx_steps_for_find_best_udpate()
         return
 
     @pyqtSlot(np.ndarray)
@@ -3378,6 +3381,8 @@ class UpdateManager(QObject):
         Set all motors matrix, and in the process set associated null vectors and null matricies.
         """
         self.all_motors_matrix = all_motors_matrix
+        if self.all_motors_matrix.size == 0:
+            return
         # These vectors tell me how I can move without impacting dx. useful for compensating with the slow motors.
         self.null_vectors = scipy.linalg.null_space(self.all_motors_matrix)
         self.null_vectors.reshape(6, int(self.null_vectors.size / 6))
