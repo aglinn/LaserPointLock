@@ -1085,7 +1085,6 @@ class Window(QMainWindow, Ui_MainWindow):
         self.cb_motors_1.setModel(self.motor_model)
         self.cb_motors_2.setModel(self.motor_model)
         # Update GUI with motor/channel options for control
-        # TODO: Give user None option for slow motor usage.
         self.cb_control_motor_1.setModel(self.motor_model_channel_num)
         self.cb_control_motor_2.setModel(self.motor_model_channel_num)
         self.cb_control_motor_3.setModel(self.motor_model_channel_num)
@@ -1093,14 +1092,17 @@ class Window(QMainWindow, Ui_MainWindow):
         self.cb_slow_motor_1.setModel(self.motor_model_channel_num)
         self.cb_slow_motor_2.setModel(self.motor_model_channel_num)
         # If there are 2 motors connected to the computer, update GUI selections to motor 1 and motor 2.
-        if num_motors > 1:
-            self.cb_motors_1.setCurrentIndex(0)
-            self.cb_motors_2.setCurrentIndex(1)
-        else:
-            if num_motors == 0:
-                print("No motors found.")
-            self.cb_motors_1.setCurrentIndex(-1)
-            self.cb_motors_1.setCurrentIndex(-1)
+        if num_motors == 0:
+            print("No motors found.")
+        # Set all to None and let the user select the motors.
+        self.cb_motors_1.setCurrentIndex(0)
+        self.cb_motors_2.setCurrentIndex(0)
+        self.cb_control_motor_1.setCurrentIndex(0)
+        self.cb_control_motor_2.setCurrentIndex(0)
+        self.cb_control_motor_3.setCurrentIndex(0)
+        self.cb_control_motor_4.setCurrentIndex(0)
+        self.cb_slow_motor_1.setCurrentIndex(0)
+        self.cb_slow_motor_2.setCurrentIndex(0)
         return
 
     def init_camera_views(self):
@@ -1241,18 +1243,21 @@ class Window(QMainWindow, Ui_MainWindow):
         if int(self.cb_SystemSelection.currentIndex()) == 1:
             num_cameras = 0
             # Find the Mightex cameras
-            if self.mightex_engine is None:
-                self.mightex_engine = MightexEngine()
-            if self.mightex_engine.serial_no:
-                # There are Mightex cameras on the system
-                for serial_no in self.mightex_engine.serial_no:
-                    cam_key = 'Mightex: ' + str(serial_no)
-                    self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
-                    self.cam_init_dict[cam_key] = serial_no
-                    num_cameras += 1
-            self.mightex_engine.un_init_device()
-            del self.mightex_engine
-            self.mightex_engine = None
+            try:
+                if self.mightex_engine is None:
+                    self.mightex_engine = MightexEngine()
+                if self.mightex_engine.serial_no:
+                    # There are Mightex cameras on the system
+                    for serial_no in self.mightex_engine.serial_no:
+                        cam_key = 'Mightex: ' + str(serial_no)
+                        self.cam_model.appendRow(QtGui.QStandardItem(cam_key))
+                        self.cam_init_dict[cam_key] = serial_no
+                        num_cameras += 1
+                self.mightex_engine.un_init_device()
+                del self.mightex_engine
+                self.mightex_engine = None
+            except DeviceNotFoundError:
+                pass
             if self.mightex_engine_thread is not None:
                 self.mightex_engine_thread.quit()
                 del self.mightex_engine_thread
@@ -1426,12 +1431,14 @@ class Window(QMainWindow, Ui_MainWindow):
         cm_2_ind = self.get_control_motor_index(calib_data[2][1], calib_data[4])
         if cm_2_ind is not None:
             self.cb_control_motor_2.setCurrentIndex(cm_2_ind)
-        cm_3_ind = self.get_control_motor_index(calib_data[2][2], calib_data[4])
-        if cm_3_ind is not None:
-            self.cb_control_motor_3.setCurrentIndex(cm_3_ind)
-        cm_4_ind = self.get_control_motor_index(calib_data[2][3], calib_data[4])
-        if cm_4_ind is not None:
-            self.cb_control_motor_4.setCurrentIndex(cm_4_ind)
+        if len(calib_data[2]) > 2:
+            # Could be operating with only 2 control motor channels.
+            cm_3_ind = self.get_control_motor_index(calib_data[2][2], calib_data[4])
+            if cm_3_ind is not None:
+                self.cb_control_motor_3.setCurrentIndex(cm_3_ind)
+            cm_4_ind = self.get_control_motor_index(calib_data[2][3], calib_data[4])
+            if cm_4_ind is not None:
+                self.cb_control_motor_4.setCurrentIndex(cm_4_ind)
         if calib_data[3]:
             sm_1_ind = self.get_control_motor_index(calib_data[3][0], calib_data[4])
             if sm_1_ind is not None:
@@ -1439,6 +1446,30 @@ class Window(QMainWindow, Ui_MainWindow):
             sm_2_ind = self.get_control_motor_index(calib_data[3][1], calib_data[4])
             if sm_2_ind is not None:
                 self.cb_slow_motor_2.setCurrentIndex(sm_2_ind)
+        self.set_unused_motors_to_none()
+        return
+
+    def set_unused_motors_to_none(self):
+        """
+        set all motors and channel selection boxes to None if they are not used.
+        Returns:
+        """
+        if self.cb_motors_1.currentData(0) is None:
+            self.cb_motors_1.setCurrentIndex(0)
+        if self.cb_motors_2.currentData(0) is None:
+            self.cb_motors_2.setCurrentIndex(0)
+        if self.cb_control_motor_1.currentData(0) is None:
+            self.cb_control_motor_1.setCurrentIndex(0)
+        if self.cb_control_motor_2.currentData(0) is None:
+            self.cb_control_motor_2.setCurrentIndex(0)
+        if self.cb_control_motor_3.currentData(0) is None:
+            self.cb_control_motor_3.setCurrentIndex(0)
+        if self.cb_control_motor_4.currentData(0) is None:
+            self.cb_control_motor_4.setCurrentIndex(0)
+        if self.cb_slow_motor_1.currentData(0) is None:
+            self.cb_slow_motor_1.setCurrentIndex(0)
+        if self.cb_slow_motor_2.currentData(0) is None:
+            self.cb_slow_motor_2.setCurrentIndex(0)
         return
 
     def get_control_motor_index(self, cm_target: list, motor_name_space: list):
@@ -2273,25 +2304,34 @@ class Window(QMainWindow, Ui_MainWindow):
         Begin to lock the pointing. Update the GUI and tell UpdateManager to lock.
         """
         if self.btn_lock.isChecked():
-            if self.cam1_thread is not None and self.cam2_thread is not None:
-                # Start locking
-                # Update GUI
+            # Start locking
+            # Update GUI
+            try:
                 self.ROICam1_Unlock.setVisible(False)
-                self.ROICam2_Unlock.setVisible(False)
                 self.ROICam1_Lock.setVisible(True)
+            except AttributeError:
+                pass
+            try:
+                self.ROICam2_Unlock.setVisible(False)
                 self.ROICam2_Lock.setVisible(True)
-                # Tell UpdateManager to lock.
-                self.toggle_UpdateManager_lock_signal.emit(True)
-                # Start the timer for updating piezo display, if suppress piezo display not checked.
-                self.toggle_piezo_display()
-            else:
-                self.btn_lock.toggle()
+            except AttributeError:
+                pass
+            # Tell UpdateManager to lock.
+            self.toggle_UpdateManager_lock_signal.emit(True)
+            # Start the timer for updating piezo display, if suppress piezo display not checked.
+            self.toggle_piezo_display()
         else:
             # Update GUI
-            self.ROICam1_Lock.setVisible(False)
-            self.ROICam2_Lock.setVisible(False)
-            self.ROICam1_Unlock.setVisible(True)
-            self.ROICam2_Unlock.setVisible(True)
+            try:
+                self.ROICam1_Lock.setVisible(False)
+                self.ROICam1_Unlock.setVisible(True)
+            except AttributeError:
+                pass
+            try:
+                self.ROICam2_Lock.setVisible(False)
+                self.ROICam2_Unlock.setVisible(True)
+            except AttributeError:
+                pass
             # Tell UpdateManager to unlock.
             self.toggle_UpdateManager_lock_signal.emit(False)
             # Stop the timer for updating Piezo plots:
@@ -2303,46 +2343,45 @@ class Window(QMainWindow, Ui_MainWindow):
         """
         Capture current pointing position and define it as home position. Save it accordingly.
         """
-        if self.cam1_thread is not None and self.cam2_thread is not None:
-            if self.cam1_x.size != 0:
-                self.set_cam1_x = self.cam1_x[-1]
-                self.set_cam1_y = self.cam1_y[-1]
-            else:
-                self.set_cam1_x = None
-                self.set_cam1_y = None
-            if self.cam2_x.size != 0:
-                self.set_cam2_x = self.cam2_x[-1]
-                self.set_cam2_y = self.cam2_y[-1]
-            else:
-                self.set_cam2_x = None
-                self.set_cam2_y = None
-            print('Set cam 1 x', self.set_cam1_x)
-            print('Set cam 1 y', self.set_cam1_y)
-            print('Set cam 2 x', self.set_cam2_x)
-            print('Set cam 2 y', self.set_cam2_y)
-            if self.set_cam1_x is not None and self.set_cam2_x is not None:
-                HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
-            elif self.set_cam1_x is not None:
-                HomePosition = np.array([self.set_cam1_x, self.set_cam1_y])
-            elif self.set_cam2_x is not None:
-                HomePosition = np.array([self.set_cam2_x, self.set_cam2_y])
-            else:
-                raise InsufficientInformation("Do you have any cameras connected? It seems no pointing data is "
-                                              "collected.")
-            self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
-            self.set_home_marker()
-            # Ensure that HomePositionStored folder exists.
-            current_path = os.getcwd()
-            new_directory_path = current_path + '/HomePositionStored'
-            Path(new_directory_path).mkdir(parents=True, exist_ok=True)
-            if int(self.cb_SystemSelection.currentIndex()) == 1:
-                np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
-                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
-                np.savetxt(filename, HomePosition, fmt='%f')
-            elif int(self.cb_SystemSelection.currentIndex()) == 2:
-                np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
-                filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
-                np.savetxt(filename, HomePosition, fmt='%f')
+        if self.cam1_x.size != 0:
+            self.set_cam1_x = self.cam1_x[-1]
+            self.set_cam1_y = self.cam1_y[-1]
+        else:
+            self.set_cam1_x = None
+            self.set_cam1_y = None
+        if self.cam2_x.size != 0:
+            self.set_cam2_x = self.cam2_x[-1]
+            self.set_cam2_y = self.cam2_y[-1]
+        else:
+            self.set_cam2_x = None
+            self.set_cam2_y = None
+        print('Set cam 1 x', self.set_cam1_x)
+        print('Set cam 1 y', self.set_cam1_y)
+        print('Set cam 2 x', self.set_cam2_x)
+        print('Set cam 2 y', self.set_cam2_y)
+        if self.set_cam1_x is not None and self.set_cam2_x is not None:
+            HomePosition = np.array([self.set_cam1_x, self.set_cam1_y, self.set_cam2_x, self.set_cam2_y])
+        elif self.set_cam1_x is not None:
+            HomePosition = np.array([self.set_cam1_x, self.set_cam1_y])
+        elif self.set_cam2_x is not None:
+            HomePosition = np.array([self.set_cam2_x, self.set_cam2_y])
+        else:
+            raise InsufficientInformation("Do you have any cameras connected? It seems no pointing data is "
+                                          "collected.")
+        self.set_UpdateManager_home_signal.emit(np.asarray(HomePosition))
+        self.set_home_marker()
+        # Ensure that HomePositionStored folder exists.
+        current_path = os.getcwd()
+        new_directory_path = current_path + '/HomePositionStored'
+        Path(new_directory_path).mkdir(parents=True, exist_ok=True)
+        if int(self.cb_SystemSelection.currentIndex()) == 1:
+            np.savetxt('Most_Recent_Home.txt', HomePosition, fmt='%f')
+            filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home"
+            np.savetxt(filename, HomePosition, fmt='%f')
+        elif int(self.cb_SystemSelection.currentIndex()) == 2:
+            np.savetxt('Most_Recent_Home_IR.txt', HomePosition, fmt='%f')
+            filename = "HomePositionStored/" + str(np.datetime64('today', 'D')) + "_Home_IR"
+            np.savetxt(filename, HomePosition, fmt='%f')
         return
 
     @pyqtSlot()
@@ -2870,7 +2909,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.le_Td.setText(UI_Settings['le_Td'])
             self.update_PID()
 
-            self.load_recent_home
+            self.load_recent_home()
         elif int(UI_Settings['cb_SystemSelection']) == 2:
             pass
         self.btn_load_visible.setVisible(False)

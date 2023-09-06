@@ -1106,6 +1106,7 @@ class UpdateManager(QObject):
     # Locking related methods
     @pyqtSlot()
     def time_delay_update(self):
+        # print("Call time delay update", self._cam1_com_updated, self._cam2_com_updated, self.num_cams_connected)
         if (self._cam1_com_updated + self._cam2_com_updated == self.num_cams_connected)\
                 and not self.block_timer:
             self.block_timer = True
@@ -1435,6 +1436,7 @@ class UpdateManager(QObject):
         This function is called by the timer timing out, which is only started when no motors are currently being
         changed, and applies an update if both cam com's have been found post voltage update.
         """
+        # print("Calling apply update.")
         self.calculate_updates_per_second()
         # The convention with dx is how much has the position on the camera changed from the set point.
         self.calc_update_dx()
@@ -1459,6 +1461,11 @@ class UpdateManager(QObject):
                             self.lock_pointing(False)
                             print("System has unlocked!")
                             return
+                    # Since can lock outside of bounds, put voltages in bounds before applying update.
+                    ind_over = np.where(self.update_voltage > 150.0)
+                    self.update_voltage[ind_over] = 150.0
+                    ind_under = np.where(self.update_voltage < 0.0)
+                    self.update_voltage[ind_under] = 0
                 elif len(self._control_motors) == 4:
                     self.compensate_with_slow_motors()
             except UnableToUpdateInBounds:
@@ -1489,17 +1496,18 @@ class UpdateManager(QObject):
                         print("System has unlocked!")
                         return
                 # Update slow motor channels accordingly.
-                if not self.motor_channel_to_skip:
-                    V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
-                    self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], self.V0[V_set_index])
-                    V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
-                    self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], self.V0[V_set_index])
-                elif self._slow_motors[0] not in self.motor_channel_to_skip:
-                    V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
-                    self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], self.V0[V_set_index])
-                elif self._slow_motors[1] not in self.motor_channel_to_skip:
-                    V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
-                    self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], self.V0[V_set_index])
+                if self._slow_motors:
+                    if not self.motor_channel_to_skip:
+                        V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+                        self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], self.V0[V_set_index])
+                        V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+                        self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], self.V0[V_set_index])
+                    elif self._slow_motors[0] not in self.motor_channel_to_skip:
+                        V_set_index = (self._slow_motors[0][0] - 1) * 3 + self._slow_motors[0][1] - 1
+                        self.request_set_motor(self._slow_motors[0][0], self._slow_motors[0][1], self.V0[V_set_index])
+                    elif self._slow_motors[1] not in self.motor_channel_to_skip:
+                        V_set_index = (self._slow_motors[1][0] - 1) * 3 + self._slow_motors[1][1] - 1
+                        self.request_set_motor(self._slow_motors[1][0], self._slow_motors[1][1], self.V0[V_set_index])
         # Apply all control motors update voltages
         update_voltage_index = 0
         for i in range(1, 3):
@@ -1567,6 +1575,7 @@ class UpdateManager(QObject):
         """
         # Reset:
         # variables to measure number of frames processed per second for each camera.
+        # print("calling lock_pointing in update manager.")
         self.num_img_processed = [0, 0]
         self.img_process_start_time = [None, None]
         self.img_process_finish_time = [None, None]
@@ -1583,6 +1592,8 @@ class UpdateManager(QObject):
         self._t2 = []
         self._cam_2_com = None
         self._cam_1_com = None
+        self._cam1_com_updated = False
+        self._cam2_com_updated = False
         if lock:
             # First check that we are ready to lock.
             if self.calibration_matrix is None:
@@ -1612,7 +1623,7 @@ class UpdateManager(QObject):
                     # Already connected to the right handler
                     pass
                 else:
-                    self.com_found_signal.disconnect() # Disconnects from all slots! So far only using 1 slot.
+                    self.com_found_signal.disconnect()  # Disconnects from all slots! So far only using 1 slot.
                     # when locking, the COM found signal should trigger the time delay update function.
                     self.com_found_signal.connect(self.time_delay_update)
                     self.com_found_signal_handler = 'time_delay_update'
@@ -1621,28 +1632,14 @@ class UpdateManager(QObject):
                 self.com_found_signal.connect(self.time_delay_update)
                 self.com_found_signal_handler = 'time_delay_update'
             self._locking = True
-            # Get starting voltage for V0, manually set motor updated flags to false and reset to true when gets
-            # complete. This ensures I know starting V0 before an attempted update is made.
-            # And only sets automatically set these flags false, not the gets used below.
-            self.motor1_ch1_updated = False
-            self.motor1_ch2_updated = False
-            self.motor1_ch3_updated = False
-            self.motor2_ch1_updated = False
-            self.motor2_ch2_updated = False
-            self.motor2_ch3_updated = False
-            self._motors_updated = False
-            self.get_motor1_ch1V_signal.emit()
-            self.get_motor2_ch1V_signal.emit()
-            self.get_motor1_ch2V_signal.emit()
-            self.get_motor2_ch2V_signal.emit()
-            self.get_motor1_ch3V_signal.emit()
-            self.get_motor2_ch3V_signal.emit()
+            self.get_starting_voltages_for_lock()
             # Initiatlize parameters for tracking unlocking:
             self.lock_time_start = time.monotonic()
             self.time_last_unlock = 0
             self.num_out_of_voltage_range = 1
             self.first_unlock = True  # First time since initial lock that piezos went out of bounds?
             self.update_gui_locked_state.emit(True)
+            # print("Should be locking now?", self.com_found_signal_handler)
         else:
             if self.com_found_signal_handler is not None:
                 # Disconnect unwanted connections.
@@ -1650,8 +1647,27 @@ class UpdateManager(QObject):
                 self.com_found_signal_handler = None
             self._locking = False
             self.update_gui_locked_state.emit(False)
-            print("Should stop locking now!")
+            # print("Should stop locking now!")
         return
+
+    def get_starting_voltages_for_lock(self):
+        """
+        Get starting voltage for V0, manually set motor updated flags to false and reset to true when gets
+        complete. This ensures I know starting V0 before an attempted update is made.
+        And only sets automatically set these flags false, not the gets used below.
+        Returns:
+                None
+        """
+        # Programmed to use 2x Thorlabs MDT piezo controllers with three channels.
+        for i in range(1, 3):
+            for j in range(1, 4):
+                motor_to_check = [i, j]
+                if motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values():
+                    flag_str = 'motor'+str(i)+'_ch'+str(j)+'_updated'
+                    setattr(self, flag_str, False)
+                    signal_str = 'get_motor'+str(i)+'_ch'+str(j)+'V_signal'
+                    signal = self.__getattribute__(signal_str)
+                    signal.emit()
 
     @pyqtSlot(bool, float)
     def update_lock_parameters(self, force_unlock: bool, max_time_allowed_unlocked: float):
@@ -1885,20 +1901,6 @@ class UpdateManager(QObject):
         if not self.num_cams_connected*2 == len(self._control_motors):
             raise InsufficientInformation("You must have exactly twice as many control motors connected as cameras"
                                           "to have a sufficient number of DOF to stabilize your pointing.")
-        ''''
-        REDUNDANT AND LESS ELEGANT THAN ABOVE CHECKS!?
-        motor_to_check = [1, 1]
-        Logic1 = motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values()
-        motor_to_check = [1, 2]
-        Logic2 = motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values()
-        motor_to_check = [2, 1]
-        Logic3 = motor_to_check in self._control_motors.values() or motor_to_check in self._slow_motors.values()
-        if not (Logic1 or Logic2 or Logic3):
-            raise InsufficientInformation("Need at least 4 motors selected for control. Somehow motor 1 channel 1 and 2"
-                                          " and motor 2 channel 1 are not being used. Since there are 3 channels per "
-                                          "motor there are 6 channels total and 3 are not in use. So, you need to use "
-                                          "at least 1 more channel. 4 control channels and up to 2 slow motor channels")
-        '''
         # Make sure no handler is connected to com_found_signal
         if self.com_found_signal_handler is not None:
             # Disconnect unwanted connections.
@@ -1912,7 +1914,6 @@ class UpdateManager(QObject):
         else:
             self.com_found_signal.connect(self.run_calibration)
             self.com_found_signal_handler = 'run_calibration'
-        print("I believe that the handler for com_found_signal is ", self.com_found_signal_handler)
         self._locking = False
         self.calibration_pointing_index = 0
         self.voltage_step = 1  # Start at 1, because index 0 is set on motor1 ch1 as starting voltage
@@ -2421,6 +2422,10 @@ class UpdateManager(QObject):
         """
         Calculate the calibration matrix. And plot the resulting fits to pointing changes vs. voltage changes
         """
+        # make sure nothing is connected to com found signal at this point.
+        self.com_found_signal.disconnect()
+        self.com_found_signal_handler = None
+        self._calibrating = False
         # init variables to fit of no real COM data.
         p_mot1_x_cam1_x = [0, -10000.0]
         p_mot1_x_cam1_y = [0, -10000.0]
@@ -3320,7 +3325,9 @@ class UpdateManager(QObject):
         Way to set the calibration matrix as a slot.
         """
         self._calibration_matrix = matrix
-        self.get_dx_steps_for_find_best_udpate()
+        if matrix.shape[0] == 4:
+            # Otherwise assume that only 2DOF for control, so find_best_update makes no sense.
+            self.get_dx_steps_for_find_best_udpate()
         return
 
     @property
@@ -3427,8 +3434,8 @@ class PIDUpdateManager(UpdateManager):
         self.is_PID = True
         self.cam1_exp_time = None
         self.cam2_exp_time = None
-        self.cam1_time_last_found_int = 0
-        self.cam2_time_last_found_int = 0
+        self.cam1_time_last_found_int = None
+        self.cam2_time_last_found_int = None
 
     @pyqtSlot(bool)
     def lock_pointing(self, lock: bool):
@@ -3436,10 +3443,65 @@ class PIDUpdateManager(UpdateManager):
         Additionally, need to clear integral_ti if starting to lock again.
         """
         if lock:
-            self.integral_ti = np.zeros(4)
-            self.cam1_time_last_found_int = self.t1[-1]
-            self.cam2_time_last_found_int = self.t2[-1]
+            self.cam1_time_last_found_int = None
+            self.cam2_time_last_found_int = None
+            self.integral_ti = np.zeros(self.num_cams_connected*2)
+            # I will confirm I have the right number of cameras in parent class function. So, just try and if not pass
+            # because at least one will work or parent function will raise appropriate error anyway.
+            try:
+                self.cam1_time_last_found_int = self.t1[-1]
+            except IndexError:
+                pass
+            try:
+                self.cam2_time_last_found_int = self.t2[-1]
+            except IndexError:
+                pass
         super().lock_pointing(lock)
+        return
+
+    def get_pid_dx(self):
+        """
+        This code calculated update_dx put through a PID function.
+        Returns:
+            None but sets self.update_dx
+        """
+        success = False
+        if self.P > 0:
+            super().calc_update_dx()  # Averages all dx, since the motors were updated.
+            self.update_dx *= self.P
+            success = True
+        # D terms:
+        if self.D > 0:
+            derivatives = self.calc_derivative()
+            # Add the D term:
+            if success:
+                self.update_dx += self.D * derivatives
+                success = True
+            else:
+                self.update_dx = self.D * derivatives
+                success = True
+        # I term.
+        if self.I > 0:
+            self.calc_integral()
+            # Add the "I" term:
+            if success:
+                self.update_dx += self.I * self.integral_ti
+                success = True
+            else:
+                self.update_dx = self.I * self.integral_ti
+                success = True
+        if not success:
+            raise InsufficientInformation("P, I, or D must be > 0!")
+        return
+
+    def get_p_dx(self):
+        """
+        This code just multiplies dx by P set in the GUI.
+        Returns:
+            none but sets self.update_dx
+        """
+        super().calc_update_dx()
+        self.update_dx *= self.P
         return
 
     def calc_update_dx(self):
@@ -3448,33 +3510,24 @@ class PIDUpdateManager(UpdateManager):
         controller by making the update_dx a sum of a P, I, and D term.
         """
         # PID only makes sense if there are at least 2 data points. If only one, just do P.
-        if len(self.t1) > 1 and len(self.t2) > 1:
-            if self.P > 0:
-                super().calc_update_dx()  # Averages all dx, since the motors were updated.
-                self.update_dx *= self.P
-            # D terms:
-            if self.D > 0:
-                derivatives = self.calc_derivative()
-                # Add the D term:
-                try:
-                    self.update_dx += self.D * derivatives
-                except TypeError:
-                    self.update_dx = self.D * derivatives
-            # I term.
-            if self.I > 0:
-                self.calc_integral()
-                # Add the I term:
-                try:
-                    self.update_dx += self.I*self.integral_ti
-                except TypeError:
-                    self.update_dx = self.I*self.integral_ti
-            return
-        elif self.P > 0:
-            super().calc_update_dx()
-            self.update_dx *= self.P
-            return
+        if self.cam1_time_last_found_int is not None and self.cam2_time_last_found_int is not None:
+            if len(self.t1) > 1 and len(self.t2) > 1:
+                self.get_pid_dx()
+                return
+            elif self.P > 0:
+                self.get_p_dx()
+                return
+            else:
+                self.update_dx = np.array([0, 0, 0, 0])
         else:
-            self.update_dx = np.array([0, 0, 0, 0])
+            if len(self.t1) > 1 or len(self.t2) > 1:
+                self.get_pid_dx()
+                return
+            elif self.P > 0:
+                self.get_p_dx()
+                return
+            else:
+                self.update_dx = np.array([0, 0])
         return
 
     def find_best_update(self):
@@ -3505,30 +3558,54 @@ class PIDUpdateManager(UpdateManager):
 
     def calc_integral(self):
         # Currently using the most simplistic numerical integral, may want to improve
-        inds_to_update_integral_with = np.where(self.t1 > self.cam1_time_last_found_int)
-        self.cam1_time_last_found_int = self.t1[-1]
-        # units of pixels*ms
-        increment_cam1 = np.sum(self.cam1_exp_time*self.cam1_dx[inds_to_update_integral_with], axis=0)
-        inds_to_update_integral_with = np.where(self.t2 > self.cam2_time_last_found_int)
-        self.cam2_time_last_found_int = self.t2[-1]
-        # units of pixels*ms
-        increment_cam2 = np.sum(self.cam2_exp_time * self.cam2_dx[inds_to_update_integral_with], axis=0)
-        self._integral_ti += np.concatenate([increment_cam1, increment_cam2], axis=0)
+        cam1 = False
+        cam2 = False
+        if self.cam1_time_last_found_int is not None:
+            inds_to_update_integral_with = np.where(self.t1 > self.cam1_time_last_found_int)
+            self.cam1_time_last_found_int = self.t1[-1]
+            # units of pixels*ms
+            # increment_cam1 = np.sum(self.cam1_exp_time*self.cam1_dx[inds_to_update_integral_with], axis=0)
+            increment_cam1 = np.sum(self.cam1_dx[inds_to_update_integral_with], axis=0)
+            cam1 = True
+        if self.cam2_time_last_found_int is not None:
+            inds_to_update_integral_with = np.where(self.t2 > self.cam2_time_last_found_int)
+            self.cam2_time_last_found_int = self.t2[-1]
+            # units of pixels*ms
+            # increment_cam2 = np.sum(self.cam2_exp_time * self.cam2_dx[inds_to_update_integral_with], axis=0)
+            increment_cam2 = np.sum(self.cam2_dx[inds_to_update_integral_with], axis=0)
+            cam2 = True
+        if cam1 and cam2:
+            self._integral_ti += np.concatenate([increment_cam1, increment_cam2], axis=0)
+        elif cam1:
+            self._integral_ti += increment_cam1
+        elif cam2:
+            self._integral_ti += increment_cam2
         return
 
     def calc_derivative(self):
         # TODO: I need at least two frames post update motors.
         # dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update+1] -
         # TypeError: can only concatenate tuple (not "int") to tuple
-        inds_post_motor_update = np.asarray(np.where(self.t1 >= self.cam1_time_motors_updated)).reshape(-1)
-        dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update] -
-                                             self.cam1_dx[inds_post_motor_update - 1]),
-                                            axis=0)
-        inds_post_motor_update = np.asarray(np.where(self.t2 >= self.cam2_time_motors_updated)).reshape(-1)
-        dx_derivative_cam2_avg = np.average((self.cam2_dx[inds_post_motor_update] -
-                                             self.cam2_dx[inds_post_motor_update - 1]),
-                                            axis=0)
-        return np.concatenate([dx_derivative_cam1_avg, dx_derivative_cam2_avg], axis=0)
+        cam1 = False
+        cam2 = False
+        if self.cam1_time_last_found_int is not None:
+            inds_post_motor_update = np.asarray(np.where(self.t1 >= self.cam1_time_motors_updated)).reshape(-1)
+            dx_derivative_cam1_avg = np.average((self.cam1_dx[inds_post_motor_update] -
+                                                 self.cam1_dx[inds_post_motor_update - 1]),
+                                                axis=0)
+            cam1 = True
+        if self.cam2_time_last_found_int is not None:
+            inds_post_motor_update = np.asarray(np.where(self.t2 >= self.cam2_time_motors_updated)).reshape(-1)
+            dx_derivative_cam2_avg = np.average((self.cam2_dx[inds_post_motor_update] -
+                                                 self.cam2_dx[inds_post_motor_update - 1]),
+                                                axis=0)
+            cam2 = True
+        if cam1 and cam2:
+            return np.concatenate([dx_derivative_cam1_avg, dx_derivative_cam2_avg], axis=0)
+        elif cam1:
+            return dx_derivative_cam1_avg
+        elif cam2:
+            return dx_derivative_cam2_avg
 
     @property
     def integral_ti(self):
