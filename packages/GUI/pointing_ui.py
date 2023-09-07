@@ -2,16 +2,18 @@
 
 # Form implementation generated from reading ui file 'pointing_stability.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.12.3
 #
 # WARNING! All changes made in this file will be lost!
 
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1043, 780)
+        MainWindow.resize(1043, 772)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.tabWidget = QtWidgets.QTabWidget(self.centralwidget)
@@ -199,7 +201,7 @@ class Ui_MainWindow(object):
         self.le_num_points.setObjectName("le_num_points")
         self.formLayout_3.setWidget(0, QtWidgets.QFormLayout.FieldRole, self.le_num_points)
         self.formLayoutWidget_5 = QtWidgets.QWidget(self.tab_2)
-        self.formLayoutWidget_5.setGeometry(QtCore.QRect(760, 120, 160, 125))
+        self.formLayoutWidget_5.setGeometry(QtCore.QRect(760, 100, 160, 111))
         self.formLayoutWidget_5.setObjectName("formLayoutWidget_5")
         self.formLayout_5 = QtWidgets.QFormLayout(self.formLayoutWidget_5)
         self.formLayout_5.setContentsMargins(0, 0, 0, 0)
@@ -233,7 +235,7 @@ class Ui_MainWindow(object):
         self.le_cam2_dy_std.setObjectName("le_cam2_dy_std")
         self.formLayout_5.setWidget(3, QtWidgets.QFormLayout.FieldRole, self.le_cam2_dy_std)
         self.verticalLayoutWidget = QtWidgets.QWidget(self.tab_2)
-        self.verticalLayoutWidget.setGeometry(QtCore.QRect(760, 250, 169, 158))
+        self.verticalLayoutWidget.setGeometry(QtCore.QRect(760, 220, 169, 181))
         self.verticalLayoutWidget.setObjectName("verticalLayoutWidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.verticalLayoutWidget)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -255,8 +257,12 @@ class Ui_MainWindow(object):
         self.cb_acquire_video.setChecked(True)
         self.cb_acquire_video.setObjectName("cb_acquire_video")
         self.verticalLayout.addWidget(self.cb_acquire_video)
+        self.cb_acquire_temps = QtWidgets.QCheckBox(self.verticalLayoutWidget)
+        self.cb_acquire_temps.setChecked(False)
+        self.cb_acquire_temps.setObjectName("cb_acquire_temps")
+        self.verticalLayout.addWidget(self.cb_acquire_temps)
         self.cb_acquire_voltages = QtWidgets.QCheckBox(self.verticalLayoutWidget)
-        self.cb_acquire_voltages.setChecked(True)
+        self.cb_acquire_voltages.setChecked(False)
         self.cb_acquire_voltages.setObjectName("cb_acquire_voltages")
         self.verticalLayout.addWidget(self.cb_acquire_voltages)
         self.btn_begin_acquisition = QtWidgets.QPushButton(self.verticalLayoutWidget)
@@ -412,7 +418,7 @@ class Ui_MainWindow(object):
         self.pb_update_control_motors.setObjectName("pb_update_control_motors")
         self.verticalLayout_2.addWidget(self.pb_update_control_motors)
         self.formLayoutWidget_8 = QtWidgets.QWidget(self.tab)
-        self.formLayoutWidget_8.setGeometry(QtCore.QRect(740, 110, 161, 22))
+        self.formLayoutWidget_8.setGeometry(QtCore.QRect(740, 110, 167, 22))
         self.formLayoutWidget_8.setObjectName("formLayoutWidget_8")
         self.formLayout_9 = QtWidgets.QFormLayout(self.formLayoutWidget_8)
         self.formLayout_9.setContentsMargins(0, 0, 0, 0)
@@ -516,7 +522,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menuCalibrate.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(1)
+        self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
         MainWindow.setTabOrder(self.gv_camera1, self.gv_cam_xy)
         MainWindow.setTabOrder(self.gv_cam_xy, self.gv_piezo)
@@ -594,6 +600,7 @@ class Ui_MainWindow(object):
         self.le_data_acquisition_time.setText(_translate("MainWindow", "[days, hours, mins, secs]"))
         self.cb_acquire_pointing.setText(_translate("MainWindow", "Collect All COM Data"))
         self.cb_acquire_video.setText(_translate("MainWindow", "Acquire Video"))
+        self.cb_acquire_temps.setText(_translate("MainWindow", "Acquire Temps"))
         self.cb_acquire_voltages.setText(_translate("MainWindow", "Collect All piezo voltage data"))
         self.btn_begin_acquisition.setText(_translate("MainWindow", "Begin Acquisition"))
         self.label_21.setText(_translate("MainWindow", "TextLabel"))
@@ -639,5 +646,4 @@ class Ui_MainWindow(object):
         self.actionLoad_Old_Home.setText(_translate("MainWindow", "Load Old Home"))
         self.actionSave_State.setText(_translate("MainWindow", "Save State"))
         self.actionLoad_State.setText(_translate("MainWindow", "Load State"))
-
 from pyqtgraph import GraphicsLayoutWidget, ImageView

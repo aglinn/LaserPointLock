@@ -12,7 +12,10 @@ from packages.GUI import Ui_MainWindow
 from packages.cameras import MightexEngine, MightexCamera, Boson, BlackflyS
 from packages.exceptions import DeviceNotFoundError, InsufficientInformation
 from packages.motors import MDT693AMotor
-from packages.temperature_logger import QTemperatureLogger
+try:
+    from packages.temperature_logger import QTemperatureLogger
+except FileNotFoundError:
+    print("Cannot log temperatures until you instal Instacal etc.")
 from packages import PIDUpdateManager as UpdateManager
 from Thorlabs_MDT69XB_PythonSDK import MDT_COMMAND_LIB as mdt
 import tkinter as tk
@@ -434,7 +437,7 @@ class Window(QMainWindow, Ui_MainWindow):
         timer_interval = int((days*24*3600+hours*3600+minutes*60+seconds)*1000)  # integer in ms
         # Create the temperature logger and start appropriately
         # TODO: Add GUI checkbox .ischeked for below True.
-        if True:
+        if self.cb_acquire_temps.isChecked():
             if self.temp_logger_thread is None:
                 self.temp_logger_thread = QThread()
                 self.temp_logger = QTemperatureLogger()
