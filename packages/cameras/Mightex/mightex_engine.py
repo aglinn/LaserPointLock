@@ -308,7 +308,7 @@ class MightexEngine(QObject):
         if self.exposure_times[camID_exp[0]-1] != camID_exp[1] or self.starting[camID_exp[0]-1]:
             self.starting[camID_exp[0] - 1] = False
             self._exposure_times[camID_exp[0]-1] = camID_exp[1]
-            exp_time = 50*camID_exp[1]*1000  # convert to ms
+            exp_time = 50*camID_exp[1] / 1000  # convert to ms
             self.signals.updated_exposure_time.emit(camID_exp[0], exp_time)
         return
 
