@@ -9,6 +9,7 @@ from ctypes import *
 from ctypes.wintypes import MSG
 from PyQt5.QtCore import pyqtSignal, QObject, pyqtSlot, QMutex
 from PyQt5.Qt import Qt
+import time
 
 
 class INFO(Structure):
@@ -73,25 +74,16 @@ class MightexEngineSignals(QObject):
 
 
 class MightexEngine(QObject):
-    #  Load appropriate DLLs
-    try:
-        if (platform.system() != "Windows"):
-            raise OSError('This program requires a Windows system to interface with the Mightex cameras.')
-        libw = windll.user32
-        GetMessage = libw.GetMessageA
-        TranslateMessage = libw.TranslateMessage
-        DispatchMessage = libw.DispatchMessageA
-        lib = cdll.LoadLibrary(r"packages/cameras/Mightex/libx64/NewClassic_USBCamera_SDK.dll")
-    except FileNotFoundError:
-        raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
-
-    FRAMECALLBACK = CFUNCTYPE(None, POINTER(INFO), POINTER(c_ubyte * 1280 * 960))
 
     def __init__(self):
         """
         Use the Mightex Engine and API to handle all communication with Mightex Cameras.
         """
         super().__init__()
+        # Make sure to create namespace so GC does not delete:
+        self.win32con = None
+        self.load_dlls()
+        self.setup_ctypes_callback_function()
         self.signals = MightexEngineSignals()
         self.signals.setParent(self)
         # Initialize the API
@@ -132,6 +124,8 @@ class MightexEngine(QObject):
         self.frames: List[np.ndarray, np.ndarray] = [None, None]
         self._t_frames: List[float, float] = [0, 0]
         self._time_wrapper_count: List[int, int] = [0, 0]
+        self._t_frames_start_time_monotonic: List[float, float] = [0, 0]
+        self._t_frames_start: List[float, float] = [0, 0]
         self._xy: List[tuple, tuple] = [(0, 0), (0, 0)]
         self.update_manager_ready_for_frames: List[bool, bool] = [True, True]  # ensure update manager knows startXY
         self._frame_sizes: List[tuple, tuple] = [(1280, 1024), (1280, 1024)]
@@ -139,6 +133,25 @@ class MightexEngine(QObject):
         self.starting: List[bool, bool] = [True, True]
         self.active_cameras: List[int, int] = []
         self._app_closing = False
+        return
+
+    def load_dlls(self):
+        """Load appropriate DLLs"""
+        try:
+            if (platform.system() != "Windows"):
+                raise OSError('This program requires a Windows system to interface with the Mightex cameras.')
+            self.libw = windll.user32
+            self.GetMessage = self.libw.GetMessageA
+            self.TranslateMessage = self.libw.TranslateMessage
+            self.DispatchMessage = self.libw.DispatchMessageA
+            self.lib = cdll.LoadLibrary(r"packages/cameras/Mightex/libx64/NewClassic_USBCamera_SDK.dll")
+        except FileNotFoundError:
+            raise FileNotFoundError('Cannot use Mightex cameras without NewClassic_USBCamera_SDK.dll')
+        return
+
+    def setup_ctypes_callback_function(self, width=1280, height=960):
+        """Setup callback function"""
+        self.FRAMECALLBACK = CFUNCTYPE(None, POINTER(INFO), POINTER(c_ubyte * width * height))
         return
 
     def setup_mightex_engine_for_capture(self):
@@ -211,18 +224,20 @@ class MightexEngine(QObject):
             self.xy = (camID, (info.contents.XStart, info.contents.YStart))
             if self.update_manager_ready_for_frames[camID-1]:
                 frame = np.array(x)
-                self.locks[camID-1].lock()
-                self.frames[camID-1] = frame
+                # self.locks[camID-1].lock()
+                # self.frames[camID-1] = frame
                 self.t_frames = (camID, info.contents.TimeStamp)
-                self.locks[camID-1].unlock()
+                # self.locks[camID-1].unlock()
+                self.signals.img_captured.emit(camID, frame, self.t_frames[camID-1])
                 self.exposure_times = (camID, info.contents.ExposureTime)
                 self.frame_sizes = (camID, (info.contents.Column, info.contents.Row))
                 if camID not in self.active_cameras:
                     self.active_cameras.append(camID)
             else:
-                self.locks[camID - 1].lock()
-                self.frames[camID - 1] = None
-                self.locks[camID - 1].unlock()
+                pass
+                # self.locks[camID - 1].lock()
+                # self.frames[camID - 1] = None
+                # self.locks[camID - 1].unlock()
             return
         return self.FRAMECALLBACK(FrameCallback)
 
@@ -257,10 +272,10 @@ class MightexEngine(QObject):
     @pyqtSlot()
     def shutdown(self):
         if not self.active_cameras or self._app_closing:
+            self.active = False
             print("StopFrameGrab =", self.lib.NewClassicUSB_StopFrameGrab(1))
             print("StopCameraEngine =", self.lib.NewClassicUSB_StopCameraEngine())
             print("UnInitDevice =", self.lib.NewClassicUSB_UnInitDevice())
-            self.active = False
             self.signals.engine_shutdown.emit()
         return
 
@@ -422,7 +437,18 @@ class MightexEngine(QObject):
         dt = t1 - self._t_frames[camID_t[0]-1]
         fps = 1000/dt
         self.fps = (camID_t[0], fps)
+        """
+        The commented portions below were troubleshooting.
+        if self._t_frames[camID_t[0]-1] == 0:
+            self._t_frames_start_time_monotonic[camID_t[0]-1] = time.monotonic()
+            self._t_frames_start[camID_t[0]-1] = t1"""
         self._t_frames[camID_t[0]-1] = t1
+        """elapsed_time_software = time.monotonic()-self._t_frames_start_time_monotonic[camID_t[0]-1]
+        elapsed_time_software *= 1000.0  # s -> ms
+        elapsed_time_frames = t1 - self._t_frames_start[camID_t[0]-1]
+        if np.abs(elapsed_time_frames - elapsed_time_software) > 100.0:
+            print("The camera and software times differ by (cam-soft) {} ms".format(elapsed_time_frames
+                                                                                    - elapsed_time_software))"""
         return
 
     @property

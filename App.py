@@ -1951,7 +1951,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.cam2_x_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_x)
                     self.cam2_y_plot.setData(self.cam2_t-self.cam2_t.min(), self.cam2_y)
                 except ValueError:
-                    print("Value error updating cam position plots.")
+                    print("Value error updating cam position plots. Cam1 {}, Cam2 {}".format(self.cam1, self.cam2))
         elif self.cam1 is not None:
             self.update_gui_std(1)
             if not self.suppress_pointing_display:
@@ -2587,7 +2587,8 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1_thread.quit()
         if self.cam2_thread is not None:
             self.cam2_thread.quit()
-
+        if self.mightex_engine_thread is not None:
+            self.mightex_engine_thread.quit()
         # Tell the UpdateManager Thread to quit. Nothing else ever tells this thread/object to close. So, they exist!
         self.UpdateManager_thread.quit()
         # Wait on all threads to return.
@@ -2595,7 +2596,11 @@ class Window(QMainWindow, Ui_MainWindow):
             self.cam1_thread.wait()
         if self.cam2_thread is not None:
             self.cam2_thread.wait()
+        if self.mightex_engine_thread is not None:
+            self.mightex_engine_thread.wait()
         self.UpdateManager_thread.wait()
+        # With threads stopped, get a count of how many objects exist that need to be deleted.
+        num_to_close = self.test_anything_open()
 
         # Close Update Manager now, because this function stops and destroys motor threads and destroys motors.
         # BUT Does NOT delete UpdateManager.
@@ -2603,7 +2608,6 @@ class Window(QMainWindow, Ui_MainWindow):
 
         # All but this (GUI/main) thread are now closed—no event loops running. Therefore, direct calls to QObjects are
         # thread safe, because, only this thread is running, i.e. no race conditions.
-
         # Close and delete cameras. Delete camera threads:
         if self.cam1 is not None:
             self.cam1._app_closing = True
@@ -2617,79 +2621,112 @@ class Window(QMainWindow, Ui_MainWindow):
             del self.cam2
         if self.cam2_thread is not None:
             del self.cam2_thread
+        if self.mightex_engine is not None:
+            self.mightex_engine._app_closing = True
+            self.mightex_engine.shutdown()
+            del self.mightex_engine
+        if self.mightex_engine_thread is not None:
+            del self.mightex_engine_thread
 
         num = self.test_anything_open()
-
         # delete updatemanager
         del self.UpdateManager
         try:
-            self.UpdateManager
+            if self.UpdateManager is not None:
+                num += 1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
-        if num == 10:
+            pass
+        if num == 0:
             print("Successfully closed all known resources.")
         else:
-            print("only closed ", num, " objects, expected to close 10.")
+            print("only closed {} objects, expected to close {} objects.".format(num_to_close-num, num_to_close))
         return
 
     def test_anything_open(self):
+        """
+        Get a count of the number of existing objects.
+        NOT THREAD SAFE! Only run when all threads are stopped.
+        """
         num = 0
         try:
-            self.cam1
+            if self.cam1 is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.cam1_thread
+            if self.cam1_thread is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.cam2
+            if self.cam2 is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.cam2_thread
+            if self.cam2_thread is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.UpdateManager.motor1
+            if self.mightex_engine is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.UpdateManager.motor1_thread
+            if self.mightex_engine_thread is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.UpdateManager.motor2
+            if self.UpdateManager.motor1 is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.UpdateManager.motor2_thread
+            if self.UpdateManager.motor1_thread is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
         try:
-            self.UpdateManager.ResourceManager
+            if self.UpdateManager.motor2 is not None:
+                num+=1
         except NameError:
-            num += 1
+            pass
         except AttributeError:
-            num += 1
+            pass
+        try:
+            if self.UpdateManager.motor2_thread is not None:
+                num+=1
+        except NameError:
+            pass
+        except AttributeError:
+            pass
+        try:
+            if self.UpdateManager.ResourceManager is not None:
+                num+=1
+        except NameError:
+            pass
+        except AttributeError:
+            pass
         return num
 
     @pyqtSlot()

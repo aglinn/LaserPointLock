@@ -87,7 +87,7 @@ class MightexCamera(BaseCamera):
         Send a frame and time stamp for this camera. I use the reentrancy of QObjects to simply
         call the send_frame function of the MightexEngine and I use locks to avoid race conditions.
         """
-        self.send_frame(self.serial_no)
+        # self.send_frame(self.serial_no)
         return
 
     @pyqtSlot(float)
