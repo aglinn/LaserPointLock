@@ -1,28 +1,51 @@
 # LaserPointLock
+This is a custom software package to implement a laser pointing stabilization system that stabilizes both the angular 
+pointing and the offset. Please see "Point Lock Section of Thesis" for a discussion of the optical system setup, 
+theory of operation, organization of the code, and more. 
 
-Initial code written by Kyle Gordon. 
+The hardware that works with this code is a Thorlabs MDT693B (which is somewhat backwards compatible with older
+MDT693A models), with the MDT693B controllers controlling Polaris piezo mirrors—but presumably any compatible piezo 
+mirror would work, and FLIR Blackfly S cameras (only tested on BFS-U3-31S4M-C). The above is tested and works—see 
+characterization data in "Point Lock Section of Thesis." Additionally, the code is written to work with FLIR Boson's, 
+which allows the stabilization of IR laser beams out to ~17 um. I have not tested this functionality as extensively and 
+cannot speak to the effectiveness very well. Lastly, I have made the code to work with Mightex SCE-B013U cameras. 
+Originally, this worked okay using the grab frame command from the SDK, but I recently updated the code to use the 
+supposedly better/faster Frame Hooker method, and that seems to be quite buggy. For some reason, the cameras stop 
+sending frames every now-and-then for random lengths of time. I am not sure why, it may be that the camera cannot be 
+run this way on a thread that is not the main thread, but I am not too sure... So, I would stick with the Blackfly S 
+cameras which are nicer anyway, but if you need to use Mightex SCE-B013U, you can do so with some amount of debugging 
+required. 
 
-Edited and improved by Garrison Linn
+As far as I know, this code only works on Windows platform!
 
-## Update notes: 
-Orriginal updates:
-- I squashed many bugs, mostly trivial errors (although not always trivial to find), which had prevented locking. 
-- Communication with motors had not been tested to my knowledge, and these motors are quite finiky it turns out. So, the motor code was made more robust by catching errors and allowing multiple attempts at commands. 
-- Also, in several places try, except statements were added to handle issues.
-- Calibration was largely rewritten to allow couplings between x-y, which also makes the code more robust, because the camera x and piezo x may truly  be along different dimensions, i.e. camera x may be piezo y. Also, calibration was updated to use the actual voltage of the motors, rather than assuming the voltages of the motors are the calibration voltages, because the motors do not always go to the correct set voltage, errors can be as large as ~0.5 V; so rather than try over and over to get within an accuracy of 0.2 V, the code just accepts what we get, and since we use the actual voltage of the motors, it is fine to not have great accuracy during calibration. 
-- I also added wait times between setting voltages and calculating COM, because the piezo motors are not great. 
-- I updated the Take_image functions to average a couple of frames and to average a couple of COM calculations, because we want to take out some of the noise. 
-- Also, the locking algorithm was improved. First, I made sure to not allow updates of the voltages outside of the ranges of the piezo motors, i.e. 0-150 V only allowed. Second, I tracked how often the update lock tries to apply voltages that are out of these bounds, and I allow the algorithm to reset the piezo to the start voltage--75.0 V, skip the update, and try again. If the attempted update voltages go out of bounds several times in a row within 60 seconds, then the code breaks the lock algorithm and returns to the measure algorithm. This is nice, because sometimes the COM jumps, perhaps from a bad frame grab or maybe a short term fluctuation, but resetting and skipping the update does often work, allowing the pointing to remain locked for longer. 
+The code is multithreaded using PyQt and is able to read the frames from the BlackflyS cameras at the maximum frame 
+rates, process those frames at the same rate, but only applies an update every ~1/3 of the camera frame rate.
 
-8/6/2020 update notes:
-- The Gui was updated and improved: 1) Added "Define New Home" button which defines a new home position, which is used for locking and a new state (alignment mode). Home positions are stored by date in the appropriately named folder. 2) Added "Align" button that enters alignment mode. 3) Added option under file menu to load old home positions. 4) added a text box that specifies how many frames to average before calculating a COM on the averaged frame, although it is recommended to keep this to 1 to maximize control loop bandwidth; however, if the user does not want to control the higher frequencies, then they could increase the averaging of frames to reduce aliasing the laser pointing. 5) enabled the text box on pointing view, which now sets the number of points for the COM and piezzos to control. 6) Added a color coded marker for the current home position: red unlocked/not aligned, green locked/aligned.7) Added feedback arrows to help the user during alignment.
-- New State, Alignment Mode, added: This state is used by the user to align the beam manually. This should be done prior to locking to roughly restore the pointing of the two control mirrors. This state displays a green circular home icon when the COM coordinates are within 10V of the home position. At this point, alignment mode may be exited by either retoggling align button (returns to measure state) or clicking the lock button to immediately lock. Additionally, red arrows will appear to help the user understand which direction to steer the beam on each camera. 
-- New Camera Engine: Kyle Gordon wrote a camera engine, which uses the dll for the Mightex camera, providing quicker interfacing with the Mightex Cameras. I then updated the MightexCamera object to use this Mightex Engine. I also added a few functions to the mightex engine, e.g. set exposure time and updated the get frame function to also grab the exposure time from the frame meta data. 
-- Several other minor improvements were made. 
+Please understand that this code was written by a solo graduate student--me--as my first coding assignment among many 
+other assignments. That is, it is not as crisp as something developed by a team of engineers but if you need a custom
+solution, it is a working system that can be improved upon. I welcome improvements, please submit pull requests, but 
+as such I make no warranties or promises and cannot continue to maintain this code as I move on to other projects.
 
-There is still much to do; so look for future updates to the code... but this code now works with Mightex SCE-B013-U cameras and Thorlabs MDT_693A piezo controllers to stabalize pointing of a laser beam. And the code has been confirmed to maintain the locking of the pointing for >1 day. 
-
-
+## Branches:
+### Master: 
+Sorry should rename. Anyway, this is the last working version of the code. Mightex Cameras do not work on this branch
+at all. The code is written such that you MUST stablize both the angular pointing and the offset of the pointing——i.e.
+use two cameras.
+### update_mightex:
+This branch was where I was updating the Mightex SCE-B013U cameras to work again with the multithreaded version of the 
+code including using the frame hooker method. See caveat above. I also merged the add_single_camera_stabilization branch
+into this branch, so on this branch, the user can stabilize a single camera (i.e. just the angular pointing or the 
+offset if they wish). Honestly, this is the newest and best version of the code, but I am afraid to merge it into Master
+because of a lack of abundant use to determine that it actually works well. I do believe the single camera stabilization
+works, so if I were going to use this code, I would use this branch, but I would know I might have to do a bit of 
+debugging. The GUI is also improved to show the frame rates and the code is better organized. 
+### add_single_camera_stabilization:
+Old should be deleted, but I won't do that just in case someone wants this branch.
 ## Start up tips:
-- Drivers must be installed from manufacturers. The windows 7 drivers for the cameras do work on windows 10. Then update drivers from device manager by explicitly pointing to installed drivers. 
-- Make sure to download libusb, and make sure to install the drivers for the devices via zadig. If you already have a driver downloaded, then you will have to select the setting in zadig to show all devices not just ones without drivers, then overwrite the driver installation with zadig. This is important so that python can communicate with devices. 
+See "Setup Notes." These are my notes from when I setup this software on a totally new computer. This was, 
+unforuntately, many commits ago so some packages may be missing, but this should be pretty close to accurate. Note the 
+spec-file.txt file contains the up to date conda environment for running the application, so at least that is up to 
+date. 
+
+Note, the drivers must be installed from manufacturers. The windows 7 drivers for the cameras do work on windows 10. 
+Then update drivers from device manager by explicitly pointing to installed drivers.
